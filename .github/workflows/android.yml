@@ -1,0 +1,51 @@
+name: Build APK
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: 21}
+
+      - name: Find and stage the app
+        run: |
+          set -e
+          mkdir -p www assets
+          SKIP="-not -path ./www/* -not -path ./android/* -not -path ./node_modules/*"
+          SRC=$(find . -type f -name '*.html' $SKIP | sort | head -1)
+          if [ -z "$SRC" ]; then echo "::error::No .html file anywhere in the repo"; find . -type f; exit 1; fi
+          cp "$SRC" www/index.html; echo "app:    $SRC"
+          I=$(find . -type f -iname '*icon*.png' $SKIP | head -1)
+          S=$(find . -type f -iname '*splash*.png' $SKIP | head -1)
+          if [ -n "$I" ]; then cp "$I" assets/icon.png; echo "icon:   $I"; fi
+          if [ -n "$S" ]; then cp "$S" assets/splash.png; echo "splash: $S"; fi
+
+      - name: Build
+        run: |
+          set -e
+          npm init -y >/dev/null
+          npm i --no-fund --no-audit @capacitor/core@^7 @capacitor/android@^7
+          npm i --no-fund --no-audit -D @capacitor/cli@^7 @capacitor/assets@^3
+          cat > capacitor.config.json <<'J'
+          {"appId":"com.thejumpvault.puttcount","appName":"Putt Count","webDir":"www","android":{"backgroundColor":"#08301F"}}
+          J
+          npx cap add android
+          if [ -f assets/icon.png ]; then
+            npx @capacitor/assets generate --android --iconBackgroundColor '#08301F' --splashBackgroundColor '#08301F'
+          fi
+          npx cap sync android
+          cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: Putt Count APK
+          body: Tap the .apk below on Android to install.
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
