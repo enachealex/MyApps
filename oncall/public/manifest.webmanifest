@@ -1,0 +1,19 @@
+{
+  "name": "OnCall Schedule",
+  "short_name": "OnCall",
+  "description": "On-call schedule, check-in, and shift trades.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F4F8",
+  "theme_color": "#5B5FC7",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

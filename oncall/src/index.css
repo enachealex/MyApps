@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  min-height: 100%;
+  background-color: #f4f4f8;
+}
+
+body {
+  margin: 0;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* Phone numbers stay selectable for long-press copy */
+a[href^="tel:"] {
+  -webkit-touch-callout: default;
+}
