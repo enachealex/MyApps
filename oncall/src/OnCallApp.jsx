@@ -2270,15 +2270,29 @@ function openScheme(href) {
   }
 }
 
-/* Tap-to-dial. The number is the button.
-   Embedded preview frames block the tel: scheme outright, so when we're
-   framed we don't pretend: copy the number and say what happened. On a real
-   device this is a plain tel: link and goes straight to the keypad. */
+/* Tap-to-dial. The number is the button. Where the dialer is not reachable we
+   don't pretend: copy the number and say what happened. See canDial below. */
 const framed = (() => {
   try {
     return window.self !== window.top;
   } catch (e) {
     return true;
+  }
+})();
+
+/* Whether a tel: link actually reaches a dialer. Three cases, not two: a
+   phone opens the keypad, an embedded frame blocks the scheme outright, and a
+   desktop browser hands tel: to whatever helper app is registered — usually
+   nothing, so the click looks broken with no feedback. Only the first should
+   navigate; the other two copy the number instead. */
+const canDial = (() => {
+  if (framed) return false;
+  try {
+    /* The native shell always has a dialer, whatever the pointer looks like. */
+    if (window.Capacitor?.isNativePlatform?.()) return true;
+    return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  } catch (e) {
+    return false;
   }
 })();
 
@@ -2294,21 +2308,36 @@ function DialButton({ person, variant = "chip" }) {
   const second = person.phone && person.alt ? person.alt : "";
 
   const dial = async (e, value) => {
-    const href = `tel:${digitsOf(value)}`;
-    if (!framed) return; // let the anchor do its job on a real device
+    if (canDial) return; // let the anchor open the keypad
     e.preventDefault();
-    try {
-      window.open(href, "_blank");
-    } catch (err) {
-      /* blocked in preview, handled below */
+    if (framed) {
+      /* A frame may still let a new context through, so it is worth a try. */
+      try {
+        window.open(`tel:${digitsOf(value)}`, "_blank");
+      } catch (err) {
+        /* blocked in preview, copied below */
+      }
     }
+    let copied = false;
     try {
       await navigator.clipboard.writeText(value);
-      say(`Preview blocks the dialer — ${value} copied. On a phone this opens the keypad.`);
+      copied = true;
     } catch (err) {
-      say(`Preview blocks the dialer. On a phone this calls ${value}.`);
+      /* clipboard refused — still say the number so it can be read off */
+    }
+    if (framed) {
+      say(copied
+        ? `Preview blocks the dialer — ${value} copied. On a phone this opens the keypad.`
+        : `Preview blocks the dialer. On a phone this calls ${value}.`);
+    } else {
+      say(copied
+        ? `${value} copied — this computer can't place calls.`
+        : `This computer can't place calls. ${person.name} is at ${value}.`);
     }
   };
+
+  const callLabel = (value) =>
+    canDial ? `Call ${person.name} at ${value}` : `Copy ${person.name}'s number, ${value}`;
 
   const selectable = { userSelect: "text", WebkitUserSelect: "text", WebkitTouchCallout: "default" };
 
@@ -2318,11 +2347,11 @@ function DialButton({ person, variant = "chip" }) {
         href={`tel:${digitsOf(primary)}`}
         onClick={(e) => dial(e, primary)}
         role="button"
-        aria-label={`Call ${person.name} at ${primary}`}
+        aria-label={callLabel(primary)}
         className="flex flex-1 items-center justify-center gap-2 rounded-lg py-3 text-sm font-bold text-white shadow-sm transition active:opacity-75"
         style={{ backgroundColor: org.brand, fontVariantNumeric: "tabular-nums", ...selectable }}
       >
-        <Phone size={16} fill="currentColor" /> Call {primary}
+        <Phone size={16} fill="currentColor" /> {canDial ? "Call" : "Copy"} {primary}
       </a>
     );
   }
@@ -2333,7 +2362,7 @@ function DialButton({ person, variant = "chip" }) {
         href={`tel:${digitsOf(primary)}`}
         onClick={(e) => dial(e, primary)}
         role="button"
-        aria-label={`Call ${person.name} at ${primary}`}
+        aria-label={callLabel(primary)}
         className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white shadow-sm transition active:opacity-75"
         style={{ backgroundColor: org.brand, fontVariantNumeric: "tabular-nums", ...selectable }}
       >
@@ -2345,7 +2374,7 @@ function DialButton({ person, variant = "chip" }) {
           href={`tel:${digitsOf(second)}`}
           onClick={(e) => dial(e, second)}
           role="button"
-          aria-label={`Call ${person.name} at ${second}`}
+          aria-label={callLabel(second)}
           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition active:opacity-75"
           style={{ backgroundColor: C.surface, color: org.deep, border: `1px solid ${org.brand}`, fontVariantNumeric: "tabular-nums", ...selectable }}
         >
@@ -2359,7 +2388,7 @@ function DialButton({ person, variant = "chip" }) {
 function TapToCallHint() {
   return (
     <div className="flex items-center gap-1.5 px-3 py-2 text-xs" style={{ color: C.faint }}>
-      <Phone size={12} /> Tap a phone number to call.
+      <Phone size={12} /> {canDial ? "Tap a phone number to call." : "Click a phone number to copy it."}
     </div>
   );
 }
