@@ -6,7 +6,7 @@ pick up) that route through co-worker confirmation and management approval.
 Multi-organization — each tenant has its own roster, roles, call template,
 branding, and data.
 
-Live: https://enachealex.github.io/MyApps/oncall/
+Live: https://myapps.thejumpvault.com/oncall/
 
 ## Run locally
 
@@ -22,12 +22,12 @@ a desktop browser or inside an embedded preview.
 
 ## Deploy
 
-Pushing to `main` with changes under `oncall/` triggers
-`.github/workflows/deploy-oncall.yml`, which builds and publishes to the
-`gh-pages` branch under `/oncall`.
+Pushing to `main` triggers `.github/workflows/pages.yml`, which builds this
+app along with every other app in the repo and publishes them together to
+GitHub Pages. See the [repo README](../README.md) for how that fits together.
 
-One-time setup: **Settings → Pages → Source: Deploy from a branch →
-`gh-pages` / root**. The first workflow run creates that branch.
+There is no per-app deploy workflow and no `gh-pages` branch — Pages is set to
+build from GitHub Actions.
 
 ## Sign in
 

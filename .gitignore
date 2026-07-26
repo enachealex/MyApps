@@ -1,0 +1,4 @@
+# Local reproduction of what .github/workflows/pages.yml assembles
+_site/
+node_modules/
+.DS_Store

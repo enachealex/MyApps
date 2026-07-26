@@ -1,0 +1,75 @@
+name: Deploy site
+
+# Publishes the whole site to https://myapps.thejumpvault.com/:
+#
+#   /             the My Apps landing page (index.html)
+#   /puttcount/   a standalone HTML app, copied as-is
+#   /oncall/      a Vite app, built here
+#
+# Pages for this repo is set to "GitHub Actions" as its build type, so a
+# deployment only happens through actions/deploy-pages below. Pushing a
+# gh-pages branch does nothing.
+#
+# Adding another static app: copy it into _site in the assemble step.
+# Adding another built app: add a build step, then copy its dist into _site.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it midway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: oncall/package-lock.json
+
+      - name: Build OnCall
+        working-directory: oncall
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble the site
+        run: |
+          set -e
+          mkdir -p _site
+          cp index.html _site/index.html
+          cp -r puttcount _site/puttcount
+          cp -r oncall/dist _site/oncall
+          # Without .nojekyll, Pages drops files and folders beginning with an
+          # underscore — which is what Vite names some chunks.
+          touch _site/.nojekyll
+          # Keeps the custom domain attached across deployments.
+          echo 'myapps.thejumpvault.com' > _site/CNAME
+          find _site -maxdepth 2
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
