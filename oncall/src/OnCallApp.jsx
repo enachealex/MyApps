@@ -30,7 +30,6 @@ import {
   Eye,
   EyeOff,
   ArrowLeft,
-  Repeat,
   Sun,
   Moon,
   Monitor,
@@ -1061,7 +1060,6 @@ export default function OnCallApp() {
         db={db}
         setDb={setDb}
         viewerId={userId}
-        setViewerId={setUserId}
         onSignOut={() => setUserId(null)}
       />
     </AppCtx.Provider>
@@ -1205,12 +1203,7 @@ function EmailGate({ onResolve }) {
         </div>
       </div>
 
-      <div className={`mt-6 px-5 ${desktop ? "pb-6" : "pb-10"}`}>
-        <div className="text-xs" style={{ color: C.faint }}>
-          Demo build — try <span className="font-semibold">denise.park@staurelia.org</span>. Other
-          accounts are listed in <span className="font-semibold">docs/demo-accounts.md</span>.
-        </div>
-      </div>
+      <div className={desktop ? "pb-6" : "pb-10"} />
     </AuthShell>
   );
 }
@@ -1385,16 +1378,14 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
           </div>
         ) : null}
 
-        <div className="mt-6 pb-10 text-center text-xs" style={{ color: C.faint }}>
-          Demo build. Any password works, and accounts are per organization.
-        </div>
+        <div className="pb-10" />
       </div>
     </AuthShell>
   );
 }
 
 /* ============================== SHELL ============================= */
-function Shell({ org, db, setDb, viewerId, setViewerId, onSignOut, themeMode, setThemeMode }) {
+function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode }) {
   const [tab, setTab] = useState("home");
   const [accountOpen, setAccountOpen] = useState(false);
   const [shiftSheet, setShiftSheet] = useState(null);
@@ -1741,11 +1732,6 @@ function Shell({ org, db, setDb, viewerId, setViewerId, onSignOut, themeMode, se
         onClose={() => setAccountOpen(false)}
         org={org}
         viewer={viewer}
-        onSwitchUser={(id) => {
-          setViewerId(id);
-          setAccountOpen(false);
-          setTab("home");
-        }}
         onSignOut={onSignOut}
       />
       </div>
@@ -1801,8 +1787,7 @@ function SideRail({ org, viewer, tabs, tab, setTab, onAccount }) {
 }
 
 /* =========================== ACCOUNT SHEET ======================== */
-function AccountSheet({ open, onClose, org, viewer, onSwitchUser, onSignOut, themeMode, setThemeMode }) {
-  const [showUsers, setShowUsers] = useState(false);
+function AccountSheet({ open, onClose, org, viewer, onSignOut, themeMode, setThemeMode }) {
   return (
     <Sheet open={open} onClose={onClose} title="Account">
       <div className="flex items-center gap-3">
@@ -1868,33 +1853,6 @@ function AccountSheet({ open, onClose, org, viewer, onSwitchUser, onSignOut, the
         </Btn>
       </div>
 
-      <div className="mt-5 border-t pt-3" style={{ borderColor: C.line }}>
-        <button onClick={() => setShowUsers((v) => !v)} className="flex w-full items-center justify-between py-1 text-left">
-          <div>
-            <div className="text-sm font-semibold">Demo: view as another account</div>
-            <div className="text-xs" style={{ color: C.sub }}>Only in this build — live, permissions come from sign-in.</div>
-          </div>
-          <Repeat size={16} style={{ color: C.faint }} />
-        </button>
-        {showUsers ? (
-          <div className="mt-2 overflow-hidden rounded-lg border" style={{ borderColor: C.line }}>
-            {org.people.map((p, i) => (
-              <button
-                key={p.id}
-                onClick={() => onSwitchUser(p.id)}
-                className="flex w-full items-center justify-between px-3 py-2.5 text-left"
-                style={{ borderTop: i ? `1px solid ${C.line}` : "none", backgroundColor: p.id === viewer.id ? org.soft : "#fff" }}
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{p.name}</div>
-                  <div className="text-xs" style={{ color: C.sub }}>{p.role}</div>
-                </div>
-                {p.id === viewer.id ? <Check size={16} style={{ color: org.brand }} /> : null}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
     </Sheet>
   );
 }
