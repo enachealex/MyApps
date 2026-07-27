@@ -1,5 +1,22 @@
 export type Repeat = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly';
 
+export type FriendStatus = 'incoming' | 'outgoing' | 'accepted';
+
+export interface FriendEntry {
+  uid: string;
+  name: string;
+  status: FriendStatus;
+  createdAt: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  listId: string;
+  authorId: string;
+  text: string;
+  createdAt: number;
+}
+
 export type SmartListId = 'myday' | 'important' | 'planned' | 'assigned';
 
 export interface TaskStep {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SmartListId, Task, TaskList, UserProfile } from '../types';
+import type { FriendEntry, SmartListId, Task, TaskList, UserProfile } from '../types';
 import { todayStr } from '../utils/dates';
 
 export type Mode = 'local' | 'cloud';
@@ -15,6 +15,8 @@ export interface AppState {
   tasks: Task[];
   /** Profiles of everyone who shares a list with us, keyed by user id. */
   members: Record<string, UserProfile>;
+  /** Friend connections: accepted friends plus pending requests (cloud mode). */
+  friends: FriendEntry[];
 }
 
 export const useAppStore = create<AppState>(() => ({
@@ -25,6 +27,7 @@ export const useAppStore = create<AppState>(() => ({
   lists: [],
   tasks: [],
   members: {},
+  friends: [],
 }));
 
 export function getDefaultList(lists: TaskList[], uid?: string): TaskList | undefined {

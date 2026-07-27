@@ -19,6 +19,23 @@ work on the same checklist together in real time.
 - **Sharing between friends** — share a list to get a 6-character invite code; a friend enters
   it on their Home screen and the list syncs live between everyone via Firestore. Tasks can be
   assigned to any member.
+- **Friends** (cloud mode) — send a friend request by email (the address is hashed for lookup,
+  never stored), accept/decline requests, and invite friends straight into a list without codes.
+- **List chat** (cloud mode) — every shared list has a live group chat for its members.
+- **Sign in with email or Google** (cloud mode) — the Google button gives the familiar
+  account-chooser experience on the web app.
+
+## Privacy & account security
+
+- **Passwords are never stored by this app** — Firebase Authentication receives them over TLS
+  and keeps only a salted hash (scrypt). Neither the app nor its database ever sees a stored
+  password.
+- **The database stores no email addresses.** Accounts are identified by an opaque ID; the only
+  email-derived data stored is a one-way SHA-256 hash used so friends can find each other by
+  typing an email. The sign-in provider (Firebase Auth) necessarily knows your email — it *is*
+  the login credential — but it is never exposed to other users or copied into the database.
+- **Bot protection** — Firebase App Check with invisible reCAPTCHA v3 (setup below): Firestore
+  rejects requests that don't come from the real app, with no puzzle for real users.
 
 ## Two modes
 
@@ -80,14 +97,36 @@ installed it opens in its own window, works offline, and syncs when back online.
 
 1. Go to [console.firebase.google.com](https://console.firebase.google.com) and **Add project**
    (any name, Analytics optional).
-2. **Build → Authentication → Get started → Email/Password → Enable**.
-3. **Build → Firestore Database → Create database** (production mode, any region).
-4. In Firestore, open the **Rules** tab and paste the contents of [`firestore.rules`](firestore.rules),
+2. **Build → Authentication → Get started → Email/Password → Enable**. While you're there,
+   also enable the **Google** provider (Sign-in method → Add new provider → Google) to light up
+   the "Continue with Google" button.
+3. Under **Authentication → Settings → Authorized domains**, add `myapps.thejumpvault.com`
+   so sign-in works on the hosted app.
+4. **Build → Firestore Database → Create database** (production mode, any region).
+5. In Firestore, open the **Rules** tab and paste the contents of [`firestore.rules`](firestore.rules),
    then **Publish**.
-5. **Project settings (gear icon) → Your apps → Web app (`</>`)** — register an app and copy the
+6. **Project settings (gear icon) → Your apps → Web app (`</>`)** — register an app and copy the
    `firebaseConfig` object it shows you.
-6. Paste that object into [`firebase.config.ts`](firebase.config.ts), replacing `null`.
-7. Restart the app. You'll see a sign-in screen — create an account, and you're in cloud mode.
+7. Paste that object into [`firebase.config.ts`](firebase.config.ts), replacing `null`.
+8. Restart the app. You'll see a sign-in screen — create an account, and you're in cloud mode.
+
+### Bot protection (recommended)
+
+Stops bots and scripts from hammering sign-up or the database, with no captcha puzzle for
+real users:
+
+1. Create a **reCAPTCHA v3** key for your domain at
+   [google.com/recaptcha/admin](https://www.google.com/recaptcha/admin) (v3, domains:
+   `myapps.thejumpvault.com` and `localhost`).
+2. In the Firebase console: **App Check → Apps → your web app → Register** with the reCAPTCHA
+   v3 **secret** key.
+3. Put the **site** key into `recaptchaV3SiteKey` in [`firebase.config.ts`](firebase.config.ts).
+4. Back in App Check, set **Firestore** (and Authentication, if shown) to **Enforced** once
+   you've confirmed the app still works.
+
+A note on captchas: a captcha widget alone, verified only in the browser, does not stop bots —
+they simply skip the page and call the backend directly. App Check closes that hole because
+Firebase's servers reject any request without a valid token.
 
 ### Sharing a list with a friend
 
@@ -95,6 +134,10 @@ installed it opens in its own window, works offline, and syncs when back online.
 2. Send the 6-character code to your friend however you like.
 3. Your friend taps the **person-add icon on the Home screen**, enters the code, and the list
    appears for them. Everyone sees changes live, and tasks can be assigned to any member.
+
+Or skip the codes entirely: tap the **people icon** on the Home screen to add friends by
+email; once accepted, the Share sheet offers one-tap **Invite** for each friend, and every
+shared list gets a **chat** (chat-bubbles icon at the top of the list).
 
 ## Project structure
 

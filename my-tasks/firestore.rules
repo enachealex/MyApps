@@ -15,10 +15,20 @@ service cloud.firestore {
         && request.auth.uid in get(/databases/$(database)/documents/lists/$(listId)).data.memberIds;
     }
 
-    // Public profiles: name + email shown to people who share a list with you.
+    // Public profiles: display name + a one-way email hash used for friend
+    // lookup. Deliberately NO email addresses or other personal data here.
     match /users/{uid} {
       allow read: if signedIn();
       allow write: if signedIn() && request.auth.uid == uid;
+
+      // Friend edges are mirrored: users/A/friends/B and users/B/friends/A.
+      // Each side is writable by its owner and by the friend it points at
+      // (needed to deliver requests and mirror accept/remove).
+      match /friends/{friendId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow write: if signedIn()
+          && (request.auth.uid == uid || request.auth.uid == friendId);
+      }
     }
 
     match /lists/{listId} {
@@ -49,6 +59,14 @@ service cloud.firestore {
     match /tasks/{taskId} {
       allow create: if isListMember(request.resource.data.listId);
       allow read, update, delete: if isListMember(resource.data.listId);
+    }
+
+    // Chat: one conversation per shared list, visible to its members only.
+    match /messages/{messageId} {
+      allow create: if isListMember(request.resource.data.listId)
+        && request.resource.data.authorId == request.auth.uid;
+      allow read: if isListMember(resource.data.listId);
+      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
     }
 
     // Invite codes. The 6-character code is the secret; anyone signed in with

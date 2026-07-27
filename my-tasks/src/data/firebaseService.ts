@@ -1,7 +1,9 @@
 import {
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   updateProfile,
 } from 'firebase/auth';
@@ -14,6 +16,7 @@ import {
   DocumentData,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   query,
   setDoc,
@@ -22,12 +25,21 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import type { Task, TaskList, UserProfile } from '../types';
+import { Platform } from 'react-native';
+import type { ChatMessage, FriendEntry, FriendStatus, Task, TaskList, UserProfile } from '../types';
 import { listColors } from '../theme';
+import { emailHash } from '../utils/hash';
 import { genShareCode } from '../utils/id';
 import { auth, db } from './firebase';
 import { buildList, buildTask, DataService, TaskDraft } from './service';
 import { useAppStore } from './store';
+
+/** Firestore edge-doc statuses; mapped to FriendStatus for the UI. */
+const EDGE_TO_STATUS: Record<string, FriendStatus> = {
+  'pending-sent': 'outgoing',
+  'pending-received': 'incoming',
+  accepted: 'accepted',
+};
 
 /**
  * Cloud implementation backed by Firebase Auth + Firestore.
@@ -36,6 +48,7 @@ import { useAppStore } from './store';
  */
 class FirebaseService implements DataService {
   private listsUnsub: Unsubscribe | null = null;
+  private friendsUnsub: Unsubscribe | null = null;
   private taskUnsubs = new Map<string, Unsubscribe>();
   private tasksByList = new Map<string, Task[]>();
   private lists: TaskList[] = [];
@@ -54,6 +67,7 @@ class FirebaseService implements DataService {
           lists: [],
           tasks: [],
           members: {},
+          friends: [],
         });
         return;
       }
@@ -64,18 +78,29 @@ class FirebaseService implements DataService {
       };
       useAppStore.setState({ authReady: true, user });
       this.profileCache.set(user.id, user);
-      setDoc(
-        doc(db(), 'users', user.id),
-        { name: user.name, email: user.email },
-        { merge: true }
-      ).catch(() => {});
+      this.writeOwnProfile(user.id, user.name, fbUser.email);
       this.subscribeLists(user.id);
+      this.subscribeFriends(user.id);
     });
+  }
+
+  /**
+   * The profile doc other users can see. Deliberately contains NO email
+   * address — only the display name and a one-way hash used so friends can
+   * find each other by typing an email that is never stored.
+   */
+  private writeOwnProfile(uid: string, name: string, email: string | null): void {
+    (async () => {
+      const hash = email ? await emailHash(email) : null;
+      await setDoc(doc(db(), 'users', uid), { name, emailHash: hash }, { merge: true });
+    })().catch(() => {});
   }
 
   private teardown(): void {
     this.listsUnsub?.();
     this.listsUnsub = null;
+    this.friendsUnsub?.();
+    this.friendsUnsub = null;
     for (const unsub of this.taskUnsubs.values()) unsub();
     this.taskUnsubs.clear();
     this.tasksByList.clear();
@@ -132,6 +157,26 @@ class FirebaseService implements DataService {
     );
   }
 
+  private subscribeFriends(uid: string): void {
+    this.friendsUnsub = onSnapshot(
+      collection(db(), 'users', uid, 'friends'),
+      (snap) => {
+        const friends: FriendEntry[] = snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            uid: d.id,
+            name: (data.name as string) || 'Someone',
+            status: EDGE_TO_STATUS[data.status as string] ?? 'accepted',
+            createdAt: (data.createdAt as number) ?? 0,
+          };
+        });
+        friends.sort((a, b) => a.name.localeCompare(b.name));
+        useAppStore.setState({ friends });
+      },
+      (err) => console.warn('Friends subscription error', err)
+    );
+  }
+
   private subscribeTasks(listId: string): void {
     const q = query(collection(db(), 'tasks'), where('listId', '==', listId));
     const unsub = onSnapshot(
@@ -163,10 +208,12 @@ class FirebaseService implements DataService {
         try {
           const snap = await getDoc(doc(db(), 'users', id));
           const data = snap.data();
+          // Profile docs hold no email address, only a hash — so there is
+          // nothing personal to surface here beyond the display name.
           this.profileCache.set(id, {
             id,
             name: (data?.name as string) || 'Someone',
-            email: (data?.email as string) ?? null,
+            email: null,
           });
         } catch {
           this.profileCache.set(id, { id, name: 'Someone', email: null });
@@ -268,17 +315,113 @@ class FirebaseService implements DataService {
   async signUp(name: string, email: string, password: string): Promise<void> {
     const cred = await createUserWithEmailAndPassword(auth(), email.trim(), password);
     await updateProfile(cred.user, { displayName: name.trim() });
-    await setDoc(doc(db(), 'users', cred.user.uid), {
-      name: name.trim(),
-      email: email.trim(),
-    });
+    this.writeOwnProfile(cred.user.uid, name.trim(), email);
     useAppStore.setState({
       user: { id: cred.user.uid, name: name.trim(), email: email.trim() },
     });
   }
 
+  async signInWithGoogle(): Promise<void> {
+    if (Platform.OS !== 'web') {
+      throw new Error(
+        'Google sign-in is available in the web app for now. Sign in with email on this device.'
+      );
+    }
+    await signInWithPopup(auth(), new GoogleAuthProvider());
+  }
+
   async signOutUser(): Promise<void> {
     await signOut(auth());
+  }
+
+  async addFriendByEmail(email: string): Promise<void> {
+    const me = this.uid();
+    const myName = useAppStore.getState().user?.name ?? 'Someone';
+    const trimmed = email.trim();
+    if (!trimmed) throw new Error('Enter an email address.');
+
+    // Look up by one-way hash: their address is never stored or transmitted
+    // to the database in readable form.
+    const hash = await emailHash(trimmed);
+    const match = await getDocs(
+      query(collection(db(), 'users'), where('emailHash', '==', hash), limit(1))
+    );
+    if (match.empty) {
+      throw new Error('No account found for that email. Ask your friend to sign up first.');
+    }
+    const friendUid = match.docs[0].id;
+    const friendName = (match.docs[0].data().name as string) || 'Someone';
+    if (friendUid === me) throw new Error("That's your own email.");
+
+    const existing = await getDoc(doc(db(), 'users', me, 'friends', friendUid));
+    if (existing.exists()) {
+      const status = existing.data().status as string;
+      if (status === 'accepted') throw new Error(`You and ${friendName} are already friends.`);
+      if (status === 'pending-sent') throw new Error('Request already sent — waiting on them.');
+      // They already asked us: accept instead of re-requesting.
+      await this.respondToFriendRequest(friendUid, true);
+      return;
+    }
+
+    const now = Date.now();
+    const batch = writeBatch(db());
+    batch.set(doc(db(), 'users', me, 'friends', friendUid), {
+      status: 'pending-sent',
+      name: friendName,
+      createdAt: now,
+    });
+    batch.set(doc(db(), 'users', friendUid, 'friends', me), {
+      status: 'pending-received',
+      name: myName,
+      createdAt: now,
+    });
+    await batch.commit();
+  }
+
+  async respondToFriendRequest(friendUid: string, accept: boolean): Promise<void> {
+    const me = this.uid();
+    const batch = writeBatch(db());
+    if (accept) {
+      batch.update(doc(db(), 'users', me, 'friends', friendUid), { status: 'accepted' });
+      batch.update(doc(db(), 'users', friendUid, 'friends', me), { status: 'accepted' });
+    } else {
+      batch.delete(doc(db(), 'users', me, 'friends', friendUid));
+      batch.delete(doc(db(), 'users', friendUid, 'friends', me));
+    }
+    await batch.commit();
+  }
+
+  async removeFriend(friendUid: string): Promise<void> {
+    await this.respondToFriendRequest(friendUid, false);
+  }
+
+  async inviteFriendToList(listId: string, friendUid: string): Promise<void> {
+    await updateDoc(doc(db(), 'lists', listId), { memberIds: arrayUnion(friendUid) });
+  }
+
+  watchMessages(listId: string, onMessages: (messages: ChatMessage[]) => void): () => void {
+    const q = query(collection(db(), 'messages'), where('listId', '==', listId));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const messages = snap.docs.map((d) => ({ ...(d.data() as ChatMessage), id: d.id }));
+        messages.sort((a, b) => a.createdAt - b.createdAt);
+        onMessages(messages);
+      },
+      (err) => console.warn('Messages subscription error', err)
+    );
+  }
+
+  async sendMessage(listId: string, text: string): Promise<void> {
+    const body = text.trim();
+    if (!body) return;
+    const ref = doc(collection(db(), 'messages'));
+    await setDoc(ref, {
+      listId,
+      authorId: this.uid(),
+      text: body,
+      createdAt: Date.now(),
+    });
   }
 }
 

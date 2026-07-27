@@ -1,4 +1,4 @@
-import type { Task, TaskList } from '../types';
+import type { ChatMessage, Task, TaskList } from '../types';
 
 /** Everything needed to create a task; unspecified fields get sensible defaults. */
 export type TaskDraft = Partial<Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>> & {
@@ -22,7 +22,21 @@ export interface DataService {
   leaveList(listId: string): Promise<void>;
   signIn(email: string, password: string): Promise<void>;
   signUp(name: string, email: string, password: string): Promise<void>;
+  /** Google account-chooser sign-in (web only for now). */
+  signInWithGoogle(): Promise<void>;
   signOutUser(): Promise<void>;
+  /**
+   * Sends a friend request. The email is hashed and matched against stored
+   * email hashes — no email address is ever written to the database.
+   */
+  addFriendByEmail(email: string): Promise<void>;
+  respondToFriendRequest(friendUid: string, accept: boolean): Promise<void>;
+  removeFriend(friendUid: string): Promise<void>;
+  /** Adds an accepted friend straight to a list's members. */
+  inviteFriendToList(listId: string, friendUid: string): Promise<void>;
+  /** Live-subscribes to a shared list's chat; returns an unsubscribe fn. */
+  watchMessages(listId: string, onMessages: (messages: ChatMessage[]) => void): () => void;
+  sendMessage(listId: string, text: string): Promise<void>;
 }
 
 export function buildTask(draft: TaskDraft, uid: string, id: string): Task {

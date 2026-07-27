@@ -19,3 +19,11 @@ import type { FirebaseOptions } from 'firebase/app';
  * };
  */
 export const firebaseConfig: FirebaseOptions | null = null;
+
+/**
+ * Optional bot protection (recommended once cloud mode is on): Firebase App
+ * Check with reCAPTCHA v3. Follow "Bot protection" in README.md, then paste
+ * your reCAPTCHA v3 SITE key here. Invisible to real users; Firebase rejects
+ * requests that don't come from your real app.
+ */
+export const recaptchaV3SiteKey: string | null = null;

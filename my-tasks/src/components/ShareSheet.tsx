@@ -22,9 +22,22 @@ export function ShareSheet({ visible, onClose, list, onLeft }: Props) {
   const { colors, styles } = useThemedStyles(createStyles);
   const members = useAppStore((s) => s.members);
   const user = useAppStore((s) => s.user);
+  const friends = useAppStore((s) => s.friends);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const isOwner = user?.id === list.ownerId;
+
+  const invitableFriends = friends.filter(
+    (f) => f.status === 'accepted' && !list.memberIds.includes(f.uid)
+  );
+
+  const inviteFriend = (friendUid: string) => {
+    api
+      .inviteFriendToList(list.id, friendUid)
+      .catch((e) =>
+        showMessage('Could not invite friend', e instanceof Error ? e.message : String(e))
+      );
+  };
 
   const createCode = async () => {
     setBusy(true);
@@ -93,6 +106,21 @@ export function ShareSheet({ visible, onClose, list, onLeft }: Props) {
                 <Text style={styles.shareButtonText}>Create invite code</Text>
               )}
             </Pressable>
+          </>
+        )}
+
+        {invitableFriends.length > 0 && (
+          <>
+            <Text style={styles.membersTitle}>Invite a friend</Text>
+            {invitableFriends.map((f) => (
+              <View key={f.uid} style={styles.memberRow}>
+                <Avatar id={f.uid} name={f.name} size={32} />
+                <Text style={styles.memberName}>{f.name}</Text>
+                <Pressable style={styles.inviteButton} onPress={() => inviteFriend(f.uid)}>
+                  <Text style={styles.inviteButtonText}>Invite</Text>
+                </Pressable>
+              </View>
+            ))}
           </>
         )}
 
@@ -192,6 +220,18 @@ const createStyles = (colors: ThemeColors) =>
   ownerBadge: {
     fontSize: 12,
     color: colors.textTertiary,
+  },
+  inviteButton: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+  },
+  inviteButtonText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   leaveButton: {
     flexDirection: 'row',

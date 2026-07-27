@@ -132,6 +132,40 @@ class LocalService implements DataService {
   async signOutUser(): Promise<void> {
     throw new Error('Not available in local mode.');
   }
+
+  private cloudOnly(): never {
+    throw new Error(
+      'Friends and chat need cloud sync. Add your Firebase config to firebase.config.ts (see README).'
+    );
+  }
+
+  async signInWithGoogle(): Promise<void> {
+    this.cloudOnly();
+  }
+
+  async addFriendByEmail(): Promise<void> {
+    this.cloudOnly();
+  }
+
+  async respondToFriendRequest(): Promise<void> {
+    this.cloudOnly();
+  }
+
+  async removeFriend(): Promise<void> {
+    this.cloudOnly();
+  }
+
+  async inviteFriendToList(): Promise<void> {
+    this.cloudOnly();
+  }
+
+  watchMessages(): () => void {
+    return () => {};
+  }
+
+  async sendMessage(): Promise<void> {
+    this.cloudOnly();
+  }
 }
 
 export const localService = new LocalService();

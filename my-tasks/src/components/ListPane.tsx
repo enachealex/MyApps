@@ -20,6 +20,7 @@ import { addDaysStr, formatLongDate, todayStr } from '../utils/dates';
 import { confirmDialog, showMessage } from '../utils/ui';
 import { AddTaskBar } from './AddTaskBar';
 import { Avatar } from './Avatar';
+import { ChatSheet } from './ChatSheet';
 import { ListEditorModal } from './ListEditorModal';
 import { ShareSheet } from './ShareSheet';
 import { Sheet, SheetItem } from './Sheet';
@@ -99,6 +100,7 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const list = listId ? lists.find((l) => l.id === listId) : undefined;
   const smartMeta = smart ? SMART_LISTS[smart] : undefined;
@@ -237,6 +239,11 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
             </Pressable>
           )}
         </View>
+        {list && isShared && mode === 'cloud' && (
+          <Pressable hitSlop={10} onPress={() => setChatOpen(true)} style={styles.topIcon}>
+            <Ionicons name="chatbubbles-outline" size={22} color={accent} />
+          </Pressable>
+        )}
         {list && !list.isDefault && mode === 'cloud' && (
           <Pressable hitSlop={10} onPress={handleShare} style={styles.topIcon}>
             <Ionicons name="person-add-outline" size={22} color={accent} />
@@ -372,6 +379,8 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
             list={list}
             onLeft={onMissing}
           />
+
+          <ChatSheet visible={chatOpen} onClose={() => setChatOpen(false)} list={list} />
         </>
       )}
     </View>

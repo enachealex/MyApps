@@ -15,6 +15,7 @@ import { ThemeColors, useThemedStyles } from '../theme';
 import { showMessage } from '../utils/ui';
 import { AccountSheet } from './AccountSheet';
 import { Avatar } from './Avatar';
+import { FriendsSheet } from './FriendsSheet';
 import { JoinSheet } from './JoinSheet';
 import { ListEditorModal } from './ListEditorModal';
 
@@ -49,9 +50,14 @@ export function Sidebar({ selection, onSelect }: Props) {
   const user = useAppStore((s) => s.user);
   const mode = useAppStore((s) => s.mode);
 
+  const friends = useAppStore((s) => s.friends);
+
   const [newListOpen, setNewListOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false);
+
+  const hasFriendRequests = friends.some((f) => f.status === 'incoming');
 
   const defaultList = getDefaultList(lists, user?.id);
   const userLists = lists.filter((l) => !l.isDefault);
@@ -132,6 +138,21 @@ export function Sidebar({ selection, onSelect }: Props) {
             </Text>
           </View>
         </Pressable>
+        <Pressable
+          hitSlop={10}
+          onPress={() => {
+            if (mode === 'cloud') setFriendsOpen(true);
+            else
+              showMessage(
+                'Friends need cloud sync',
+                'Add your Firebase config to firebase.config.ts (see README.md) to add friends and share lists.'
+              );
+          }}
+          style={styles.joinButton}
+        >
+          <Ionicons name="people-outline" size={20} color={colors.primary} />
+          {hasFriendRequests && <View style={styles.requestDot} />}
+        </Pressable>
         <Pressable hitSlop={10} onPress={handleJoinPress} style={styles.joinButton}>
           <Ionicons name="person-add-outline" size={20} color={colors.primary} />
         </Pressable>
@@ -190,6 +211,7 @@ export function Sidebar({ selection, onSelect }: Props) {
         onJoined={(listId) => onSelect({ listId })}
       />
       <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
+      <FriendsSheet visible={friendsOpen} onClose={() => setFriendsOpen(false)} />
     </View>
   );
 }
@@ -227,6 +249,15 @@ const createStyles = (colors: ThemeColors) =>
   },
   joinButton: {
     padding: 6,
+  },
+  requestDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.danger,
   },
   listContent: {
     paddingBottom: 12,

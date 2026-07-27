@@ -37,6 +37,12 @@ function friendlyAuthError(e: unknown): string {
   }
 }
 
+/** The user closing the Google popup is a choice, not an error. */
+function isPopupDismissal(e: unknown): boolean {
+  const code = (e as { code?: string })?.code ?? '';
+  return code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request';
+}
+
 export function AuthScreen() {
   const { colors, styles } = useThemedStyles(createStyles);
   const [isSignUp, setIsSignUp] = useState(false);
@@ -48,6 +54,18 @@ export function AuthScreen() {
 
   const canSubmit =
     email.trim().length > 0 && password.length > 0 && (!isSignUp || name.trim().length > 0);
+
+  const googleSignIn = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.signInWithGoogle();
+    } catch (e) {
+      if (!isPopupDismissal(e)) setError(friendlyAuthError(e));
+      setBusy(false);
+    }
+  };
 
   const submit = async () => {
     if (!canSubmit || busy) return;
@@ -125,6 +143,29 @@ export function AuthScreen() {
               )}
             </Pressable>
           </View>
+
+          {Platform.OS === 'web' && (
+            <>
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or</Text>
+                <View style={styles.dividerLine} />
+              </View>
+              <Pressable
+                style={[styles.googleButton, busy && styles.buttonDisabled]}
+                onPress={googleSignIn}
+                disabled={busy}
+              >
+                <Ionicons name="logo-google" size={18} color={colors.text} />
+                <Text style={styles.googleText}>Continue with Google</Text>
+              </Pressable>
+            </>
+          )}
+
+          <Text style={styles.privacyNote}>
+            Your email and password go only to the sign-in service — this app's database
+            identifies you by an anonymous ID and never stores either one.
+          </Text>
 
           <Pressable
             onPress={() => {
@@ -208,6 +249,46 @@ const createStyles = (colors: ThemeColors) =>
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 18,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingVertical: 13,
+    marginTop: 18,
+  },
+  googleText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  privacyNote: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 17,
+    marginTop: 16,
+    paddingHorizontal: 10,
   },
   switchRow: {
     alignItems: 'center',

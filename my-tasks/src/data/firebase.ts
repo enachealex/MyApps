@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import { Auth, getAuth } from 'firebase/auth';
 import * as firebaseAuth from 'firebase/auth';
 import {
@@ -9,7 +10,7 @@ import {
   persistentMultipleTabManager,
 } from 'firebase/firestore';
 import { Platform } from 'react-native';
-import { firebaseConfig } from '../../firebase.config';
+import { firebaseConfig, recaptchaV3SiteKey } from '../../firebase.config';
 
 export const isCloudEnabled = firebaseConfig != null;
 
@@ -18,6 +19,21 @@ let dbInstance: Firestore | null = null;
 
 if (firebaseConfig) {
   const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+  // Bot protection: with App Check enforced in the Firebase console, Firestore
+  // and Auth reject traffic that can't prove it comes from the real app.
+  // reCAPTCHA v3 is invisible — no puzzle for legitimate users.
+  if (Platform.OS === 'web' && recaptchaV3SiteKey) {
+    try {
+      initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(recaptchaV3SiteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+    } catch (e) {
+      console.warn('App Check initialization failed', e);
+    }
+  }
+
   if (Platform.OS === 'web') {
     authInstance = getAuth(app);
   } else {
