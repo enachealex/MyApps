@@ -8,30 +8,16 @@ Status legend: **TODO** not started · **WIP** in progress · **DONE** shipped
 
 ---
 
-## 1. Admin-controlled display settings — TODO
+## 1. Admin-controlled display settings
 
-Per organization, editable by admins only (`kind === "manager"`). Stored
-alongside the org's other data so each tenant sets its own.
+### 1a. Check-in — DONE, removed outright
 
-### 1a. Check-in visibility
+Superseded 2026-07-27. The client does not want check-in at all, and it
+appears nowhere in their screens, so it is not a toggle — it is gone. The UI,
+the handlers, the prop threading and the `checkIn` field on the shift record
+have all been removed.
 
-A single toggle hides every trace of check-in from the UI.
-
-The `checkIn` field stays on the shift record either way — only the UI is
-gated, so switching the toggle back on does not lose history.
-
-Places that must respect it:
-
-| Where | What is shown today |
-| --- | --- |
-| `TodayView` header | "6/12 checked in" count |
-| `TodayView` my-shift card | "Checked in HH:MM" pill, "Check in" button, explainer line |
-| `CallRow` | "Checked in HH:MM" / "Not checked in" pill |
-| `ManageView` | "Checked in HH:MM" pill |
-| `ShiftSheet` | "Check in" / "Checked in HH:MM" button |
-| `checkIn()` in `Shell` | "Checked in. The supervisor can see you're reachable." toast |
-
-### 1b. Call button
+### 1b. Call button — TODO
 
 Three independent controls:
 
@@ -136,7 +122,32 @@ to edge, with a narrow icon rail down the left and dense table-style rows.
   toolbar (Save, refresh, date nav, + New, Filter) — screenshot
   20260724074632.
 
-## 4. UI alignment with customer visuals — TODO
+## 4. Shifts page tabs — WIP
+
+The client's mobile page carries three tabs: **My Shifts · Schedule ·
+Available Shifts**.
+
+**DONE** — those three, in that order. Pending and Approved are gone as tabs;
+each shift already carries its own status line, which is where the reference
+puts it, and the Requests tab still holds the full history.
+
+**DONE** — Schedule has a Daily/Weekly switch. Daily is the call list with
+tap-to-call; Weekly is seven Sunday-to-Saturday columns on desktop, stacked on
+a phone. Tapping a day header opens that day in Daily. The same `SpanHeader`
+and `WeekGrid` back the management Schedule tab, so the two cannot drift.
+
+Note the client's own Schedule truncates the phone number and needs a hover
+tooltip to read it. Ours shows the whole number as the tap target, which the
+owner called out as the better answer — keep it.
+
+**TODO — still off-reference:**
+
+- My Shifts groups by month with a day number; the reference groups under a
+  full date heading (`Saturday, July 25, 2026`) and repeats the person's name
+  per row.
+- The reference has a **Call Info** button on each My Shifts row.
+
+## 5. UI alignment with customer visuals — TODO
 
 Screenshots and videos live in a Google Drive folder shared by the owner. They
 had not been readable from a working session yet — the connector was not bound

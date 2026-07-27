@@ -14,13 +14,11 @@ import {
   ArrowRight,
   CheckCircle2,
   AlertCircle,
-  Clock,
   Send,
   ShieldCheck,
   Mail,
   Undo2,
   ClipboardList,
-  UserCheck,
   UserPlus,
   Copy,
   Printer,
@@ -433,7 +431,6 @@ function seed(org) {
         personId: person.id,
         posted: false,
         outSick: false,
-        checkIn: null,
       });
     });
   }
@@ -549,12 +546,6 @@ function seed(org) {
   }
 
   const tonight = keyOf(today);
-  shifts
-    .filter((s) => s.date === tonight)
-    .slice(0, Math.max(1, Math.floor(org.slots.length / 2)))
-    .forEach((s, i) => {
-      s.checkIn = { at: new Date(now - (30 + i * 12) * 60e3).toISOString(), reachable: true };
-    });
   const sick = shifts.find((s) => s.date === tonight && s.id.endsWith("~2"));
   if (sick) sick.outSick = true;
 
@@ -1457,7 +1448,7 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
       kronos: !!flags.kronos,
       decidedAt: new Date().toISOString(),
     });
-    patchShift(r.shiftId, approved ? { personId: r.toId, posted: false, checkIn: null } : { posted: false });
+    patchShift(r.shiftId, approved ? { personId: r.toId, posted: false } : { posted: false });
     setApproveSheet(null);
     say(approved ? `Approved. ${user(org, r.toId).name} now holds the shift.` : "Denied. The original staff member keeps the shift.");
   }
@@ -1477,14 +1468,9 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
     say(active ? "Account reactivated." : "Account deactivated. They can no longer sign in.");
   }
 
-  const checkIn = (shiftId) => {
-    patchShift(shiftId, { checkIn: { at: new Date().toISOString(), reachable: true } });
-    say("Checked in. The supervisor can see you're reachable.");
-  };
-  const undoCheckIn = (shiftId) => patchShift(shiftId, { checkIn: null });
   const toggleSick = (shiftId) => patchShift(shiftId, { outSick: !shiftById(shiftId).outSick });
   const reassign = (shiftId, personId) => {
-    patchShift(shiftId, { personId, checkIn: null });
+    patchShift(shiftId, { personId });
     say("Assignment updated.");
   };
 
@@ -1622,7 +1608,7 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
             </div>
 
             <div className="flex-1" style={desktop ? { paddingBottom: 24 } : { paddingBottom: 96 }}>
-        {tab === "home" && <TodayView db={db} viewer={viewer} isStaff={isStaff} onOpenShift={setShiftSheet} onCheckIn={checkIn} say={say} />}
+        {tab === "home" && <TodayView db={db} viewer={viewer} isStaff={isStaff} onOpenShift={setShiftSheet} say={say} />}
         {tab === "mine" && (
           <MyShiftsView
             db={db}
@@ -1684,8 +1670,6 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
         onOfferUp={offerUp}
         onTrade={tradeShift}
         onRetract={retract}
-        onCheckIn={checkIn}
-        onUndoCheckIn={undoCheckIn}
       />
       <ApproveSheet
         requestId={approveSheet}
@@ -1827,7 +1811,7 @@ function AccountSheet({ open, onClose, org, viewer, onSignOut, themeMode, setThe
 }
 
 /* ============================== TODAY ============================= */
-function TodayView({ db, viewer, isStaff, onOpenShift, onCheckIn, say }) {
+function TodayView({ db, viewer, isStaff, onOpenShift, say }) {
   const org = useOrg();
   const stickyTop = useStickyTop();
   const desktop = useIsDesktop();
@@ -1840,7 +1824,6 @@ function TodayView({ db, viewer, isStaff, onOpenShift, onCheckIn, say }) {
     .sort((a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time));
 
   const dayShifts = db.shifts.filter((s) => s.date === dateKey);
-  const checked = dayShifts.filter((s) => s.checkIn).length;
   const myShiftToday = db.shifts.find((s) => s.date === keyOf(new Date()) && s.personId === viewer.id);
 
   const copyList = async () => {
@@ -1883,7 +1866,7 @@ function TodayView({ db, viewer, isStaff, onOpenShift, onCheckIn, say }) {
           <div className="text-center">
             <div className="text-sm font-semibold">{longDate(dateKey)}</div>
             <div className="text-xs" style={{ color: isToday ? C.ok : C.sub }}>
-              {isToday ? `Today · ${checked}/${dayShifts.length} checked in` : `${dayShifts.length} on call`}
+              {isToday ? `Today · ${dayShifts.length} on call` : `${dayShifts.length} on call`}
             </div>
           </div>
           <button onClick={() => setDateKey(keyOf(addDays(fromKey(dateKey), 1)))} className="rounded-full p-2" style={{ color: org.brand }} aria-label="Next day">
@@ -1898,22 +1881,10 @@ function TodayView({ db, viewer, isStaff, onOpenShift, onCheckIn, say }) {
       </div>
 
       {isStaff && myShiftToday ? (
-        <div className="mx-3 mt-3 rounded-xl border bg-white p-3" style={{ borderColor: myShiftToday.checkIn ? C.okBorder : C.warnBorder }}>
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.faint }}>Your call tonight</div>
-              <div className="mt-1 text-sm font-semibold">{KIND[myShiftToday.kind].label} · {myShiftToday.time}</div>
-              <div className="text-xs" style={{ color: C.sub }}>{myShiftToday.role}</div>
-            </div>
-            {myShiftToday.checkIn ? (
-              <Pill text={`Checked in ${clock(myShiftToday.checkIn.at)}`} color={C.ok} bg={C.okBg} icon={CheckCircle2} />
-            ) : (
-              <Btn size="sm" icon={UserCheck} onClick={() => onCheckIn(myShiftToday.id)}>Check in</Btn>
-            )}
-          </div>
-          {!myShiftToday.checkIn ? (
-            <div className="mt-2 text-xs" style={{ color: C.sub }}>Check in confirms you're reachable. The supervisor sees it right away.</div>
-          ) : null}
+        <div className="mx-3 mt-3 rounded-xl border bg-white p-3" style={{ borderColor: C.line }}>
+          <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.faint }}>Your call tonight</div>
+          <div className="mt-1 text-sm font-semibold">{KIND[myShiftToday.kind].label} · {myShiftToday.time}</div>
+          <div className="text-xs" style={{ color: C.sub }}>{myShiftToday.role}</div>
         </div>
       ) : null}
 
@@ -1973,11 +1944,6 @@ function CallRow({ shift, first, onOpen }) {
           <div className="text-xs" style={{ color: org.link }}>{shift.role}</div>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {shift.outSick ? <Pill text="Out sick" color={C.warn} bg={C.warnBg} icon={AlertCircle} /> : null}
-            {shift.checkIn ? (
-              <Pill text={`Checked in ${clock(shift.checkIn.at)}`} color={C.ok} bg={C.okBg} icon={CheckCircle2} />
-            ) : (
-              <Pill text="Not checked in" color={C.sub} bg={C.neutralBg} icon={Clock} />
-            )}
             {shift.posted ? <Pill text="Posted to staff" color={org.deep} bg={org.soft} /> : null}
           </div>
         </button>
@@ -2008,8 +1974,6 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
   }, [myShifts]);
 
   const avail = availableShifts.filter((s) => (sameRoleOnly ? s.role === viewer.role || (org.aliases && org.aliases[s.role]) === viewer.role : true));
-  const pending = db.requests.filter((r) => r.status === "submitted" && (r.fromId === viewerId || r.toId === viewerId));
-  const approved = db.requests.filter((r) => r.status === "approved" && (r.fromId === viewerId || r.toId === viewerId));
 
   const statusLine = (s) => {
     const r = openReqFor(s.id);
@@ -2032,11 +1996,14 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
 
   return (
     <div>
+      {/* Three tabs, matching the page staff already know. Pending and
+          Approved are gone as tabs: each shift carries its own status line,
+          which is where the reference shows it, and the Requests tab still
+          holds the full history. */}
       <div className="sticky z-20 flex bg-white" style={{ top: stickyTop }}>
-        <SubTab id="mine" label="Mine" count={myShifts.length} />
-        <SubTab id="available" label="Available" count={avail.length} />
-        <SubTab id="pending" label="Pending" count={pending.length} />
-        <SubTab id="approved" label="Approved" count={approved.length} />
+        <SubTab id="mine" label="My Shifts" count={myShifts.length} />
+        <SubTab id="schedule" label="Schedule" />
+        <SubTab id="available" label="Available Shifts" count={avail.length} />
       </div>
 
       {sub === "mine" && (
@@ -2116,8 +2083,7 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
         </div>
       )}
 
-      {sub === "pending" && <RequestList db={db} list={pending} emptyTitle="Nothing pending" />}
-      {sub === "approved" && <RequestList db={db} list={approved} emptyTitle="Nothing approved yet" />}
+      {sub === "schedule" && <ScheduleView db={db} onOpenShift={onOpenShift} />}
     </div>
   );
 }
@@ -2317,27 +2283,168 @@ function ApprovalsView({ db, queue, shiftById, onOpen }) {
   );
 }
 
-/* ============================== MANAGE ============================ */
-function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
+/* ============================= SCHEDULE =========================== */
+/* Weeks run Sunday to Saturday, matching the block schedule supervisors
+   already post on the board. */
+const weekOf = (dateKey, shifts, sort) => {
+  const d = fromKey(dateKey);
+  const start = addDays(d, -d.getDay());
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = addDays(start, i);
+    const key = keyOf(day);
+    return { key, date: day, shifts: shifts.filter((s) => s.date === key).sort(sort) };
+  });
+};
+
+/* Seven columns on a desktop, seven stacked days on a phone — the grid does
+   not survive a 375px viewport, and someone on a phone is reading the week
+   rather than laying it out. */
+function WeekGrid({ week, onPickDay }) {
   const org = useOrg();
-  const stickyTop = useStickyTop();
-  const [dateKey, setDateKey] = useState(() => keyOf(new Date()));
-  const rows = db.shifts
-    .filter((s) => s.date === dateKey)
-    .sort((a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time));
+  const desktop = useIsDesktop();
+  const todayKey = keyOf(new Date());
 
   return (
-    <div>
-      <div className="sticky z-20 flex items-center justify-between border-b bg-white px-3 py-2" style={{ top: stickyTop, borderColor: C.line }}>
-        <button onClick={() => setDateKey(keyOf(addDays(fromKey(dateKey), -1)))} className="rounded-full p-2" style={{ color: org.brand }} aria-label="Previous day">
+    <div
+      className={desktop ? "grid bg-white" : "flex flex-col bg-white"}
+      style={desktop ? { gridTemplateColumns: "repeat(7, minmax(0, 1fr))" } : undefined}
+    >
+      {week.map((day) => (
+        <div key={day.key} className="border-b" style={{ borderColor: C.line, borderRight: desktop ? `1px solid ${C.line}` : "none" }}>
+          <button
+            onClick={() => onPickDay(day.key)}
+            className="w-full px-2 py-2 text-left"
+            style={{ backgroundColor: day.key === todayKey ? org.soft : C.note }}
+            title="Open this day"
+          >
+            <div className="text-xs font-semibold" style={{ color: org.link }}>{DOW_L[day.date.getDay()]}</div>
+            <div className="text-xs" style={{ color: C.sub, fontVariantNumeric: "tabular-nums" }}>{shortDate(day.key)}</div>
+          </button>
+          <div className="space-y-1.5 px-2 py-2">
+            {day.shifts.length === 0 ? (
+              <div className="text-xs" style={{ color: C.faint }}>No call posted</div>
+            ) : (
+              day.shifts.map((s) => {
+                const p = user(org, s.personId);
+                return (
+                  <div key={s.id} className="rounded-md border px-2 py-1.5" style={{ borderColor: C.line }}>
+                    <Badge kind={s.kind} />
+                    <div className="mt-1 text-xs font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{s.time}</div>
+                    <div className="truncate text-xs font-medium">{p ? p.name : "Unassigned"}</div>
+                    <div className="truncate text-xs" style={{ color: org.link }}>{s.role}</div>
+                    {s.outSick ? <div className="mt-1 text-xs font-semibold" style={{ color: C.warn }}>Out sick</div> : null}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* Date nav plus the Daily/Weekly switch, shared by the staff Schedule tab and
+   the management editor so the two cannot drift apart. */
+function SpanHeader({ span, setSpan, dateKey, setDateKey, week }) {
+  const org = useOrg();
+  const stickyTop = useStickyTop();
+  const weekly = span === "weekly";
+  const stepBy = weekly ? 7 : 1;
+
+  return (
+    <div className="sticky z-20 border-b bg-white px-3 py-2" style={{ top: stickyTop, borderColor: C.line }}>
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setDateKey(keyOf(addDays(fromKey(dateKey), -stepBy)))}
+          className="rounded-full p-2"
+          style={{ color: org.brand }}
+          aria-label={weekly ? "Previous week" : "Previous day"}
+        >
           <ChevronLeft size={20} />
         </button>
-        <div className="text-sm font-semibold">{longDate(dateKey)}</div>
-        <button onClick={() => setDateKey(keyOf(addDays(fromKey(dateKey), 1)))} className="rounded-full p-2" style={{ color: org.brand }} aria-label="Next day">
+        <div className="text-sm font-semibold">
+          {weekly ? `${shortDate(week[0].key)} – ${shortDate(week[6].key)}` : longDate(dateKey)}
+        </div>
+        <button
+          onClick={() => setDateKey(keyOf(addDays(fromKey(dateKey), stepBy)))}
+          className="rounded-full p-2"
+          style={{ color: org.brand }}
+          aria-label={weekly ? "Next week" : "Next day"}
+        >
           <ChevronRight size={20} />
         </button>
       </div>
+      <div className="mt-2 flex justify-center gap-1">
+        {[
+          { id: "daily", label: "Daily" },
+          { id: "weekly", label: "Weekly" },
+        ].map((o) => (
+          <button
+            key={o.id}
+            onClick={() => setSpan(o.id)}
+            aria-pressed={span === o.id}
+            className="rounded-full px-4 py-1 text-xs font-semibold"
+            style={span === o.id ? { backgroundColor: org.brand, color: "#fff" } : { backgroundColor: org.chip, color: org.deep }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
+/* Read-only schedule for staff: the same day list Today shows, or the week. */
+function ScheduleView({ db, onOpenShift }) {
+  const org = useOrg();
+  const [dateKey, setDateKey] = useState(() => keyOf(new Date()));
+  const [span, setSpan] = useState("weekly");
+
+  const sort = (a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time);
+  const week = weekOf(dateKey, db.shifts, sort);
+  const rows = db.shifts.filter((s) => s.date === dateKey).sort(sort);
+
+  return (
+    <div>
+      <SpanHeader span={span} setSpan={setSpan} dateKey={dateKey} setDateKey={setDateKey} week={week} />
+      {span === "weekly" ? (
+        <WeekGrid week={week} onPickDay={(k) => { setDateKey(k); setSpan("daily"); }} />
+      ) : (
+        <>
+          {rows.length ? <TapToCallHint /> : null}
+          <div className="overflow-hidden border-y bg-white" style={{ borderColor: C.line }}>
+            {rows.length === 0 ? (
+              <Empty icon={CalendarDays} title="No call posted for this day" hint="Try another date." />
+            ) : (
+              rows.map((s, i) => <CallRow key={s.id} shift={s} first={i === 0} onOpen={() => onOpenShift(s.id)} />)
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ============================== MANAGE ============================ */
+function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
+  const org = useOrg();
+  const [dateKey, setDateKey] = useState(() => keyOf(new Date()));
+  const [span, setSpan] = useState("daily");
+  const weekly = span === "weekly";
+
+  const sort = (a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time);
+  const rows = db.shifts.filter((s) => s.date === dateKey).sort(sort);
+  const week = weekOf(dateKey, db.shifts, sort);
+
+  return (
+    <div>
+      <SpanHeader span={span} setSpan={setSpan} dateKey={dateKey} setDateKey={setDateKey} week={week} />
+
+      {weekly ? (
+        <WeekGrid week={week} onPickDay={(k) => { setDateKey(k); setSpan("daily"); }} />
+      ) : (
+        <>
       <TapToCallHint />
       <div className="bg-white">
         {rows.map((s, i) => {
@@ -2376,7 +2483,6 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
                   ) : (
                     <Btn size="sm" tone="ghost" onClick={() => onOfferUp(s.id, "Posted by management", false)}>Post shift to staff</Btn>
                   )}
-                  {s.checkIn ? <Pill text={`Checked in ${clock(s.checkIn.at)}`} color={C.ok} bg={C.okBg} icon={CheckCircle2} /> : null}
                 </div>
                 <DialButton person={user(org, s.personId)} />
               </div>
@@ -2384,6 +2490,8 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
           );
         })}
       </div>
+        </>
+      )}
     </div>
   );
 }
@@ -2923,7 +3031,7 @@ function PhoneListView({ db }) {
 }
 
 /* ============================ SHIFT SHEET ========================= */
-function ShiftSheet({ shiftId, db, viewerId, isStaff, onClose, openReqFor, onOfferUp, onTrade, onRetract, onCheckIn, onUndoCheckIn }) {
+function ShiftSheet({ shiftId, db, viewerId, isStaff, onClose, openReqFor, onOfferUp, onTrade, onRetract }) {
   const org = useOrg();
   const shift = shiftId ? db.shifts.find((s) => s.id === shiftId) : null;
   const [mode, setMode] = useState(null);
@@ -2942,7 +3050,6 @@ function ShiftSheet({ shiftId, db, viewerId, isStaff, onClose, openReqFor, onOff
   const person = user(org, shift.personId);
   const req = openReqFor(shift.id);
   const mine = shift.personId === viewerId;
-  const isToday = shift.date === keyOf(new Date());
   const d = fromKey(shift.date);
   const step = !req ? -1 : req.coworker === "agreed" ? 1 : 0;
   const coworkers = staffInRole(org, shift.role).filter((p) => p.id !== shift.personId);
@@ -2967,13 +3074,6 @@ function ShiftSheet({ shiftId, db, viewerId, isStaff, onClose, openReqFor, onOff
 
       <div className="mt-3 flex gap-2">
         <DialButton person={person} variant="bar" />
-        {mine && isToday ? (
-          shift.checkIn ? (
-            <Btn tone="ghost" icon={Undo2} onClick={() => onUndoCheckIn(shift.id)}>Checked in {clock(shift.checkIn.at)}</Btn>
-          ) : (
-            <Btn icon={UserCheck} onClick={() => onCheckIn(shift.id)}>Check in</Btn>
-          )
-        ) : null}
       </div>
 
       {shift.outSick ? (
