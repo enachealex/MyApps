@@ -1500,23 +1500,27 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
 
   const tabs = isStaff
     ? [
-        { id: "home", label: "Today", icon: Home },
-        { id: "mine", label: "My Shifts", icon: CalendarDays },
-        { id: "requests", label: "Requests", icon: History, badge: inbox.length },
-        { id: "phones", label: "Phone List", icon: Phone },
+        { id: "home", label: "Home", icon: Home },
+        { id: "calendar", label: "Calendar", icon: CalendarDays },
+        { id: "mine", label: "My Shifts", short: "Shifts", icon: ClipboardList },
+        { id: "requests", label: "Shift Requests", short: "Requests", icon: History, badge: inbox.length },
+        { id: "phones", label: "Phone List", short: "Phones", icon: Phone },
       ]
     : isMgr
     ? [
-        { id: "home", label: "Today", icon: Home },
+        { id: "home", label: "Home", icon: Home },
+        { id: "calendar", label: "Calendar", icon: CalendarDays },
         { id: "approvals", label: "Approve", icon: ShieldCheck, badge: approvalQueue.length },
-        { id: "manage", label: "Schedule", icon: ClipboardList },
+        { id: "manage", label: "Call Management", short: "Calls", icon: ClipboardList },
+        { id: "requests", label: "Shift Requests", short: "Requests", icon: History },
         { id: "people", label: "People", icon: Users, badge: db.people.filter((p) => !p.email || !p.username).length },
-        { id: "phones", label: "Phones", icon: Phone },
+        { id: "phones", label: "Phone List", short: "Phones", icon: Phone },
       ]
     : [
-        { id: "home", label: "Today", icon: Home },
-        { id: "requests", label: "Requests", icon: History },
-        { id: "phones", label: "Phone List", icon: Phone },
+        { id: "home", label: "Home", icon: Home },
+        { id: "calendar", label: "Calendar", icon: CalendarDays },
+        { id: "requests", label: "Shift Requests", short: "Requests", icon: History },
+        { id: "phones", label: "Phone List", short: "Phones", icon: Phone },
       ];
 
   useEffect(() => {
@@ -1609,6 +1613,7 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
 
             <div className="flex-1" style={desktop ? { paddingBottom: 24 } : { paddingBottom: 96 }}>
         {tab === "home" && <TodayView db={db} viewer={viewer} isStaff={isStaff} onOpenShift={setShiftSheet} say={say} />}
+        {tab === "calendar" && <ScheduleView db={db} onOpenShift={setShiftSheet} />}
         {tab === "mine" && (
           <MyShiftsView
             db={db}
@@ -1636,9 +1641,13 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
         {tabs.map((t) => {
           const active = tab === t.id;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} className="relative flex flex-1 flex-col items-center gap-0.5 py-2">
+            <button key={t.id} onClick={() => setTab(t.id)} className="relative flex min-w-0 flex-1 flex-col items-center gap-0.5 px-0.5 py-2">
               <t.icon size={20} style={{ color: active ? org.brand : C.navIdle }} />
-              <span className="text-xs font-medium" style={{ color: active ? org.brand : C.navIdle }}>{t.label}</span>
+              {/* The bar has to hold up to seven items on a 375px screen, so
+                  long section names carry a short form for it. */}
+              <span className="w-full truncate text-center text-xs font-medium" style={{ color: active ? org.brand : C.navIdle }}>
+                {t.short || t.label}
+              </span>
               {t.badge ? (
                 <span className="absolute right-5 top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-xs font-bold text-white" style={{ backgroundColor: C.danger }}>
                   {t.badge}
@@ -1974,6 +1983,8 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
   }, [myShifts]);
 
   const avail = availableShifts.filter((s) => (sameRoleOnly ? s.role === viewer.role || (org.aliases && org.aliases[s.role]) === viewer.role : true));
+  const pending = db.requests.filter((r) => r.status === "submitted" && (r.fromId === viewerId || r.toId === viewerId));
+  const approved = db.requests.filter((r) => r.status === "approved" && (r.fromId === viewerId || r.toId === viewerId));
 
   const statusLine = (s) => {
     const r = openReqFor(s.id);
@@ -1996,14 +2007,11 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
 
   return (
     <div>
-      {/* Three tabs, matching the page staff already know. Pending and
-          Approved are gone as tabs: each shift carries its own status line,
-          which is where the reference shows it, and the Requests tab still
-          holds the full history. */}
       <div className="sticky z-20 flex bg-white" style={{ top: stickyTop }}>
-        <SubTab id="mine" label="My Shifts" count={myShifts.length} />
-        <SubTab id="schedule" label="Schedule" />
+        <SubTab id="mine" label="Mine" count={myShifts.length} />
         <SubTab id="available" label="Available Shifts" count={avail.length} />
+        <SubTab id="approved" label="Approved" count={approved.length} />
+        <SubTab id="pending" label="Pending" count={pending.length} />
       </div>
 
       {sub === "mine" && (
@@ -2083,7 +2091,8 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
         </div>
       )}
 
-      {sub === "schedule" && <ScheduleView db={db} onOpenShift={onOpenShift} />}
+      {sub === "approved" && <RequestList db={db} list={approved} emptyTitle="Nothing approved yet" />}
+      {sub === "pending" && <RequestList db={db} list={pending} emptyTitle="Nothing pending" />}
     </div>
   );
 }

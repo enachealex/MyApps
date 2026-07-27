@@ -122,19 +122,36 @@ to edge, with a narrow icon rail down the left and dense table-style rows.
   toolbar (Save, refresh, date nav, + New, Filter) — screenshot
   20260724074632.
 
-## 4. Shifts page tabs — WIP
+## 4. Navigation — WIP
 
-The client's mobile page carries three tabs: **My Shifts · Schedule ·
-Available Shifts**.
+The client's app has six sections in its side menu. Corrected 2026-07-27: an
+earlier reading of the *mobile* screenshot suggested My Shifts held three tabs
+including Schedule. It does not — Calendar is its own section, and My Shifts
+has four tabs.
 
-**DONE** — those three, in that order. Pending and Approved are gone as tabs;
-each shift already carries its own status line, which is where the reference
-puts it, and the Requests tab still holds the full history.
+| Section | Sub-tabs | Status |
+| --- | --- | --- |
+| Home | — | DONE (renamed from "Today") |
+| Calendar | Daily / Weekly | DONE |
+| My Shifts | Mine · Available Shifts · Approved · Pending | DONE |
+| Call Management | per-day editor | DONE (renamed from "Schedule") |
+| Shift Requests | Submitted · Approved · Denied · Retracted | DONE — already matched |
+| Phone List | — | DONE — owner confirms UI and behaviour are correct |
 
-**DONE** — Schedule has a Daily/Weekly switch. Daily is the call list with
+**Calendar** has a Daily/Weekly switch. Daily is the call list with
 tap-to-call; Weekly is seven Sunday-to-Saturday columns on desktop, stacked on
 a phone. Tapping a day header opens that day in Daily. The same `SpanHeader`
-and `WeekGrid` back the management Schedule tab, so the two cannot drift.
+and `WeekGrid` back Call Management, so the two cannot drift.
+
+**Two sections we have that the client's menu does not list:** Approve
+(manager approval queue) and People (roster administration). Both are live
+functionality with no home in their six, so they are kept for managers —
+presumably their app reaches these another way. Worth confirming.
+
+The manager bottom bar now carries seven items on a phone. Long section names
+carry a `short` form for that bar only (`Call Management` → `Calls`); the side
+rail and the header keep the full name. Measured at 375px: seven items at 54px
+each, no clipping, no horizontal overflow.
 
 Note the client's own Schedule truncates the phone number and needs a hover
 tooltip to read it. Ours shows the whole number as the tap target, which the
