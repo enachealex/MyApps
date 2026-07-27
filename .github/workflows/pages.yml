@@ -5,6 +5,8 @@ name: Deploy site
 #   /             the My Apps landing page (index.html)
 #   /puttcount/   a standalone HTML app, copied as-is
 #   /oncall/      a Vite app, built here
+#   /my-tasks/    an Expo (React Native web) PWA, built here; its baseUrl
+#                 is set to /my-tasks in my-tasks/app.json
 #
 # Pages for this repo is set to "GitHub Actions" as its build type, so a
 # deployment only happens through actions/deploy-pages below. Pushing a
@@ -38,13 +40,23 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: oncall/package-lock.json
+          cache-dependency-path: |
+            oncall/package-lock.json
+            my-tasks/package-lock.json
 
       - name: Build OnCall
         working-directory: oncall
         run: |
           npm ci
           npm run build
+
+      - name: Build My Tasks
+        working-directory: my-tasks
+        env:
+          EXPO_NO_TELEMETRY: "1"
+        run: |
+          npm ci
+          npx expo export --platform web
 
       - name: Assemble the site
         run: |
@@ -53,6 +65,7 @@ jobs:
           cp index.html _site/index.html
           cp -r puttcount _site/puttcount
           cp -r oncall/dist _site/oncall
+          cp -r my-tasks/dist _site/my-tasks
           # Without .nojekyll, Pages drops files and folders beginning with an
           # underscore — which is what Vite names some chunks.
           touch _site/.nojekyll

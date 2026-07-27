@@ -8,11 +8,15 @@
  *
  * Bump CACHE when changing caching behavior so old caches get dropped.
  */
-const CACHE = 'my-tasks-shell-v1';
+const CACHE = 'my-tasks-shell-v2';
+
+// The app may be served from a subpath (e.g. /my-tasks/ on the hosted site),
+// so the shell URL is resolved against this worker's own location.
+const SHELL = new URL('./', self.location).pathname;
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['/'])));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll([SHELL])));
 });
 
 self.addEventListener('activate', (event) => {
@@ -37,10 +41,10 @@ self.addEventListener('fetch', (event) => {
         try {
           const fresh = await fetch(request);
           const cache = await caches.open(CACHE);
-          cache.put('/', fresh.clone());
+          cache.put(SHELL, fresh.clone());
           return fresh;
         } catch {
-          const cached = await caches.match('/');
+          const cached = await caches.match(SHELL);
           return cached ?? Response.error();
         }
       })()

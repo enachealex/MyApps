@@ -234,6 +234,7 @@ footer a{color:var(--accent);text-decoration:none;}
     <ul>
       <li><a href="puttcount/" style="color:#4C8DFF">Putt Count</a></li>
       <li><a href="oncall/" style="color:#4C8DFF">OnCall Schedule</a></li>
+      <li><a href="my-tasks/" style="color:#4C8DFF">My Tasks</a></li>
     </ul>
   </noscript>
 
@@ -279,8 +280,7 @@ footer a{color:var(--accent);text-decoration:none;}
      repo      "owner/name" — enables the download button, which reads the
                repo's latest GitHub Release
      asset     file extension to look for in that release (default ".apk")
-   Descriptions marked TODO are placeholders — replace them, and delete the
-   demo entries at the bottom.                                            */
+   Descriptions marked TODO are placeholders — replace them.             */
 const APPS = [
   { name:"Putt Count", category:"Scorekeeping", url:"puttcount/", color:"#3DDC91", offline:true,
     repo:"enachealex/MyApps", asset:".apk",
@@ -289,32 +289,16 @@ const APPS = [
   { name:"OnCall Schedule", category:"Scheduling", url:"oncall/", color:"#4C8DFF",
     description:"See who is on call tonight and reach them in one tap. Check in for your shift, and hand shifts off — offer up, trade, or pick up — through co-worker confirmation and management approval." },
 
+  { name:"My Tasks", category:"Productivity", url:"my-tasks/", color:"#2564CF", offline:true,
+    description:"A Microsoft To Do-style checklist and to-do app. Plan your day with My Day, star what's important, add steps, due dates and repeats. Installs to your home screen and works offline." },
+
   { name:"Chillist",          category:"Music",     url:"#", color:"#4C8DFF", description:"TODO — one line about Chillist." },
   { name:"Maintenance Tracker", category:"Home",      url:"https://maintenance.thejumpvault.com/", color:"#FFB84C", description:"TODO — one line about Maintenance Tracker." },
   { name:"KeyBuddy",            category:"Utilities", url:"#", color:"#FF5D5D", description:"TODO — one line about KeyBuddy." },
   { name:"RetroBoard",          category:"Teamwork",  url:"#", color:"#A78BFA", description:"TODO — one line about RetroBoard." },
   { name:"Jobs",                category:"Careers",   url:"#", color:"#3DDC91", description:"TODO — one line about Jobs." },
   { name:"Offroad",             category:"Outdoors",  url:"#", color:"#F97316", description:"TODO — one line about Offroad." },
-  { name:"Discord Music",       category:"Music",     url:"#", color:"#818CF8", description:"TODO — one line about Discord Music." },
-
-  /* Demo rows — delete once you have real apps. They exist so the
-     16-then-6 paging is visible with only one app built. */
-  { name:"Demo App 09", category:"Sample", url:"#", color:"#4C8DFF", description:"Placeholder tile." },
-  { name:"Demo App 10", category:"Sample", url:"#", color:"#3DDC91", description:"Placeholder tile." },
-  { name:"Demo App 11", category:"Sample", url:"#", color:"#FFB84C", description:"Placeholder tile." },
-  { name:"Demo App 12", category:"Sample", url:"#", color:"#FF5D5D", description:"Placeholder tile." },
-  { name:"Demo App 13", category:"Sample", url:"#", color:"#A78BFA", description:"Placeholder tile." },
-  { name:"Demo App 14", category:"Sample", url:"#", color:"#818CF8", description:"Placeholder tile." },
-  { name:"Demo App 15", category:"Sample", url:"#", color:"#F97316", description:"Placeholder tile." },
-  { name:"Demo App 16", category:"Sample", url:"#", color:"#4C8DFF", description:"Placeholder tile." },
-  { name:"Demo App 17", category:"Sample", url:"#", color:"#3DDC91", description:"Placeholder tile." },
-  { name:"Demo App 18", category:"Sample", url:"#", color:"#FFB84C", description:"Placeholder tile." },
-  { name:"Demo App 19", category:"Sample", url:"#", color:"#FF5D5D", description:"Placeholder tile." },
-  { name:"Demo App 20", category:"Sample", url:"#", color:"#A78BFA", description:"Placeholder tile." },
-  { name:"Demo App 21", category:"Sample", url:"#", color:"#818CF8", description:"Placeholder tile." },
-  { name:"Demo App 22", category:"Sample", url:"#", color:"#F97316", description:"Placeholder tile." },
-  { name:"Demo App 23", category:"Sample", url:"#", color:"#4C8DFF", description:"Placeholder tile." },
-  { name:"Demo App 24", category:"Sample", url:"#", color:"#3DDC91", description:"Placeholder tile." }
+  { name:"Discord Music",       category:"Music",     url:"#", color:"#818CF8", description:"TODO — one line about Discord Music." }
 ];
 
 const FIRST_BATCH = 16;   // 2 across x 8 down

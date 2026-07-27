@@ -21,6 +21,9 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "experiments": {
+      "baseUrl": "/my-tasks"
+    },
     "plugins": [
       "@react-native-community/datetimepicker"
     ]

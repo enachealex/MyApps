@@ -33,8 +33,10 @@ function ensureHeadTag(tagName: 'link' | 'meta', attrs: Record<string, string>):
 export function setupPwa(): void {
   if (Platform.OS !== 'web' || typeof document === 'undefined') return;
 
-  ensureHeadTag('link', { rel: 'manifest', href: '/manifest.webmanifest' });
-  ensureHeadTag('link', { rel: 'apple-touch-icon', href: '/icons/icon-192.png' });
+  // Relative paths: the app lives at the domain root in dev but under a
+  // subpath (e.g. /my-tasks/) on the hosted site.
+  ensureHeadTag('link', { rel: 'manifest', href: 'manifest.webmanifest' });
+  ensureHeadTag('link', { rel: 'apple-touch-icon', href: 'icons/icon-192.png' });
   ensureHeadTag('meta', { name: 'theme-color', content: '#2564CF' });
   ensureHeadTag('meta', { name: 'mobile-web-app-capable', content: 'yes' });
   ensureHeadTag('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' });
@@ -58,7 +60,7 @@ export function setupPwa(): void {
   if (!__DEV__ && 'serviceWorker' in navigator) {
     const register = () =>
       navigator.serviceWorker
-        .register('/sw.js')
+        .register('sw.js')
         .catch((e) => console.warn('Service worker registration failed', e));
     if (document.readyState === 'complete') register();
     else window.addEventListener('load', register, { once: true });
