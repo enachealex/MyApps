@@ -573,32 +573,90 @@ function seed(org) {
 /* --------------------------- viewport ------------------------------ */
 /* Layout switches on JS rather than breakpoint classes so the same file
    behaves identically in a bundled build and in a preview sandbox. */
-function useIsDesktop(min = 768) {
+/* An explicit choice beats the measurement: a supervisor on a ward tablet may
+   want the full board, and someone on a wide screen may prefer the phone
+   column. "auto" follows the viewport. Held at module scope with a subscriber
+   list so every useIsDesktop call site agrees on the answer — there are
+   several, including ones inside sheets that sit outside the Shell tree. */
+const LAYOUT_KEY = "oncall_layout_v1";
+const LAYOUT_MODES = ["auto", "desktop", "mobile"];
+let layoutPref = "auto";
+const layoutSubs = new Set();
+function setLayoutPref(next) {
+  layoutPref = next;
+  layoutSubs.forEach((fn) => fn());
+}
+
+/* ignoreOverride reads the raw viewport, which is how we decide whether
+   offering the toggle makes sense at all. */
+function useIsDesktop(min = 768, ignoreOverride = false) {
   const query = `(min-width: ${min}px)`;
-  const [wide, setWide] = useState(() => {
+  const read = () => {
+    if (!ignoreOverride && layoutPref !== "auto") return layoutPref === "desktop";
     try {
       return window.matchMedia(query).matches;
     } catch (e) {
       return false;
     }
-  });
+  };
+  const [wide, setWide] = useState(read);
   useEffect(() => {
+    const update = () => setWide(read());
+    layoutSubs.add(update);
     let mq;
     try {
       mq = window.matchMedia(query);
     } catch (e) {
-      return undefined;
+      return () => layoutSubs.delete(update);
     }
-    const onChange = (e) => setWide(e.matches);
-    setWide(mq.matches);
-    if (mq.addEventListener) mq.addEventListener("change", onChange);
-    else mq.addListener(onChange);
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
     return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
-      else mq.removeListener(onChange);
+      layoutSubs.delete(update);
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
     };
-  }, [query]);
+  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
   return wide;
+}
+
+/* Backs the Desktop View toggle: reads the saved choice once, writes it back
+   on change, and pushes it out to every useIsDesktop subscriber. */
+function useLayoutMode() {
+  const [mode, setMode] = useState(layoutPref);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await window.storage.get(LAYOUT_KEY);
+        if (alive && res && LAYOUT_MODES.includes(res.value)) {
+          setMode(res.value);
+          setLayoutPref(res.value);
+        }
+      } catch (e) {
+        /* no saved preference — stay on auto */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const change = (next) => {
+    setMode(next);
+    setLayoutPref(next);
+    (async () => {
+      try {
+        await window.storage.set(LAYOUT_KEY, next);
+      } catch (e) {
+        /* session only */
+      }
+    })();
+  };
+
+  return { mode, setMode: change };
 }
 
 /* Theme: "system" follows the OS, and keeps following it if the OS flips. */
@@ -662,6 +720,25 @@ function useThemeMode() {
   applyTheme(dark);
   return { mode, setMode, dark };
 }
+
+/* Views that make sense on paper; the header only offers Print on these. */
+const PRINTABLE_TABS = ["home", "phones"];
+
+/* Desktop type scale: every step up by 4px. The phone sizes are tuned for
+   arm's length; a monitor is further away and has the room, and this list is
+   read across a room from the board.
+   Overriding the classes rather than scaling the root font size keeps the
+   change to type — Tailwind spacing is rem-based too, so moving the root
+   would inflate every padding and leave the fixed-pixel widths and icon sizes
+   behind. */
+const DESKTOP_TYPE_CSS = `
+.oncall-desktop .text-xs   { font-size: 16px; line-height: 22px; }
+.oncall-desktop .text-sm   { font-size: 18px; line-height: 26px; }
+.oncall-desktop .text-base { font-size: 20px; line-height: 28px; }
+.oncall-desktop .text-lg   { font-size: 22px; line-height: 30px; }
+.oncall-desktop .text-xl   { font-size: 24px; line-height: 32px; }
+.oncall-desktop .text-2xl  { font-size: 28px; line-height: 36px; }
+`;
 
 /* Supervisors still post a paper list on the board. */
 const PRINT_CSS = `
@@ -790,6 +867,37 @@ function Empty({ icon: Icon, title, hint }) {
   );
 }
 
+/* Lives on the brand header, so it is styled against a coloured background
+   rather than the page. Flipping it locks the layout; there is no way back to
+   "auto" from here on purpose — once someone has expressed a preference,
+   silently reverting to the window size on their next resize would be worse
+   than honouring it. Account sheet has the reset. */
+function LayoutToggle({ desktop, setMode }) {
+  const org = useOrg();
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={desktop}
+      aria-label="Desktop view"
+      onClick={() => setMode(desktop ? "mobile" : "desktop")}
+      className="oncall-no-print flex shrink-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3"
+      style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
+    >
+      <span
+        className="relative flex h-5 w-9 shrink-0 items-center rounded-full transition"
+        style={{ backgroundColor: desktop ? "#fff" : "rgba(255,255,255,0.35)" }}
+      >
+        <span
+          className="absolute h-4 w-4 rounded-full transition-all"
+          style={{ left: desktop ? 18 : 2, backgroundColor: desktop ? org.deep : "#fff" }}
+        />
+      </span>
+      <span className="whitespace-nowrap text-xs font-medium text-white">Desktop view</span>
+    </button>
+  );
+}
+
 function OrgTile({ org, size = 44 }) {
   const initials = org.name
     .replace(/[^A-Za-z ]/g, "")
@@ -900,7 +1008,7 @@ export default function OnCallApp() {
 
   if (!booted) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center" style={{ backgroundColor: C.bg }}>
+      <div className="flex min-h-screen w-full items-center justify-center" style={{ backgroundColor: C.bg }}>
         <div className="text-sm" style={{ color: C.sub }}>Loading…</div>
       </div>
     );
@@ -916,7 +1024,7 @@ export default function OnCallApp() {
 
   if (!db || dbOrg !== orgId) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center" style={{ backgroundColor: C.bg }}>
+      <div className="flex min-h-screen w-full items-center justify-center" style={{ backgroundColor: C.bg }}>
         <div className="text-sm" style={{ color: C.sub }}>Loading {org.name}…</div>
       </div>
     );
@@ -952,7 +1060,39 @@ export default function OnCallApp() {
 }
 
 /* =========================== ORG PICKER =========================== */
+/* Pre-auth screens are a single column of controls, which is right on a phone
+   but reads as a phone app stranded mid-screen on a monitor. On a desktop the
+   same column becomes a centred card instead — the shape people expect a sign
+   in to take — while the page colour still runs to the edges. */
+function AuthShell({ children }) {
+  const desktop = useIsDesktop();
+  const base = {
+    backgroundColor: C.bg,
+    fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
+    color: C.ink,
+  };
+  if (!desktop) {
+    return (
+      <div className="min-h-screen w-full" style={base}>
+        <div className="mx-auto w-full max-w-md">{children}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="oncall-desktop flex min-h-screen w-full items-center justify-center px-6 py-10" style={base}>
+      <style>{DESKTOP_TYPE_CSS}</style>
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl border shadow-xl"
+        style={{ borderColor: C.line, backgroundColor: C.surface }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function OrgPicker({ onPick }) {
+  const desktop = useIsDesktop();
   const [q, setQ] = useState("");
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState("");
@@ -968,8 +1108,8 @@ function OrgPicker({ onPick }) {
   };
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md" style={{ backgroundColor: C.bg, fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif', color: C.ink }}>
-      <div className="px-5 pb-4" style={{ paddingTop: "calc(3rem + env(safe-area-inset-top))" }}>
+    <AuthShell>
+      <div className="px-5 pb-4" style={{ paddingTop: desktop ? "1.75rem" : "calc(3rem + env(safe-area-inset-top))" }}>
         <div className="text-2xl font-bold">OnCall Schedule</div>
         <div className="mt-1 text-sm" style={{ color: C.sub }}>Choose your organization to continue.</div>
       </div>
@@ -1012,7 +1152,7 @@ function OrgPicker({ onPick }) {
         )}
       </div>
 
-      <div className="mt-6 px-5 pb-10">
+      <div className={`mt-6 px-5 ${desktop ? "pb-6" : "pb-10"}`}>
         <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.faint }}>Not listed?</div>
         <div className="mt-2 flex gap-2">
           <input
@@ -1043,12 +1183,13 @@ function OrgPicker({ onPick }) {
         ) : null}
         <div className="mt-2 text-xs" style={{ color: C.faint }}>Demo codes: AURELIA, CASCADE, NORTHGATE</div>
       </div>
-    </div>
+    </AuthShell>
   );
 }
 
 /* ============================= SIGN IN ============================ */
 function SignIn({ org, onBack, onSignIn }) {
+  const desktop = useIsDesktop();
   const [username, setUsername] = useState("");
   const [pw, setPw] = useState("");
   const pwRef = useRef(null);
@@ -1085,8 +1226,8 @@ function SignIn({ org, onBack, onSignIn }) {
   ].filter(Boolean);
 
   return (
-    <div className="mx-auto min-h-screen w-full max-w-md" style={{ backgroundColor: C.bg, fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif', color: C.ink }}>
-      <div className="px-5 pb-5" style={{ paddingTop: "calc(2rem + env(safe-area-inset-top))", backgroundColor: org.brand }}>
+    <AuthShell>
+      <div className="px-5 pb-5" style={{ paddingTop: desktop ? "1.5rem" : "calc(2rem + env(safe-area-inset-top))", backgroundColor: org.brand }}>
         <button onClick={onBack} className="mb-4 flex items-center gap-1 text-xs font-medium text-white">
           <ArrowLeft size={14} /> All organizations
         </button>
@@ -1215,7 +1356,7 @@ function SignIn({ org, onBack, onSignIn }) {
           Demo build. Any password works, and accounts are per organization.
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }
 
@@ -1404,14 +1545,20 @@ function Shell({ org, db, setDb, viewerId, setViewerId, onSignOut, onSwitchOrg, 
   }, [viewerId]); // eslint-disable-line
 
   const desktop = useIsDesktop();
+  /* The raw viewport, so the toggle is only offered where both layouts are
+     usable — and always where an override is on, so it stays reversible. */
+  const wideViewport = useIsDesktop(768, true);
+  const { mode: layoutMode, setMode: setLayoutMode } = useLayoutMode();
+  const showLayoutToggle = wideViewport || layoutMode !== "auto";
   const section = (tabs.find((t) => t.id === tab) || {}).label || "";
 
   return (
     <AppCtx.Provider value={{ org, say, desktop }}>
       <style>{THEME_CSS}</style>
       <style>{PRINT_CSS}</style>
+      <style>{DESKTOP_TYPE_CSS}</style>
       <div
-        className="w-full"
+        className={`w-full ${desktop ? "oncall-desktop" : ""}`}
         style={{
           minHeight: "100vh",
           display: desktop ? "flex" : "block",
@@ -1454,17 +1601,30 @@ function Shell({ org, db, setDb, viewerId, setViewerId, onSignOut, onSwitchOrg, 
                     {desktop ? `${org.name} · ${org.unit}` : org.unit}
                   </div>
                 </div>
-                <button
-                  onClick={() => setAccountOpen(true)}
-                  className="flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-2.5"
-                  style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
-                >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs font-bold" style={{ color: org.deep }}>
-                    {viewer.name.split(" ").map((w) => w[0]).join("")}
-                  </span>
-                  {desktop ? <span className="text-xs font-medium text-white">{viewer.name}</span> : null}
-                  <ChevronDown size={14} color="#fff" />
-                </button>
+                <div className="flex shrink-0 items-center gap-2">
+                  {showLayoutToggle ? <LayoutToggle desktop={desktop} setMode={setLayoutMode} /> : null}
+                  {desktop && PRINTABLE_TABS.includes(tab) ? (
+                    <button
+                      onClick={() => window.print()}
+                      className="oncall-no-print flex shrink-0 items-center gap-1.5 rounded-full py-1.5 pl-2.5 pr-3"
+                      style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
+                    >
+                      <Printer size={14} color="#fff" />
+                      <span className="text-xs font-medium text-white">Print</span>
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => setAccountOpen(true)}
+                    className="flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-2.5"
+                    style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs font-bold" style={{ color: org.deep }}>
+                      {viewer.name.split(" ").map((w) => w[0]).join("")}
+                    </span>
+                    {desktop ? <span className="text-xs font-medium text-white">{viewer.name}</span> : null}
+                    <ChevronDown size={14} color="#fff" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1740,8 +1900,22 @@ function TodayView({ db, viewer, isStaff, onOpenShift, onCheckIn, say }) {
     }
   };
 
-  return (
-    <div>
+  const roleOptions = ["All", ...org.roles];
+  /* Same control, two shapes: a row of chips that scrolls sideways on a
+     phone, a stacked column beside the list on a desktop. */
+  const roleButton = (r, stacked) => (
+    <button
+      key={r}
+      onClick={() => setRole(r)}
+      className={`whitespace-nowrap rounded-full text-xs font-medium ${stacked ? "w-full px-3 py-2" : "px-3 py-1"}`}
+      style={role === r ? { backgroundColor: org.brand, color: "#fff" } : { backgroundColor: org.chip, color: org.deep }}
+    >
+      {r}
+    </button>
+  );
+
+  const body = (
+    <>
       <div className="sticky z-20 border-b bg-white px-3 py-2" style={{ borderColor: C.line, top: stickyTop }}>
         <div className="flex items-center justify-between">
           <button onClick={() => setDateKey(keyOf(addDays(fromKey(dateKey), -1)))} className="rounded-full p-2" style={{ color: org.brand }} aria-label="Previous day">
@@ -1757,18 +1931,11 @@ function TodayView({ db, viewer, isStaff, onOpenShift, onCheckIn, say }) {
             <ChevronRight size={20} />
           </button>
         </div>
-        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
-          {["All", ...org.roles].map((r) => (
-            <button
-              key={r}
-              onClick={() => setRole(r)}
-              className="whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium"
-              style={role === r ? { backgroundColor: org.brand, color: "#fff" } : { backgroundColor: org.chip, color: org.deep }}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+        {desktop ? null : (
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+            {roleOptions.map((r) => roleButton(r, false))}
+          </div>
+        )}
       </div>
 
       {isStaff && myShiftToday ? (
@@ -1804,12 +1971,29 @@ function TodayView({ db, viewer, isStaff, onOpenShift, onCheckIn, say }) {
         )}
       </div>
 
+      {/* Print was here on desktop only; it now sits in the header, where the
+          reference keeps it. The phone never offered it. */}
       <div className="oncall-no-print flex gap-2 px-3 py-3">
         <Btn tone="ghost" full icon={Copy} onClick={copyList}>Copy this call list</Btn>
-        {desktop ? (
-          <Btn tone="ghost" full icon={Printer} onClick={() => window.print()}>Print</Btn>
-        ) : null}
       </div>
+    </>
+  );
+
+  if (!desktop) return <div>{body}</div>;
+
+  return (
+    <div className="flex items-start">
+      <aside
+        className="oncall-no-print shrink-0 self-stretch border-r px-5 py-5"
+        style={{ width: 288, borderColor: C.line }}
+      >
+        <div className="text-lg font-bold leading-tight">Today's Call Schedule</div>
+        <div className="mt-6 text-center text-xs font-semibold" style={{ color: C.sub }}>
+          Filter by specific role
+        </div>
+        <div className="mt-3 flex flex-col gap-2">{roleOptions.map((r) => roleButton(r, true))}</div>
+      </aside>
+      <div className="min-w-0 flex-1">{body}</div>
     </div>
   );
 }

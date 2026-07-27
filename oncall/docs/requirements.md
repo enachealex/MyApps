@@ -102,8 +102,25 @@ Reference screenshots (Drive, 2026-07-24) show the SharePoint original the
 supervisors already use. It is **full-bleed**: the app fills the viewport edge
 to edge, with a narrow icon rail down the left and dense table-style rows.
 
-**DONE** — the desktop shell no longer renders as a centered 1040px card with
-border, radius, shadow and page padding. It fills the viewport on both axes.
+**DONE**
+
+- The desktop shell no longer renders as a centred 1040px card with border,
+  radius, shadow and page padding. It fills the viewport on both axes.
+- Pre-auth screens (org picker, sign in) no longer render as a phone-width
+  strip stranded on a monitor. `AuthShell` gives them a centred card on
+  desktop and the plain full-height column on a phone. Their background used
+  to sit on the same element as the width cap, so the page colour itself
+  stopped at 448px.
+- Role filters sit in a 288px left column on desktop, under a "Filter by
+  specific role" heading. The phone keeps the horizontal chips.
+- Print moved from the bottom of the list into the header, on the views where
+  paper makes sense (`PRINTABLE_TABS`).
+- A "Desktop view" toggle in the header overrides the viewport. It is only
+  offered where both layouts are usable, and always where an override is
+  already on so it stays reversible. Persisted under `oncall_layout_v1`.
+- Desktop type is +4px at every step (`DESKTOP_TYPE_CSS`), overriding the
+  Tailwind classes rather than the root font size so spacing, fixed widths and
+  icon sizes stay put.
 
 **TODO — still off-reference:**
 
@@ -111,14 +128,13 @@ border, radius, shadow and page padding. It fills the viewport on both axes.
   `justify-between`, so on a 1920px screen the name sits far left and the
   phone far right with a large empty gap. The reference lays each row out in
   fixed columns: badge + time · name + role · phone · second phone.
-- **Role filters are horizontal scrolling chips.** The reference puts them in
-  a left-hand column beside the list, under a "Filter by specific role"
-  heading, with the day header above the list.
-- **Header actions.** The reference has an org/service label and a Print
-  button in the top bar.
-- **"Desktop View" toggle.** The reference has an explicit toggle in the
-  header rather than relying only on viewport width. Confirm whether this is
-  wanted before building it.
+- **Shift detail is a modal.** The reference opens a right-hand detail panel
+  beside the list on desktop, carrying the stepper and the Offer Up / Trade
+  Shift actions (screenshot 20260724073057).
+- **Manage is not a table.** The reference "Call Management" view is a real
+  grid with Shift / Role / Name column headers, per-cell dropdowns, and a
+  toolbar (Save, refresh, date nav, + New, Filter) — screenshot
+  20260724074632.
 
 ## 4. UI alignment with customer visuals — TODO
 
