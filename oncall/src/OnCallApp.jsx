@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useContext, createContext } from "react";
-import { signIn, signOutNow, changePassword, isRealAuth } from "./auth";
+import { signIn, signOutNow, changePassword, sendReset, isRealAuth } from "./auth";
 import {
   Home,
   CalendarDays,
@@ -1238,6 +1238,7 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
   const [error, setError] = useState("");
 
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
 
   /* Identity lives in src/auth.js. It accepts an email or a username against
      either backend, so this stays the same code whether the build has Firebase
@@ -1246,6 +1247,7 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
     if (busy) return;
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       const res = await signIn(username, pw, org);
       if (!res.ok) {
@@ -1253,6 +1255,32 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
         return;
       }
       onSignIn(res.uid, { mustChangePassword: res.mustChangePassword });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetPassword = async () => {
+    if (busy) return;
+    const entered = username.trim().toLowerCase();
+    /* A username is fine to type here; the roster turns it into the address. */
+    const email = entered.includes("@")
+      ? entered
+      : (org.people.find((p) => (p.username || "").toLowerCase() === entered) || {}).email;
+    if (!email) {
+      setError("Enter your email or username first.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await sendReset(email);
+      /* Deliberately the same words whether or not the account exists: a
+         different message for an unknown address would tell a stranger which
+         of your staff have accounts. */
+      if (res.ok) setNotice(`If ${email} has an account, a reset link is on its way.`);
+      else setError(res.error);
     } finally {
       setBusy(false);
     }
@@ -1359,6 +1387,27 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
           <Btn full onClick={attempt} disabled={busy}>
             {busy ? "Signing in…" : "Sign in"}
           </Btn>
+
+          {/* This is the whole account-recovery story, and the same mechanism
+              that gets a new starter in: Firebase mails a single-use link and
+              the person sets their own password. Only shown on a live build —
+              on the demo there is no password to reset. */}
+          {isRealAuth() ? (
+            <button
+              onClick={resetPassword}
+              disabled={busy}
+              className="w-full text-center text-xs font-semibold"
+              style={{ color: org.link }}
+            >
+              Forgot password?
+            </button>
+          ) : null}
+
+          {notice ? (
+            <div className="rounded-md px-3 py-2 text-xs" style={{ backgroundColor: C.okBg, color: C.ok }}>
+              {notice}
+            </div>
+          ) : null}
         </div>
 
         <div className="pb-10" />

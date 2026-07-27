@@ -1,64 +1,90 @@
 # Turning on real authentication
 
 OnCall ships in **local mode**: no backend, everything in `localStorage`, and
-`attempt()` accepts any password. This is the demo. Everything below switches it
-to Firebase Auth. Until it is done, **do not put real staff names or numbers on
-the public URL**.
+any password is accepted. That is the demo. This turns on Firebase Auth.
 
-The app decides which mode it is in at build time: with all six
-`VITE_FIREBASE_*` variables present it uses Firebase, otherwise it stays local.
-There is no runtime switch and nothing to toggle.
+**Until it is done, do not put real staff names or numbers on the public URL.**
 
-## What is already built
+## The short version
 
-| Piece | Where | State |
-| --- | --- | --- |
-| SDK loading | `src/firebase.js` | Done — dynamic import, so a demo build never downloads it |
-| Sign in / out, password change, reset | `src/auth.js` | Done — one interface, local and cloud behind it |
-| Forced password change screen | `ChangePassword` in `OnCallApp.jsx` | Done |
-| Security rules | `firestore.rules` | Written, **not yet deployed or tested** |
-| Build-time config | `.github/workflows/pages.yml` | Done — reads repo secrets |
-| Account provisioning + credential email | Cloud Function | **Not built** — see below |
-| Firestore data layer | would replace `src/storage.js` | **Not built** — still localStorage |
+1. Create a Firebase project and enable Email/Password sign-in.
+2. Copy the config object it gives you.
+3. Paste it into **one** GitHub secret called `FIREBASE_CONFIG`.
+4. Deploy the security rules.
 
-So: sign-in is code-complete, storage is not. With Firebase configured, people
-authenticate for real but the schedule still lives in each browser.
+You do not edit any code. Step 3 is a single copy-paste.
+
+---
 
 ## 1. Create the project
 
-1. <https://console.firebase.google.com> → **Add project**.
-2. **Build → Authentication → Get started → Email/Password → Enable.**
-   Leave "Email link (passwordless sign-in)" off.
-3. **Build → Firestore Database → Create database → Production mode.**
-4. **Project settings → General → Your apps → Web (`</>`)** and register the
-   app. Copy the config values it shows.
+1. <https://console.firebase.google.com> → **Add project**. Any name; Google
+   Analytics is not needed.
+2. **Build → Authentication → Get started → Email/Password → Enable → Save.**
+   Leave "Email link (passwordless sign-in)" switched off.
+3. **Build → Firestore Database → Create database → Production mode.** Pick a
+   region near your users and leave it.
 
-## 2. Add the config as repo secrets
+## 2. Get the config
 
-**Settings → Secrets and variables → Actions → New repository secret**, one each:
+**Project settings** (the gear, top left) **→ General → Your apps → Web `</>`**.
+Register the app with any nickname. Firebase then shows a block of code
+containing something like this:
 
-| Secret | From the Firebase config |
-| --- | --- |
-| `VITE_FIREBASE_API_KEY` | `apiKey` |
-| `VITE_FIREBASE_AUTH_DOMAIN` | `authDomain` |
-| `VITE_FIREBASE_PROJECT_ID` | `projectId` |
-| `VITE_FIREBASE_STORAGE_BUCKET` | `storageBucket` |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | `messagingSenderId` |
-| `VITE_FIREBASE_APP_ID` | `appId` |
+```js
+const firebaseConfig = {
+  apiKey: "AIzaSyD-example-key-1234567890",
+  authDomain: "oncall-12345.firebaseapp.com",
+  projectId: "oncall-12345",
+  storageBucket: "oncall-12345.firebasestorage.app",
+  messagingSenderId: "123456789012",
+  appId: "1:123456789012:web:abc123def456"
+};
+```
 
-A missing or blank one drops the build back to local mode silently, which is the
-safe failure but an easy thing to miss — check the sign-in screen after
-deploying.
+**That object is the whole thing.** When I said "six secrets" I meant these six
+lines, which was a needlessly confusing way to put it — the build now takes them
+as one value instead, so there is nothing to split up.
 
-**These are not secrets in the security sense.** A Firebase web config is
-published in every client bundle by design; anyone can read it out of the
-JavaScript. Keeping it in Actions secrets keeps it out of the source tree and
-nothing more. What actually protects the data is the rules in step 3 and App
-Check in step 5.
+## 3. Add it as one repo secret
 
-## 3. Deploy the security rules
+GitHub → the **MyApps** repo → **Settings → Secrets and variables → Actions →
+New repository secret**.
 
-`firestore.rules` is the entire security model — anything a browser can reach it
+- **Name:** `FIREBASE_CONFIG`
+- **Secret:** the object as **JSON** — every key quoted, no `const`, no
+  semicolon, no trailing comma:
+
+```json
+{
+  "apiKey": "AIzaSyD-example-key-1234567890",
+  "authDomain": "oncall-12345.firebaseapp.com",
+  "projectId": "oncall-12345",
+  "storageBucket": "oncall-12345.firebasestorage.app",
+  "messagingSenderId": "123456789012",
+  "appId": "1:123456789012:web:abc123def456"
+}
+```
+
+The JavaScript Firebase shows you is *nearly* JSON — the keys are unquoted. Add
+the quotes, drop `const firebaseConfig =` and the trailing `;`, and it is valid.
+
+Push anything to `main` afterwards to rebuild.
+
+**Did it work?** Open the sign-in screen. A **"Forgot password?"** link appears
+only on a live build. No link means the build is still in local mode: check the
+secret is named exactly `FIREBASE_CONFIG` and that the JSON parses. Bad JSON is
+reported in the browser console rather than failing the build, so the site keeps
+working as a demo rather than going down.
+
+**One honest note.** This is not a secret in the security sense. A Firebase web
+config is published in every client bundle by design — anyone can read it out of
+the JavaScript. Putting it in Actions secrets keeps it out of the source tree
+and nothing more. What actually protects the data is step 4 and App Check.
+
+## 4. Deploy the security rules
+
+`firestore.rules` is the entire security model. Anything a browser can reach it
 can reach directly, without going through the app.
 
 ```bash
@@ -67,31 +93,43 @@ firebase login
 firebase deploy --only firestore:rules --project <your-project-id>
 ```
 
-The rules read `orgId`, `role` and `mustChangePassword` from custom claims, not
-from documents, so a client cannot edit itself into a promotion. Nothing sets
-those claims yet — that is step 4.
+The rules read `orgId`, `role` and `mustChangePassword` from **custom claims**,
+not from documents, so a client cannot edit itself into a promotion. Nothing
+sets those claims yet — that is the provisioning function below.
 
-## 4. Account provisioning (not built)
+---
 
-The remaining piece, and the one that needs a server. A Cloud Function that:
+## How people get their account
 
-- creates the Firebase Auth user,
-- sets `orgId`, `role` and `mustChangePassword: true` as custom claims,
-- generates a random temp password,
-- emails the username and that password to the person.
+**By reset link, not by emailed password.** Decided 2026-07-27.
 
-Worth raising before it is built: **emailing a password is a weak pattern**, and
-Firebase has a better one already. `sendPasswordResetEmail` (wired up in
-`auth.js` as `sendReset`) mails a single-use link that expires. The account gets
-created, the person gets a link, they choose their own password, and no password
-ever travels through a mailbox. The requirement as written asks for a temp
-password by email; this is the moment to decide whether to keep that or take the
-link instead.
+1. An admin creates the account (Firebase console today, a provisioning
+   function later).
+2. The person gets a Firebase email with a single-use, expiring link.
+3. They follow it and set their own password.
+4. They sign in.
 
-## 5. Before real staff data goes in
+No password is ever generated by us, put in an email, or sat in a mailbox. It
+also means there is no "temp password" step and no forced change screen to pass
+through — the first password they have is one they chose.
 
-- **App Check** (Firebase console → App Check → reCAPTCHA v3) so only the real
-  app can talk to Firestore. My Tasks already does this.
-- Move the seeded roster in `ORGS` into Firestore and replace `src/storage.js`.
-  Until then the schedule is per-browser and the roster is in the bundle.
-- Decide who provisions the owner account `admin_aenache`.
+`sendReset` in `src/auth.js` drives this, and **"Forgot password?"** on the
+sign-in screen is the same mechanism serving everyday recovery. It accepts a
+username as well as an email, and says the same thing either way — telling a
+stranger that an address is unknown would tell them which of your staff have
+accounts.
+
+`ChangePassword` in `OnCallApp.jsx` is kept for anyone who arrives holding a
+password set for them, but on this route nobody should.
+
+## Still to build
+
+- **Provisioning function.** Creating the Auth user, setting the `orgId` and
+  `role` claims the rules depend on, and sending the invite link. Until it
+  exists, accounts are made by hand in the Firebase console and claims set with
+  the Admin SDK.
+- **Firestore data layer.** `src/storage.js` is still `localStorage`, so with
+  Firebase on, people authenticate for real against a schedule that lives in
+  their own browser. The roster is still the `ORGS` array in the bundle.
+- **App Check** (console → App Check → reCAPTCHA v3) before real data, so only
+  the real app can talk to Firestore. My Tasks already does this.

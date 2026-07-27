@@ -1,34 +1,48 @@
 /**
- * Firebase wiring, following the same shape as the My Tasks app in this repo:
- * with no config the module reports itself disabled and the app runs entirely
- * on localStorage, exactly as it did before. Nothing here throws on a missing
- * config, so a build without secrets still produces a working demo.
+ * Firebase wiring. With no config the module reports itself disabled and the
+ * app runs entirely on localStorage, exactly as it did before — nothing here
+ * throws on a missing config, so a build without one is a working demo.
  *
- * The SDK is loaded through dynamic import rather than a top-level one. Imported
- * statically it lands in the main bundle whether or not it is ever called —
- * about half a megabyte that a demo build downloads and never uses. This way
- * Vite emits it as its own chunk and only a configured build fetches it.
+ * The config is the object Firebase shows when you register a web app. It
+ * arrives as one JSON blob in VITE_FIREBASE_CONFIG rather than six separate
+ * variables: it is copied out of the console in one piece, so splitting it up
+ * only creates six chances to paste the wrong value into the wrong box.
  *
- * The config arrives through Vite env vars, injected at build time from repo
- * secrets. Note this is NOT a secret in the security sense — a Firebase web
- * config is published in every client bundle by design. What actually protects
- * the data is firestore.rules plus App Check. Keeping it in secrets only keeps
- * it out of the source tree.
+ * This is NOT a secret in the security sense. A Firebase web config is
+ * published in every client bundle by design and anyone can read it out of the
+ * JavaScript. What actually protects the data is firestore.rules plus App
+ * Check. Keeping it out of the source tree is tidiness, not security.
+ *
+ * The SDK is reached through dynamic import rather than a top-level one.
+ * Imported statically it lands in the main bundle whether or not it is ever
+ * called — about half a megabyte a demo build downloads and never runs.
  */
-const env = import.meta.env || {};
+const RAW = (import.meta.env || {}).VITE_FIREBASE_CONFIG;
 
-const config = {
-  apiKey: env.VITE_FIREBASE_API_KEY,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: env.VITE_FIREBASE_APP_ID,
-};
+const REQUIRED = ["apiKey", "authDomain", "projectId", "appId"];
 
-/* Every field or none. A half-filled config fails at the first call with a
-   worse message than "cloud is off". */
-export const isCloudEnabled = Object.values(config).every((v) => typeof v === "string" && v.length > 0);
+function parseConfig(raw) {
+  if (!raw || typeof raw !== "string" || !raw.trim()) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    /* Loud, because the alternative is a build that looks fine and silently
+       serves the demo. */
+    console.error("VITE_FIREBASE_CONFIG is not valid JSON — running in local mode.", e);
+    return null;
+  }
+  const missing = REQUIRED.filter((k) => !parsed || !parsed[k]);
+  if (missing.length) {
+    console.error(`VITE_FIREBASE_CONFIG is missing ${missing.join(", ")} — running in local mode.`);
+    return null;
+  }
+  return parsed;
+}
+
+const config = parseConfig(RAW);
+
+export const isCloudEnabled = config != null;
 
 let bundle = null;
 let loading = null;
@@ -38,7 +52,7 @@ let loading = null;
  * config. Callers await this instead of reaching for a module-level instance.
  */
 export function ensureCloud() {
-  if (!isCloudEnabled) return Promise.resolve(null);
+  if (!config) return Promise.resolve(null);
   if (bundle) return Promise.resolve(bundle);
   if (loading) return loading;
 
@@ -53,8 +67,7 @@ export function ensureCloud() {
       bundle = { app, auth: authSdk.getAuth(app), db: getFirestore(app), sdk: authSdk };
       return bundle;
     } catch (e) {
-      /* A malformed config or a blocked network must not take the whole app
-         down — fall back to the local build and say so once. */
+      /* A blocked network or bad project must not take the whole app down. */
       console.warn("Firebase failed to initialize; running in local mode.", e);
       loading = null;
       return null;
