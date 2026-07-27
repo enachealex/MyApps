@@ -38,6 +38,11 @@ See README.md for features and user-facing setup.
   meta tags at runtime and registers the service worker in production builds only (never in
   dev — it would cache stale Metro bundles). Bump `CACHE` in `public/sw.js` when changing
   caching behavior. The AccountSheet shows an "Install app" button via `beforeinstallprompt`.
+- Hosting: deployed at https://myapps.thejumpvault.com/my-tasks/ by the repo's
+  `.github/workflows/pages.yml` on every push to main. The subpath is why
+  `experiments.baseUrl` is "/my-tasks" in app.json and why every manifest/service-worker/meta
+  URL is RELATIVE — never reintroduce absolute `/...` paths there. The landing-page tile list
+  is the `APPS` array in the repo's top-level index.html.
 - Verify with `npx tsc --noEmit` and `npm run web` (Metro on :8081). To test the PWA:
   `npm run build:web`, serve `dist/` statically, reload twice, then kill the server —
   the app must still load from the service worker cache.
