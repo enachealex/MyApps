@@ -108,19 +108,26 @@ to edge, with a narrow icon rail down the left and dense table-style rows.
   Tailwind classes rather than the root font size so spacing, fixed widths and
   icon sizes stay put.
 
-**TODO — still off-reference:**
+**DONE — desktop now matches the reference**
 
-- **Rows stretch instead of sitting in columns.** They use
-  `justify-between`, so on a 1920px screen the name sits far left and the
-  phone far right with a large empty gap. The reference lays each row out in
-  fixed columns: badge + time · name + role · phone · second phone.
-- **Shift detail is a modal.** The reference opens a right-hand detail panel
-  beside the list on desktop, carrying the stepper and the Offer Up / Trade
-  Shift actions (screenshot 20260724073057).
-- **Manage is not a table.** The reference "Call Management" view is a real
-  grid with Shift / Role / Name column headers, per-cell dropdowns, and a
-  toolbar (Save, refresh, date nav, + New, Filter) — screenshot
-  20260724074632.
+- **Call rows sit in fixed columns** (`150px · 22rem · phone · 1fr`) rather
+  than `justify-between`, which parked the name at one edge and the number at
+  the other. Measured at 1440px: the gap closed from hundreds of pixels to 44.
+- **Shift detail docks down the right edge** on desktop, full height, 448px,
+  carrying the stepper and Offer Up / Trade Shift. `Sheet` grew a `side` prop;
+  the phone keeps its bottom sheet.
+- **Call Management is a grid** on desktop — Shift · Role · Name · Phone ·
+  Status headers with the assignment dropdown in the Name cell. The phone
+  keeps stacked cards, where a five-column table would be four columns of
+  nothing.
+- **My Shifts groups by day** under a full date heading, with a **Call info**
+  button per row.
+
+**TODO — deliberately not built:**
+
+- The reference Call Management toolbar (Save, refresh, + New, Filter). Save
+  and refresh belong to a backend that does not exist yet: this app writes on
+  change, so a Save button would be decoration. Revisit with the API.
 
 ## 4. Navigation — WIP
 

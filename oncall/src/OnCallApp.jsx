@@ -713,23 +713,30 @@ function Pill({ text, color, bg, icon: Icon }) {
   );
 }
 
-/* Bottom sheet on a phone, centered dialog on a desktop. */
-function Sheet({ open, onClose, title, children }) {
+/* Bottom sheet on a phone, centred dialog on a desktop — or, with `side`,
+   docked down the right edge beside the list it came from, which is where the
+   reference puts shift detail so the schedule stays readable behind it. */
+function Sheet({ open, onClose, title, children, side = false }) {
   const desktop = useIsDesktop();
   if (!open) return null;
+  const docked = desktop && side;
   return (
     <div
-      className={`oncall-no-print fixed inset-0 z-50 flex justify-center ${desktop ? "items-center p-6" : "items-end"}`}
+      className={`oncall-no-print fixed inset-0 z-50 flex ${
+        docked ? "justify-end" : desktop ? "items-center justify-center p-6" : "items-end justify-center"
+      }`}
       style={{ backgroundColor: "rgba(20,20,28,0.55)" }}
       onClick={onClose}
     >
       <div
-        className={`w-full bg-white shadow-xl ${desktop ? "max-w-lg rounded-2xl" : "max-w-md rounded-t-2xl"}`}
-        style={{ maxHeight: desktop ? "86vh" : "92vh", overflowY: "auto" }}
+        className={`w-full bg-white shadow-xl ${
+          docked ? "h-full max-w-md" : desktop ? "max-w-lg rounded-2xl" : "max-w-md rounded-t-2xl"
+        }`}
+        style={{ maxHeight: docked ? "100vh" : desktop ? "86vh" : "92vh", overflowY: "auto" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className={`sticky top-0 flex items-center justify-between border-b bg-white px-4 py-3 ${desktop ? "rounded-t-2xl" : "rounded-t-2xl"}`}
+          className={`sticky top-0 flex items-center justify-between border-b bg-white px-4 py-3 ${docked ? "" : "rounded-t-2xl"}`}
           style={{ borderColor: C.line }}
         >
           <div className="text-base font-semibold" style={{ color: C.ink }}>{title}</div>
@@ -1849,23 +1856,44 @@ function CallRow({ shift, first, onOpen }) {
   const org = useOrg();
   const desktop = useIsDesktop();
   const p = user(org, shift.personId);
+
+  const when = (
+    <div className={desktop ? "" : "w-24 shrink-0"}>
+      <Badge kind={shift.kind} />
+      <div className="mt-1 text-xs font-medium" style={{ color: C.sub, fontVariantNumeric: "tabular-nums" }}>{shift.time}</div>
+    </div>
+  );
+  const who = (
+    <button onClick={onOpen} className={`text-left ${desktop ? "min-w-0" : "min-w-0 flex-1"}`}>
+      <div className="truncate text-sm font-semibold">{p.name}</div>
+      <div className="text-xs" style={{ color: org.link }}>{shift.role}</div>
+      <div className="mt-1 flex flex-wrap gap-1.5">
+        {shift.outSick ? <Pill text="Out sick" color={C.warn} bg={C.warnBg} icon={AlertCircle} /> : null}
+        {shift.posted ? <Pill text="Posted to staff" color={org.deep} bg={org.soft} /> : null}
+      </div>
+    </button>
+  );
+
   return (
     <div style={{ borderTop: first ? "none" : `1px solid ${C.line}`, padding: desktop ? "14px 20px" : "10px 12px" }}>
-      <div className="flex items-start gap-3">
-        <div className="w-24 shrink-0">
-          <Badge kind={shift.kind} />
-          <div className="mt-1 text-xs font-medium" style={{ color: C.sub, fontVariantNumeric: "tabular-nums" }}>{shift.time}</div>
+      {desktop ? (
+        /* Fixed columns rather than justify-between. On a wide screen the
+           latter parks the name at one edge and the number at the other with a
+           lake of nothing between, and the eye has to travel to pair them. The
+           trailing 1fr absorbs the extra width instead. */
+        <div className="grid items-start gap-4" style={{ gridTemplateColumns: "150px minmax(0, 22rem) auto 1fr" }}>
+          {when}
+          {who}
+          <DialButton person={p} />
+          <div />
         </div>
-        <button onClick={onOpen} className="min-w-0 flex-1 text-left">
-          <div className="truncate text-sm font-semibold">{p.name}</div>
-          <div className="text-xs" style={{ color: org.link }}>{shift.role}</div>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {shift.outSick ? <Pill text="Out sick" color={C.warn} bg={C.warnBg} icon={AlertCircle} /> : null}
-            {shift.posted ? <Pill text="Posted to staff" color={org.deep} bg={org.soft} /> : null}
-          </div>
-        </button>
-        <DialButton person={p} />
-      </div>
+      ) : (
+        <div className="flex items-start gap-3">
+          {when}
+          {who}
+          <DialButton person={p} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1878,14 +1906,15 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
   const viewer = user(org, viewerId);
   const [sameRoleOnly, setSameRoleOnly] = useState(true);
 
-  const mineByMonth = useMemo(() => {
+  /* Grouped by the day itself, headed with the full date, as the reference
+     has it. A month heading with a bare day number beside each row makes you
+     assemble the date yourself. */
+  const mineByDay = useMemo(() => {
     const groups = [];
     myShifts.forEach((s) => {
-      const d = fromKey(s.date);
-      const label = `${MON[d.getMonth()]} ${d.getFullYear()}`;
-      const g = groups.find((x) => x.label === label);
+      const g = groups.find((x) => x.key === s.date);
       if (g) g.items.push(s);
-      else groups.push({ label, items: [s] });
+      else groups.push({ key: s.date, label: longDate(s.date), items: [s] });
     });
     return groups;
   }, [myShifts]);
@@ -1924,30 +1953,25 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
 
       {sub === "mine" && (
         <div>
-          {mineByMonth.length === 0 ? (
+          {mineByDay.length === 0 ? (
             <Empty icon={CalendarDays} title="No upcoming call" hint="Shifts appear here as soon as the schedule is posted." />
           ) : (
-            mineByMonth.map((g) => (
-              <div key={g.label}>
-                <div className="px-3 py-1.5 text-xs font-bold" style={{ backgroundColor: C.surfaceAlt, color: C.sub }}>{g.label}</div>
+            mineByDay.map((g) => (
+              <div key={g.key}>
+                <div className="px-3 py-1.5 text-sm font-bold" style={{ backgroundColor: org.soft, color: org.deep }}>{g.label}</div>
                 <div className="bg-white">
                   {g.items.map((s, i) => {
                     const st = statusLine(s);
-                    const d = fromKey(s.date);
                     return (
-                      <button key={s.id} onClick={() => onOpenShift(s.id)} className="flex w-full items-center gap-3 px-3 py-3 text-left" style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}>
-                        <div className="w-9 shrink-0 text-center">
-                          <div className="text-xs" style={{ color: org.link }}>{DOW[d.getDay()]}</div>
-                          <div className="text-lg font-bold leading-tight">{d.getDate()}</div>
-                        </div>
+                      <div key={s.id} className="flex items-center gap-3 px-3 py-3" style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}>
                         <div className="w-20 shrink-0"><Badge kind={s.kind} /></div>
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{s.time}</div>
                           <div className="text-xs" style={{ color: C.sub }}>{s.role}</div>
                           {st ? <div className="mt-0.5 text-xs font-medium" style={{ color: st.color }}>{st.text}</div> : null}
                         </div>
-                        <ChevronRight size={18} style={{ color: C.chevron }} />
-                      </button>
+                        <Btn size="sm" tone="ghost" icon={Phone} onClick={() => onOpenShift(s.id)}>Call info</Btn>
+                      </div>
                     );
                   })}
                 </div>
@@ -2365,8 +2389,12 @@ function ScheduleView({ db, onOpenShift }) {
 }
 
 /* ============================== MANAGE ============================ */
+/* Shift · Role · Name · Phone · Status */
+const CALL_GRID = "170px 130px minmax(0, 1fr) auto minmax(0, 260px)";
+
 function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
   const org = useOrg();
+  const desktop = useIsDesktop();
   const [dateKey, setDateKey] = useState(() => keyOf(new Date()));
   const [span, setSpan] = useState("daily");
   const weekly = span === "weekly";
@@ -2383,51 +2411,118 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
         <BlockCalendar days={days} onPickDay={(k) => { setDateKey(k); setSpan("daily"); }} />
       ) : (
         <>
-      <TapToCallHint />
-      <div className="bg-white">
-        {rows.map((s, i) => {
-          const pool = staffInRole(org, s.role);
-          const r = openReqFor(s.id);
-          return (
-            <div key={s.id} className="px-3 py-3" style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}>
-              <div className="flex items-center gap-2">
-                <Badge kind={s.kind} />
-                <div className="text-sm font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{s.time}</div>
-                <div className="text-xs" style={{ color: org.link }}>{s.role}</div>
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <select
-                  value={s.personId}
-                  onChange={(e) => onReassign(s.id, e.target.value)}
-                  className="min-w-0 flex-1 rounded-md border px-2 py-2 text-sm"
-                  style={{ borderColor: C.line, backgroundColor: C.surface, color: C.ink }}
+          <TapToCallHint />
+          {desktop ? (
+            /* A real grid on desktop: this view is for laying out a day, and
+               column headers plus aligned cells let someone scan a whole
+               roster for the gap. The phone keeps stacked cards, where a
+               table would be four columns of nothing. */
+            <div className="overflow-x-auto bg-white">
+              <div style={{ minWidth: 900 }}>
+                <div
+                  className="grid items-center gap-3 border-b px-4 py-2 text-xs font-bold"
+                  style={{ gridTemplateColumns: CALL_GRID, borderColor: C.line, backgroundColor: org.soft, color: org.deep }}
                 >
-                  {pool.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => onToggleSick(s.id)}
-                  className="rounded-md px-2.5 py-2 text-xs font-semibold"
-                  style={s.outSick ? { backgroundColor: C.warnBg, color: C.warn, border: `1px solid ${C.warnBorder}` } : { backgroundColor: C.surface, color: C.sub, border: `1px solid ${C.line}` }}
-                >
-                  Out sick
-                </button>
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  {r ? (
-                    <Pill text={r.toId ? `Taken by ${user(org, r.toId).name}` : "Posted to staff"} color={org.deep} bg={org.soft} />
-                  ) : (
-                    <Btn size="sm" tone="ghost" onClick={() => onOfferUp(s.id, "Posted by management", false)}>Post shift to staff</Btn>
-                  )}
+                  <div>Shift</div>
+                  <div>Role</div>
+                  <div>Name</div>
+                  <div>Phone</div>
+                  <div>Status</div>
                 </div>
-                <DialButton person={user(org, s.personId)} />
+                {rows.length === 0 ? (
+                  <Empty icon={CalendarDays} title="No call posted for this day" hint="Pick another date to lay one out." />
+                ) : (
+                  rows.map((s, i) => {
+                    const pool = staffInRole(org, s.role);
+                    const r = openReqFor(s.id);
+                    return (
+                      <div
+                        key={s.id}
+                        className="grid items-center gap-3 px-4 py-2.5"
+                        style={{ gridTemplateColumns: CALL_GRID, borderTop: i ? `1px solid ${C.line}` : "none" }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Badge kind={s.kind} />
+                          <span className="text-xs font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{s.time}</span>
+                        </div>
+                        <div className="truncate text-xs" style={{ color: org.link }}>{s.role}</div>
+                        <select
+                          value={s.personId}
+                          onChange={(e) => onReassign(s.id, e.target.value)}
+                          className="min-w-0 rounded-md border px-2 py-1.5 text-sm"
+                          style={{ borderColor: C.line, backgroundColor: C.surface, color: C.ink }}
+                        >
+                          {pool.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        <DialButton person={user(org, s.personId)} />
+                        <div className="flex flex-wrap items-center gap-2">
+                          {r ? (
+                            <Pill text={r.toId ? `Taken by ${user(org, r.toId).name}` : "Posted to staff"} color={org.deep} bg={org.soft} />
+                          ) : (
+                            <Btn size="sm" tone="ghost" onClick={() => onOfferUp(s.id, "Posted by management", false)}>Post</Btn>
+                          )}
+                          <button
+                            onClick={() => onToggleSick(s.id)}
+                            className="rounded-md px-2.5 py-1.5 text-xs font-semibold"
+                            style={s.outSick ? { backgroundColor: C.warnBg, color: C.warn, border: `1px solid ${C.warnBorder}` } : { backgroundColor: C.surface, color: C.sub, border: `1px solid ${C.line}` }}
+                          >
+                            Out sick
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
-          );
-        })}
-      </div>
+          ) : (
+            <div className="bg-white">
+              {rows.map((s, i) => {
+                const pool = staffInRole(org, s.role);
+                const r = openReqFor(s.id);
+                return (
+                  <div key={s.id} className="px-3 py-3" style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}>
+                    <div className="flex items-center gap-2">
+                      <Badge kind={s.kind} />
+                      <div className="text-sm font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{s.time}</div>
+                      <div className="text-xs" style={{ color: org.link }}>{s.role}</div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <select
+                        value={s.personId}
+                        onChange={(e) => onReassign(s.id, e.target.value)}
+                        className="min-w-0 flex-1 rounded-md border px-2 py-2 text-sm"
+                        style={{ borderColor: C.line, backgroundColor: C.surface, color: C.ink }}
+                      >
+                        {pool.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => onToggleSick(s.id)}
+                        className="rounded-md px-2.5 py-2 text-xs font-semibold"
+                        style={s.outSick ? { backgroundColor: C.warnBg, color: C.warn, border: `1px solid ${C.warnBorder}` } : { backgroundColor: C.surface, color: C.sub, border: `1px solid ${C.line}` }}
+                      >
+                        Out sick
+                      </button>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        {r ? (
+                          <Pill text={r.toId ? `Taken by ${user(org, r.toId).name}` : "Posted to staff"} color={org.deep} bg={org.soft} />
+                        ) : (
+                          <Btn size="sm" tone="ghost" onClick={() => onOfferUp(s.id, "Posted by management", false)}>Post shift to staff</Btn>
+                        )}
+                      </div>
+                      <DialButton person={user(org, s.personId)} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -2993,7 +3088,7 @@ function ShiftSheet({ shiftId, db, viewerId, isStaff, onClose, openReqFor, onOff
   const coworkers = staffInRole(org, shift.role).filter((p) => p.id !== shift.personId);
 
   return (
-    <Sheet open={!!shift} onClose={onClose} title="Call shift">
+    <Sheet open={!!shift} onClose={onClose} title="Call shift" side>
       <div className="flex items-center gap-4 rounded-xl border p-3" style={{ borderColor: C.line }}>
         <div className="w-12 shrink-0 text-center">
           <div className="text-sm font-medium" style={{ color: org.link }}>{DOW[d.getDay()]}</div>
