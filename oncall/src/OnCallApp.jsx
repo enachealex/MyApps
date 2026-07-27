@@ -25,10 +25,8 @@ import {
   Copy,
   Printer,
   Filter,
-  Building2,
   LogOut,
   Lock,
-  KeyRound,
   Eye,
   EyeOff,
   ArrowLeft,
@@ -926,7 +924,6 @@ export default function OnCallApp() {
   const [dbOrg, setDbOrg] = useState(null);
   /* Carried from the email gate so the sign in step arrives prefilled. */
   const [entryEmail, setEntryEmail] = useState("");
-  const [browsing, setBrowsing] = useState(false);
 
   /* restore session */
   useEffect(() => {
@@ -1021,23 +1018,12 @@ export default function OnCallApp() {
     return (
       <>
         <style>{THEME_CSS}</style>
-        {browsing ? (
-          <OrgPicker
-            onPick={(id) => {
-              setOrgId(id);
-              setBrowsing(false);
-            }}
-            onBack={() => setBrowsing(false)}
-          />
-        ) : (
-          <EmailGate
-            onResolve={(id, email) => {
-              setEntryEmail(email);
-              setOrgId(id);
-            }}
-            onBrowse={() => setBrowsing(true)}
-          />
-        )}
+        <EmailGate
+          onResolve={(id, email) => {
+            setEntryEmail(email);
+            setOrgId(id);
+          }}
+        />
       </>
     );
 
@@ -1077,16 +1063,12 @@ export default function OnCallApp() {
         viewerId={userId}
         setViewerId={setUserId}
         onSignOut={() => setUserId(null)}
-        onSwitchOrg={() => {
-          setUserId(null);
-          setOrgId(null);
-        }}
       />
     </AppCtx.Provider>
   );
 }
 
-/* =========================== ORG PICKER =========================== */
+/* ========================== EMAIL GATE =========================== */
 /* Pre-auth screens are a single column of controls, which is right on a phone
    but reads as a phone app stranded mid-screen on a monitor. On a desktop the
    same column becomes a centred card instead — the shape people expect a sign
@@ -1139,7 +1121,7 @@ function resolveOrgByEmail(value) {
   return { unknownDomain: domain, email };
 }
 
-function EmailGate({ onResolve, onBrowse }) {
+function EmailGate({ onResolve }) {
   const desktop = useIsDesktop();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -1225,113 +1207,9 @@ function EmailGate({ onResolve, onBrowse }) {
 
       <div className={`mt-6 px-5 ${desktop ? "pb-6" : "pb-10"}`}>
         <div className="text-xs" style={{ color: C.faint }}>
-          Demo build — try <span className="font-semibold">denise.park@staurelia.org</span>, or{" "}
-          <button onClick={onBrowse} className="font-semibold underline" style={{ color: C.ink }}>
-            browse organizations
-          </button>
-          .
+          Demo build — try <span className="font-semibold">denise.park@staurelia.org</span>. Other
+          accounts are listed in <span className="font-semibold">docs/demo-accounts.md</span>.
         </div>
-      </div>
-    </AuthShell>
-  );
-}
-
-function OrgPicker({ onPick, onBack }) {
-  const desktop = useIsDesktop();
-  const [q, setQ] = useState("");
-  const [code, setCode] = useState("");
-  const [codeError, setCodeError] = useState("");
-
-  const list = ORGS.filter(
-    (o) => q.trim() === "" || o.name.toLowerCase().includes(q.toLowerCase()) || o.city.toLowerCase().includes(q.toLowerCase())
-  );
-
-  const submitCode = () => {
-    const match = ORGS.find((o) => o.code.toLowerCase() === code.trim().toLowerCase());
-    if (match) onPick(match.id);
-    else setCodeError("No organization uses that code. Check with your scheduler.");
-  };
-
-  return (
-    <AuthShell>
-      <div className="px-5 pb-4" style={{ paddingTop: desktop ? "1.75rem" : "calc(3rem + env(safe-area-inset-top))" }}>
-        {onBack ? (
-          <button onClick={onBack} className="mb-3 flex items-center gap-1 text-xs font-medium" style={{ color: C.sub }}>
-            <ArrowLeft size={14} /> Back to email
-          </button>
-        ) : null}
-        <div className="text-2xl font-bold">OnCall Schedule</div>
-        <div className="mt-1 text-sm" style={{ color: C.sub }}>Choose your organization to continue.</div>
-      </div>
-
-      <div className="px-5">
-        <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
-          <Search size={16} style={{ color: C.faint }} />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search hospitals and surgery centers"
-            className="w-full text-sm outline-none"
-          />
-        </div>
-      </div>
-
-      <div className="mt-3 px-5">
-        {list.length === 0 ? (
-          <Empty icon={Building2} title="No match" hint="Try the organization code your scheduler gave you." />
-        ) : (
-          <div className="overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.line }}>
-            {list.map((o, i) => (
-              <button
-                key={o.id}
-                onClick={() => onPick(o.id)}
-                className="flex w-full items-center gap-3 px-3 py-3 text-left"
-                style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}
-              >
-                <OrgTile org={o} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold">{o.name}</div>
-                  <div className="text-xs" style={{ color: C.sub }}>
-                    {o.unit} · {o.city}
-                  </div>
-                </div>
-                <ChevronRight size={18} style={{ color: C.chevron }} />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className={`mt-6 px-5 ${desktop ? "pb-6" : "pb-10"}`}>
-        <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.faint }}>Not listed?</div>
-        <div className="mt-2 flex gap-2">
-          <input
-            value={code}
-            onChange={(e) => {
-              setCode(e.target.value);
-              setCodeError("");
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submitCode();
-              }
-            }}
-            enterKeyHint="go"
-            placeholder="Organization code"
-            className="min-w-0 flex-1 rounded-md border bg-white px-3 py-2.5 text-sm outline-none"
-            style={{ borderColor: codeError ? C.danger : C.line }}
-          />
-          <Btn brand={C.neutralBtn} onClick={submitCode} icon={KeyRound}>
-            Continue
-          </Btn>
-        </div>
-        {codeError ? (
-          <div className="mt-1.5 flex items-center gap-1 text-xs" style={{ color: C.danger }}>
-            <AlertCircle size={12} /> {codeError}
-          </div>
-        ) : null}
-        <div className="mt-2 text-xs" style={{ color: C.faint }}>Demo codes: AURELIA, CASCADE, NORTHGATE</div>
       </div>
     </AuthShell>
   );
@@ -1516,7 +1394,7 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
 }
 
 /* ============================== SHELL ============================= */
-function Shell({ org, db, setDb, viewerId, setViewerId, onSignOut, onSwitchOrg, themeMode, setThemeMode }) {
+function Shell({ org, db, setDb, viewerId, setViewerId, onSignOut, themeMode, setThemeMode }) {
   const [tab, setTab] = useState("home");
   const [accountOpen, setAccountOpen] = useState(false);
   const [shiftSheet, setShiftSheet] = useState(null);
@@ -1869,7 +1747,6 @@ function Shell({ org, db, setDb, viewerId, setViewerId, onSignOut, onSwitchOrg, 
           setTab("home");
         }}
         onSignOut={onSignOut}
-        onSwitchOrg={onSwitchOrg}
       />
       </div>
     </AppCtx.Provider>
@@ -1924,7 +1801,7 @@ function SideRail({ org, viewer, tabs, tab, setTab, onAccount }) {
 }
 
 /* =========================== ACCOUNT SHEET ======================== */
-function AccountSheet({ open, onClose, org, viewer, onSwitchUser, onSignOut, onSwitchOrg, themeMode, setThemeMode }) {
+function AccountSheet({ open, onClose, org, viewer, onSwitchUser, onSignOut, themeMode, setThemeMode }) {
   const [showUsers, setShowUsers] = useState(false);
   return (
     <Sheet open={open} onClose={onClose} title="Account">
@@ -1982,10 +1859,10 @@ function AccountSheet({ open, onClose, org, viewer, onSwitchUser, onSignOut, onS
         </div>
       </div>
 
+      {/* No organization switcher: an account belongs to one tenant, decided
+          by the email domain at sign in. Signing out and entering a different
+          address is the only way across. */}
       <div className="mt-4 space-y-2">
-        <Btn tone="ghost" full icon={Building2} onClick={onSwitchOrg}>
-          Switch organization
-        </Btn>
         <Btn tone="ghost" full icon={LogOut} onClick={onSignOut}>
           Sign out
         </Btn>
