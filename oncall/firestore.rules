@@ -1,0 +1,99 @@
+rules_version = '2';
+
+/**
+ * OnCall — Firestore security rules.
+ *
+ * The roster holds named hospital staff and their personal mobile numbers, so
+ * these rules are the whole security model: anything a client can reach, it can
+ * reach directly, without going through the app. Deny by default and open only
+ * what a signed-in member of that one organization needs.
+ *
+ * Membership and role live in custom claims set server-side when an account is
+ * provisioned, never in a document the client could edit into a promotion.
+ *
+ * Deploy with:  firebase deploy --only firestore:rules
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    /* Which tenant this token belongs to. */
+    function memberOf(orgId) {
+      return signedIn() && request.auth.token.orgId == orgId;
+    }
+
+    function roleIn(orgId, roles) {
+      return memberOf(orgId) && request.auth.token.role in roles;
+    }
+
+    function isManager(orgId) {
+      return roleIn(orgId, ['manager']);
+    }
+
+    function isSupervisor(orgId) {
+      return roleIn(orgId, ['manager', 'supervisor']);
+    }
+
+    /* Someone still holding a temp password gets to change it and nothing
+       else — no reading the roster on the way past. */
+    function passwordSettled() {
+      return signedIn() && request.auth.token.mustChangePassword != true;
+    }
+
+    match /orgs/{orgId} {
+      /* Branding and unit name. Readable by its own members; changed by an
+         operator through the console, not from a browser. */
+      allow read: if memberOf(orgId) && passwordSettled();
+      allow write: if false;
+
+      match /people/{personId} {
+        /* Everyone in the org needs the phone list. */
+        allow read: if memberOf(orgId) && passwordSettled();
+
+        /* People administration is the manager's job. Nobody edits their own
+           record: role and active status are exactly what an attacker would
+           reach for, and the fields worth self-serving (password, email) are
+           Firebase Auth's, not ours. */
+        allow create, update, delete: if isManager(orgId) && passwordSettled();
+      }
+
+      match /shifts/{shiftId} {
+        allow read: if memberOf(orgId) && passwordSettled();
+
+        /* Laying out the schedule is management. Staff move shifts by
+           requesting, which is a write to /requests, not to the shift. */
+        allow create, delete: if isSupervisor(orgId) && passwordSettled();
+        allow update: if isSupervisor(orgId) && passwordSettled();
+      }
+
+      match /requests/{requestId} {
+        allow read: if memberOf(orgId) && passwordSettled();
+
+        /* A request has to be raised in your own name. Without this, anyone
+           could post a colleague's shift out from under them. */
+        allow create: if memberOf(orgId) && passwordSettled()
+                      && request.resource.data.fromId == request.auth.uid
+                      && request.resource.data.status == 'submitted';
+
+        /* The person who raised it may retract it; the named co-worker may
+           answer it; management decides. Anyone else, no. */
+        allow update: if passwordSettled() && (
+                        isSupervisor(orgId)
+                        || (memberOf(orgId) && resource.data.fromId == request.auth.uid)
+                        || (memberOf(orgId) && resource.data.toId == request.auth.uid)
+                      );
+
+        /* History is not the client's to erase — retracting sets a status. */
+        allow delete: if false;
+      }
+    }
+
+    /* Anything not named above stays closed. */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

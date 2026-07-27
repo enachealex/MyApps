@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useContext, createContext } from "react";
+import { signIn, signOutNow, changePassword, isRealAuth } from "./auth";
 import {
   Home,
   CalendarDays,
@@ -835,6 +836,8 @@ export default function OnCallApp() {
   const [dbOrg, setDbOrg] = useState(null);
   /* Carried from the email gate so the sign in step arrives prefilled. */
   const [entryEmail, setEntryEmail] = useState("");
+  /* Set when Firebase reports the account is still on a provisioned password. */
+  const [mustChange, setMustChange] = useState(false);
 
   /* restore session */
   useEffect(() => {
@@ -957,7 +960,28 @@ export default function OnCallApp() {
             setOrgId(null);
             setEntryEmail("");
           }}
-          onSignIn={(id) => setUserId(id)}
+          onSignIn={(id, flags) => {
+            setMustChange(!!(flags && flags.mustChangePassword));
+            setUserId(id);
+          }}
+        />
+      </AppCtx.Provider>
+    );
+  }
+
+  /* Nothing else renders until the temp password is replaced. */
+  if (mustChange) {
+    return (
+      <AppCtx.Provider value={{ org }}>
+        <style>{THEME_CSS}</style>
+        <ChangePassword
+          org={org}
+          onDone={() => setMustChange(false)}
+          onSignOut={async () => {
+            await signOutNow();
+            setMustChange(false);
+            setUserId(null);
+          }}
         />
       </AppCtx.Provider>
     );
@@ -972,7 +996,10 @@ export default function OnCallApp() {
         db={db}
         setDb={setDb}
         viewerId={userId}
-        onSignOut={() => setUserId(null)}
+        onSignOut={async () => {
+          await signOutNow();
+          setUserId(null);
+        }}
       />
     </AppCtx.Provider>
   );
@@ -1121,6 +1148,87 @@ function EmailGate({ onResolve }) {
 }
 
 /* ============================= SIGN IN ============================ */
+/* First sign-in with a provisioned temp password lands here and cannot leave
+   until a password of their own is set. The gate is a custom claim checked
+   server-side by firestore.rules too, so skipping this screen in the client
+   would not buy access to anything. */
+function ChangePassword({ org, onDone, onSignOut }) {
+  const desktop = useIsDesktop();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (busy) return;
+    if (next !== confirm) {
+      setError("Those two passwords don't match.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const res = await changePassword(current, next);
+      if (!res.ok) setError(res.error);
+      else onDone();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field = (label, value, set, autoComplete) => (
+    <div>
+      <div className="mb-1 text-xs font-semibold" style={{ color: C.sub }}>{label}</div>
+      <input
+        value={value}
+        onChange={(e) => {
+          set(e.target.value);
+          setError("");
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        type="password"
+        autoComplete={autoComplete}
+        className="w-full rounded-md border bg-white px-3 py-2.5 text-sm outline-none"
+        style={{ borderColor: error ? C.danger : C.line }}
+      />
+    </div>
+  );
+
+  return (
+    <AuthShell>
+      <div className="px-5 pb-5" style={{ paddingTop: desktop ? "1.5rem" : "calc(2rem + env(safe-area-inset-top))", backgroundColor: org.brand }}>
+        <div className="text-base font-semibold text-white">Choose a password</div>
+        <div className="text-xs" style={{ color: "rgba(255,255,255,0.8)" }}>{org.name}</div>
+      </div>
+
+      <div className="px-5 pt-5">
+        <div className="text-sm" style={{ color: C.sub }}>
+          You signed in with a temporary password. Pick your own to continue — at least 8 characters.
+        </div>
+        <div className="mt-4 space-y-3">
+          {field("Temporary password", current, setCurrent, "current-password")}
+          {field("New password", next, setNext, "new-password")}
+          {field("Confirm new password", confirm, setConfirm, "new-password")}
+          {error ? (
+            <div className="flex items-center gap-1 text-xs" style={{ color: C.danger }}>
+              <AlertCircle size={12} /> {error}
+            </div>
+          ) : null}
+          <Btn full onClick={submit} disabled={busy}>{busy ? "Saving…" : "Save password"}</Btn>
+          <Btn full tone="ghost" icon={LogOut} onClick={onSignOut}>Sign out</Btn>
+        </div>
+        <div className="pb-10" />
+      </div>
+    </AuthShell>
+  );
+}
+
 function SignIn({ org, onBack, onSignIn, prefill = "" }) {
   const desktop = useIsDesktop();
   const [username, setUsername] = useState(prefill);
@@ -1129,31 +1237,25 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
 
-  const attempt = () => {
-    const entered = username.trim().toLowerCase();
-    if (!entered) {
-      setError("Enter your email or username.");
-      return;
+  const [busy, setBusy] = useState(false);
+
+  /* Identity lives in src/auth.js. It accepts an email or a username against
+     either backend, so this stays the same code whether the build has Firebase
+     behind it or is the local demo. */
+  const attempt = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await signIn(username, pw, org);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      onSignIn(res.uid, { mustChangePassword: res.mustChangePassword });
+    } finally {
+      setBusy(false);
     }
-    /* People arrive here having typed an email, so accept either — asking
-       them to remember a second identifier at the second step would be an
-       odd thing to do. */
-    const found = org.people.find(
-      (p) => (p.username || "").toLowerCase() === entered || (p.email || "").toLowerCase() === entered
-    );
-    if (!found) {
-      setError(`No account for that email or username at ${org.name}. Your scheduler sets it up.`);
-      return;
-    }
-    if (found.active === false) {
-      setError("That account is inactive. Contact your scheduler.");
-      return;
-    }
-    if (!pw) {
-      setError("Enter your password.");
-      return;
-    }
-    onSignIn(found.id);
   };
 
 
@@ -1254,8 +1356,8 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
               <AlertCircle size={12} /> {error}
             </div>
           ) : null}
-          <Btn full onClick={attempt}>
-            Sign in
+          <Btn full onClick={attempt} disabled={busy}>
+            {busy ? "Signing in…" : "Sign in"}
           </Btn>
         </div>
 
