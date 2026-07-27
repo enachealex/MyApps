@@ -560,91 +560,36 @@ function seed(org) {
 
 /* --------------------------- viewport ------------------------------ */
 /* Layout switches on JS rather than breakpoint classes so the same file
-   behaves identically in a bundled build and in a preview sandbox. */
-/* An explicit choice beats the measurement: a supervisor on a ward tablet may
-   want the full board, and someone on a wide screen may prefer the phone
-   column. "auto" follows the viewport. Held at module scope with a subscriber
-   list so every useIsDesktop call site agrees on the answer — there are
-   several, including ones inside sheets that sit outside the Shell tree. */
-const LAYOUT_KEY = "oncall_layout_v1";
-const LAYOUT_MODES = ["auto", "desktop", "mobile"];
-let layoutPref = "auto";
-const layoutSubs = new Set();
-function setLayoutPref(next) {
-  layoutPref = next;
-  layoutSubs.forEach((fn) => fn());
-}
-
-/* ignoreOverride reads the raw viewport, which is how we decide whether
-   offering the toggle makes sense at all. */
-function useIsDesktop(min = 768, ignoreOverride = false) {
+   behaves identically in a bundled build and in a preview sandbox.
+   The viewport decides, and only the viewport — there is no manual override.
+   A phone gets the phone layout and a monitor gets the board, without anyone
+   having to know a setting exists. */
+function useIsDesktop(min = 768) {
   const query = `(min-width: ${min}px)`;
-  const read = () => {
-    if (!ignoreOverride && layoutPref !== "auto") return layoutPref === "desktop";
+  const [wide, setWide] = useState(() => {
     try {
       return window.matchMedia(query).matches;
     } catch (e) {
       return false;
     }
-  };
-  const [wide, setWide] = useState(read);
+  });
   useEffect(() => {
-    const update = () => setWide(read());
-    layoutSubs.add(update);
     let mq;
     try {
       mq = window.matchMedia(query);
     } catch (e) {
-      return () => layoutSubs.delete(update);
+      return undefined;
     }
-    update();
-    if (mq.addEventListener) mq.addEventListener("change", update);
-    else mq.addListener(update);
+    const onChange = (e) => setWide(e.matches);
+    setWide(mq.matches);
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
     return () => {
-      layoutSubs.delete(update);
-      if (mq.removeEventListener) mq.removeEventListener("change", update);
-      else mq.removeListener(update);
+      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
     };
-  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query]);
   return wide;
-}
-
-/* Backs the Desktop View toggle: reads the saved choice once, writes it back
-   on change, and pushes it out to every useIsDesktop subscriber. */
-function useLayoutMode() {
-  const [mode, setMode] = useState(layoutPref);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await window.storage.get(LAYOUT_KEY);
-        if (alive && res && LAYOUT_MODES.includes(res.value)) {
-          setMode(res.value);
-          setLayoutPref(res.value);
-        }
-      } catch (e) {
-        /* no saved preference — stay on auto */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const change = (next) => {
-    setMode(next);
-    setLayoutPref(next);
-    (async () => {
-      try {
-        await window.storage.set(LAYOUT_KEY, next);
-      } catch (e) {
-        /* session only */
-      }
-    })();
-  };
-
-  return { mode, setMode: change };
 }
 
 /* Theme: "system" follows the OS, and keeps following it if the OS flips. */
@@ -751,7 +696,7 @@ function Badge({ kind }) {
   const k = KIND[kind];
   return (
     <span
-      className="inline-flex items-center justify-center rounded px-2 py-0.5 text-xs font-semibold"
+      className="inline-flex items-center justify-center whitespace-nowrap rounded px-2 py-0.5 text-xs font-semibold"
       style={{ backgroundColor: k.bg, color: k.fg, minWidth: 72 }}
     >
       {k.label}
@@ -852,37 +797,6 @@ function Empty({ icon: Icon, title, hint }) {
       <div className="mt-3 text-sm font-semibold" style={{ color: C.ink }}>{title}</div>
       {hint ? <div className="mt-1 text-xs" style={{ color: C.sub }}>{hint}</div> : null}
     </div>
-  );
-}
-
-/* Lives on the brand header, so it is styled against a coloured background
-   rather than the page. Flipping it locks the layout; there is no way back to
-   "auto" from here on purpose — once someone has expressed a preference,
-   silently reverting to the window size on their next resize would be worse
-   than honouring it. Account sheet has the reset. */
-function LayoutToggle({ desktop, setMode }) {
-  const org = useOrg();
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={desktop}
-      aria-label="Desktop view"
-      onClick={() => setMode(desktop ? "mobile" : "desktop")}
-      className="oncall-no-print flex shrink-0 items-center gap-2 rounded-full py-1 pl-1.5 pr-3"
-      style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
-    >
-      <span
-        className="relative flex h-5 w-9 shrink-0 items-center rounded-full transition"
-        style={{ backgroundColor: desktop ? "#fff" : "rgba(255,255,255,0.35)" }}
-      >
-        <span
-          className="absolute h-4 w-4 rounded-full transition-all"
-          style={{ left: desktop ? 18 : 2, backgroundColor: desktop ? org.deep : "#fff" }}
-        />
-      </span>
-      <span className="whitespace-nowrap text-xs font-medium text-white">Desktop view</span>
-    </button>
   );
 }
 
@@ -1528,11 +1442,6 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
   }, [viewerId]); // eslint-disable-line
 
   const desktop = useIsDesktop();
-  /* The raw viewport, so the toggle is only offered where both layouts are
-     usable — and always where an override is on, so it stays reversible. */
-  const wideViewport = useIsDesktop(768, true);
-  const { mode: layoutMode, setMode: setLayoutMode } = useLayoutMode();
-  const showLayoutToggle = wideViewport || layoutMode !== "auto";
   const section = (tabs.find((t) => t.id === tab) || {}).label || "";
 
   return (
@@ -1585,7 +1494,6 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {showLayoutToggle ? <LayoutToggle desktop={desktop} setMode={setLayoutMode} /> : null}
                   {desktop && PRINTABLE_TABS.includes(tab) ? (
                     <button
                       onClick={() => window.print()}
@@ -2293,73 +2201,89 @@ function ApprovalsView({ db, queue, shiftById, onOpen }) {
 }
 
 /* ============================= SCHEDULE =========================== */
-/* Weeks run Sunday to Saturday, matching the block schedule supervisors
-   already post on the board. */
-const weekOf = (dateKey, shifts, sort) => {
+/* The board the supervisors post is a four-week block starting on a Sunday,
+   so the calendar matches it rather than showing a lone week. */
+const BLOCK_WEEKS = 4;
+
+const blockOf = (dateKey, shifts, sort) => {
   const d = fromKey(dateKey);
   const start = addDays(d, -d.getDay());
-  return Array.from({ length: 7 }, (_, i) => {
+  return Array.from({ length: BLOCK_WEEKS * 7 }, (_, i) => {
     const day = addDays(start, i);
     const key = keyOf(day);
     return { key, date: day, shifts: shifts.filter((s) => s.date === key).sort(sort) };
   });
 };
 
-/* Seven columns on a desktop, seven stacked days on a phone — the grid does
-   not survive a 375px viewport, and someone on a phone is reading the week
-   rather than laying it out. */
-function WeekGrid({ week, onPickDay }) {
+/* Weekday names once across the top, then a cell per day — the shape of the
+   printed block, not a row of day cards.
+   The grid keeps its seven columns at every width and scrolls sideways inside
+   its own box instead of collapsing. A calendar that reflows into a list
+   stops being a calendar, and the columns are how anyone reads across a week. */
+function BlockCalendar({ days, onPickDay }) {
   const org = useOrg();
-  const desktop = useIsDesktop();
   const todayKey = keyOf(new Date());
 
   return (
-    <div
-      className={desktop ? "grid bg-white" : "flex flex-col bg-white"}
-      style={desktop ? { gridTemplateColumns: "repeat(7, minmax(0, 1fr))" } : undefined}
-    >
-      {week.map((day) => (
-        <div key={day.key} className="border-b" style={{ borderColor: C.line, borderRight: desktop ? `1px solid ${C.line}` : "none" }}>
-          <button
-            onClick={() => onPickDay(day.key)}
-            className="w-full px-2 py-2 text-left"
-            style={{ backgroundColor: day.key === todayKey ? org.soft : C.note }}
-            title="Open this day"
-          >
-            <div className="text-xs font-semibold" style={{ color: org.link }}>{DOW_L[day.date.getDay()]}</div>
-            <div className="text-xs" style={{ color: C.sub, fontVariantNumeric: "tabular-nums" }}>{shortDate(day.key)}</div>
-          </button>
-          <div className="space-y-1.5 px-2 py-2">
-            {day.shifts.length === 0 ? (
-              <div className="text-xs" style={{ color: C.faint }}>No call posted</div>
-            ) : (
-              day.shifts.map((s) => {
-                const p = user(org, s.personId);
-                return (
-                  <div key={s.id} className="rounded-md border px-2 py-1.5" style={{ borderColor: C.line }}>
-                    <Badge kind={s.kind} />
-                    <div className="mt-1 text-xs font-semibold" style={{ fontVariantNumeric: "tabular-nums" }}>{s.time}</div>
-                    <div className="truncate text-xs font-medium">{p ? p.name : "Unassigned"}</div>
-                    <div className="truncate text-xs" style={{ color: org.link }}>{s.role}</div>
-                    {s.outSick ? <div className="mt-1 text-xs font-semibold" style={{ color: C.warn }}>Out sick</div> : null}
-                  </div>
-                );
-              })
-            )}
-          </div>
+    <div className="overflow-x-auto bg-white">
+      {/* Wide enough that a badge and its time sit on one line. */}
+      <div style={{ minWidth: 7 * 152 }}>
+        <div className="grid" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
+          {DOW_L.map((name) => (
+            <div
+              key={name}
+              className="border-b px-2 py-1.5 text-center text-xs font-bold"
+              style={{ borderColor: C.line, backgroundColor: org.soft, color: org.deep }}
+            >
+              {name}
+            </div>
+          ))}
+
+          {days.map((day) => (
+            <div
+              key={day.key}
+              className="border-b border-r"
+              style={{ borderColor: C.line, minHeight: 96, backgroundColor: day.key === todayKey ? org.soft : C.surface }}
+            >
+              <button
+                onClick={() => onPickDay(day.key)}
+                className="w-full px-2 pt-1.5 text-left text-xs font-semibold"
+                style={{ color: org.link, fontVariantNumeric: "tabular-nums" }}
+                title="Open this day"
+              >
+                {shortDate(day.key)}
+              </button>
+              <div className="space-y-1 px-2 pb-2 pt-1">
+                {day.shifts.map((s) => {
+                  const p = user(org, s.personId);
+                  return (
+                    <div key={s.id}>
+                      <div className="truncate text-xs font-medium">{p ? p.name : "Unassigned"}</div>
+                      <div className="flex items-center gap-1.5">
+                        <Badge kind={s.kind} />
+                        <span className="text-xs" style={{ fontVariantNumeric: "tabular-nums", color: C.sub }}>{s.time}</span>
+                      </div>
+                      {s.outSick ? <div className="text-xs font-semibold" style={{ color: C.warn }}>Out sick</div> : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
 
 /* Date nav plus the Daily/Weekly switch, shared by the staff Schedule tab and
    the management editor so the two cannot drift apart. */
-function SpanHeader({ span, setSpan, dateKey, setDateKey, week }) {
+function SpanHeader({ span, setSpan, dateKey, setDateKey, days }) {
   const org = useOrg();
   const stickyTop = useStickyTop();
   const weekly = span === "weekly";
-  const stepBy = weekly ? 7 : 1;
+  /* Weekly pages by whole blocks, so the columns stay on the same weekdays. */
+  const stepBy = weekly ? BLOCK_WEEKS * 7 : 1;
 
   return (
     <div className="sticky z-20 border-b bg-white px-3 py-2" style={{ top: stickyTop, borderColor: C.line }}>
@@ -2368,18 +2292,23 @@ function SpanHeader({ span, setSpan, dateKey, setDateKey, week }) {
           onClick={() => setDateKey(keyOf(addDays(fromKey(dateKey), -stepBy)))}
           className="rounded-full p-2"
           style={{ color: org.brand }}
-          aria-label={weekly ? "Previous week" : "Previous day"}
+          aria-label={weekly ? "Previous block" : "Previous day"}
         >
           <ChevronLeft size={20} />
         </button>
-        <div className="text-sm font-semibold">
-          {weekly ? `${shortDate(week[0].key)} – ${shortDate(week[6].key)}` : longDate(dateKey)}
+        <div className="text-center">
+          <div className="text-sm font-semibold">
+            {weekly ? `${shortDate(days[0].key)} – ${shortDate(days[days.length - 1].key)}` : longDate(dateKey)}
+          </div>
+          {weekly ? (
+            <div className="text-xs" style={{ color: C.sub }}>{BLOCK_WEEKS}-week block schedule</div>
+          ) : null}
         </div>
         <button
           onClick={() => setDateKey(keyOf(addDays(fromKey(dateKey), stepBy)))}
           className="rounded-full p-2"
           style={{ color: org.brand }}
-          aria-label={weekly ? "Next week" : "Next day"}
+          aria-label={weekly ? "Next block" : "Next day"}
         >
           <ChevronRight size={20} />
         </button>
@@ -2411,14 +2340,14 @@ function ScheduleView({ db, onOpenShift }) {
   const [span, setSpan] = useState("weekly");
 
   const sort = (a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time);
-  const week = weekOf(dateKey, db.shifts, sort);
+  const days = blockOf(dateKey, db.shifts, sort);
   const rows = db.shifts.filter((s) => s.date === dateKey).sort(sort);
 
   return (
     <div>
-      <SpanHeader span={span} setSpan={setSpan} dateKey={dateKey} setDateKey={setDateKey} week={week} />
+      <SpanHeader span={span} setSpan={setSpan} dateKey={dateKey} setDateKey={setDateKey} days={days} />
       {span === "weekly" ? (
-        <WeekGrid week={week} onPickDay={(k) => { setDateKey(k); setSpan("daily"); }} />
+        <BlockCalendar days={days} onPickDay={(k) => { setDateKey(k); setSpan("daily"); }} />
       ) : (
         <>
           {rows.length ? <TapToCallHint /> : null}
@@ -2444,14 +2373,14 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
 
   const sort = (a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time);
   const rows = db.shifts.filter((s) => s.date === dateKey).sort(sort);
-  const week = weekOf(dateKey, db.shifts, sort);
+  const days = blockOf(dateKey, db.shifts, sort);
 
   return (
     <div>
-      <SpanHeader span={span} setSpan={setSpan} dateKey={dateKey} setDateKey={setDateKey} week={week} />
+      <SpanHeader span={span} setSpan={setSpan} dateKey={dateKey} setDateKey={setDateKey} days={days} />
 
       {weekly ? (
-        <WeekGrid week={week} onPickDay={(k) => { setDateKey(k); setSpan("daily"); }} />
+        <BlockCalendar days={days} onPickDay={(k) => { setDateKey(k); setSpan("daily"); }} />
       ) : (
         <>
       <TapToCallHint />

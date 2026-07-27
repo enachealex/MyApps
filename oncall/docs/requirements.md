@@ -139,9 +139,24 @@ has four tabs.
 | Phone List | — | DONE — owner confirms UI and behaviour are correct |
 
 **Calendar** has a Daily/Weekly switch. Daily is the call list with
-tap-to-call; Weekly is seven Sunday-to-Saturday columns on desktop, stacked on
-a phone. Tapping a day header opens that day in Daily. The same `SpanHeader`
-and `WeekGrid` back Call Management, so the two cannot drift.
+tap-to-call. Weekly is the **four-week block** the reference shows: weekday
+names once across the top, then a cell per day carrying the date, each
+person's name, and their badge and hours. Paging moves a whole block so the
+columns stay on the same weekdays. Tapping a date opens that day in Daily.
+`SpanHeader` and `BlockCalendar` also back Call Management, so the two cannot
+drift.
+
+The grid keeps seven columns at every width and scrolls sideways inside its
+own box rather than reflowing into a list — a calendar that becomes a list
+stops being a calendar. Measured at 375px: 1064px of content scrolling inside
+a 375px box, with no horizontal overflow on the page itself.
+
+**Layout is decided by the viewport alone.** The "Desktop view" switch was
+removed 2026-07-27 as a bug: a phone should get the phone layout and a monitor
+the board, without anyone knowing a setting exists.
+
+Selecting a shift under My Shifts → Mine opens it with **Offer up** and
+**Trade shift** — already working, verified.
 
 **Two sections we have that the client's menu does not list:** Approve
 (manager approval queue) and People (roster administration). Both are live
