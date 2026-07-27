@@ -1,0 +1,62 @@
+rules_version = '2';
+
+// Pragmatic rules for the My Tasks app.
+// Deploy from the Firebase console (Firestore Database -> Rules) or with:
+//   firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isListMember(listId) {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/lists/$(listId)).data.memberIds;
+    }
+
+    // Public profiles: name + email shown to people who share a list with you.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /lists/{listId} {
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.auth.uid in request.resource.data.memberIds;
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+      // Members can edit the list. Additionally, anyone signed in may add
+      // themselves to memberIds (joining via an invite code) or remove
+      // themselves (leaving) — list ids are only discoverable through invites.
+      allow update: if signedIn()
+        && (
+          request.auth.uid in resource.data.memberIds
+          || (
+            // Only memberIds changes, and only affecting yourself.
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+            && request.resource.data.memberIds.toSet()
+                .difference(resource.data.memberIds.toSet())
+                .hasOnly([request.auth.uid])
+            && resource.data.memberIds.toSet()
+                .difference(request.resource.data.memberIds.toSet())
+                .hasOnly([request.auth.uid])
+          )
+        );
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /tasks/{taskId} {
+      allow create: if isListMember(request.resource.data.listId);
+      allow read, update, delete: if isListMember(resource.data.listId);
+    }
+
+    // Invite codes. The 6-character code is the secret; anyone signed in with
+    // the code can look up the list it points to.
+    match /invites/{code} {
+      allow read: if signedIn();
+      allow create: if isListMember(request.resource.data.listId);
+      allow delete: if isListMember(resource.data.listId);
+    }
+  }
+}
