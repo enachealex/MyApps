@@ -924,6 +924,9 @@ export default function OnCallApp() {
   const [userId, setUserId] = useState(null);
   const [db, setDb] = useState(null);
   const [dbOrg, setDbOrg] = useState(null);
+  /* Carried from the email gate so the sign in step arrives prefilled. */
+  const [entryEmail, setEntryEmail] = useState("");
+  const [browsing, setBrowsing] = useState(false);
 
   /* restore session */
   useEffect(() => {
@@ -1018,7 +1021,23 @@ export default function OnCallApp() {
     return (
       <>
         <style>{THEME_CSS}</style>
-        <OrgPicker onPick={(id) => setOrgId(id)} />
+        {browsing ? (
+          <OrgPicker
+            onPick={(id) => {
+              setOrgId(id);
+              setBrowsing(false);
+            }}
+            onBack={() => setBrowsing(false)}
+          />
+        ) : (
+          <EmailGate
+            onResolve={(id, email) => {
+              setEntryEmail(email);
+              setOrgId(id);
+            }}
+            onBrowse={() => setBrowsing(true)}
+          />
+        )}
       </>
     );
 
@@ -1034,7 +1053,15 @@ export default function OnCallApp() {
     return (
       <AppCtx.Provider value={{ org }}>
         <style>{THEME_CSS}</style>
-        <SignIn org={org} onBack={() => setOrgId(null)} onSignIn={(id) => setUserId(id)} />
+        <SignIn
+          org={org}
+          prefill={entryEmail}
+          onBack={() => {
+            setOrgId(null);
+            setEntryEmail("");
+          }}
+          onSignIn={(id) => setUserId(id)}
+        />
       </AppCtx.Provider>
     );
   }
@@ -1091,7 +1118,125 @@ function AuthShell({ children }) {
   );
 }
 
-function OrgPicker({ onPick }) {
+/* Organizations are onboarded by arrangement with the operator, so an
+   unrecognised domain is a dead end with an address to write to — not a
+   self-serve signup. */
+const OPERATOR_EMAIL = "enachealex1@gmail.com";
+
+/* Email first: the domain picks the organization, so nobody has to know which
+   tenant they belong to or carry an org code around. */
+function resolveOrgByEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  if (!email) return { error: "Enter your work email to continue." };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "That doesn't look like an email address." };
+  const domain = email.split("@")[1];
+  const byDomain = ORGS.find((o) => (o.domain || "").toLowerCase() === domain);
+  if (byDomain) return { org: byDomain, email };
+  /* A roster entry can carry an address off the organization's own domain,
+     so fall back to an exact match before giving up. */
+  const byPerson = ORGS.find((o) => o.people.some((p) => (p.email || "").toLowerCase() === email));
+  if (byPerson) return { org: byPerson, email };
+  return { unknownDomain: domain, email };
+}
+
+function EmailGate({ onResolve, onBrowse }) {
+  const desktop = useIsDesktop();
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState("");
+  const [unknown, setUnknown] = useState("");
+
+  const submit = () => {
+    const res = resolveOrgByEmail(email);
+    if (res.error) {
+      setError(res.error);
+      setUnknown("");
+      return;
+    }
+    if (res.unknownDomain) {
+      setError("");
+      setUnknown(res.unknownDomain);
+      return;
+    }
+    onResolve(res.org.id, res.email);
+  };
+
+  return (
+    <AuthShell>
+      <div className="px-5 pb-4" style={{ paddingTop: desktop ? "1.75rem" : "calc(3rem + env(safe-area-inset-top))" }}>
+        <div className="text-2xl font-bold">OnCall Schedule</div>
+        <div className="mt-1 text-sm" style={{ color: C.sub }}>
+          Enter your work email. We'll take you to your organization.
+        </div>
+      </div>
+
+      <div className="px-5">
+        <label htmlFor="oncall-email" className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.faint }}>
+          Work email
+        </label>
+        <div className="mt-2 flex items-center gap-2 rounded-lg border bg-white px-3 py-2.5" style={{ borderColor: error ? C.danger : C.line }}>
+          <Mail size={16} style={{ color: C.faint }} />
+          <input
+            id="oncall-email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setError("");
+              setUnknown("");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck="false"
+            enterKeyHint="go"
+            placeholder="you@hospital.org"
+            className="w-full bg-transparent text-sm outline-none"
+          />
+        </div>
+        {error ? (
+          <div className="mt-1.5 flex items-center gap-1 text-xs" style={{ color: C.danger }}>
+            <AlertCircle size={12} /> {error}
+          </div>
+        ) : null}
+
+        {unknown ? (
+          <div className="mt-3 rounded-lg border p-3" style={{ borderColor: C.warnBorder, backgroundColor: C.warnBg }}>
+            <div className="text-sm font-semibold">No organization for @{unknown}</div>
+            <div className="mt-1 text-xs" style={{ color: C.sub }}>
+              Organizations are set up by request. Ask your scheduler whether yours is enrolled, or email{" "}
+              <a href={`mailto:${OPERATOR_EMAIL}?subject=OnCall access for ${unknown}`} className="font-semibold underline" style={{ color: C.ink }}>
+                {OPERATOR_EMAIL}
+              </a>{" "}
+              to have it added.
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-4">
+          <Btn full icon={ArrowRight} onClick={submit}>Continue</Btn>
+        </div>
+      </div>
+
+      <div className={`mt-6 px-5 ${desktop ? "pb-6" : "pb-10"}`}>
+        <div className="text-xs" style={{ color: C.faint }}>
+          Demo build — try <span className="font-semibold">denise.park@staurelia.org</span>, or{" "}
+          <button onClick={onBrowse} className="font-semibold underline" style={{ color: C.ink }}>
+            browse organizations
+          </button>
+          .
+        </div>
+      </div>
+    </AuthShell>
+  );
+}
+
+function OrgPicker({ onPick, onBack }) {
   const desktop = useIsDesktop();
   const [q, setQ] = useState("");
   const [code, setCode] = useState("");
@@ -1110,6 +1255,11 @@ function OrgPicker({ onPick }) {
   return (
     <AuthShell>
       <div className="px-5 pb-4" style={{ paddingTop: desktop ? "1.75rem" : "calc(3rem + env(safe-area-inset-top))" }}>
+        {onBack ? (
+          <button onClick={onBack} className="mb-3 flex items-center gap-1 text-xs font-medium" style={{ color: C.sub }}>
+            <ArrowLeft size={14} /> Back to email
+          </button>
+        ) : null}
         <div className="text-2xl font-bold">OnCall Schedule</div>
         <div className="mt-1 text-sm" style={{ color: C.sub }}>Choose your organization to continue.</div>
       </div>
@@ -1188,9 +1338,9 @@ function OrgPicker({ onPick }) {
 }
 
 /* ============================= SIGN IN ============================ */
-function SignIn({ org, onBack, onSignIn }) {
+function SignIn({ org, onBack, onSignIn, prefill = "" }) {
   const desktop = useIsDesktop();
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(prefill);
   const [pw, setPw] = useState("");
   const pwRef = useRef(null);
   const [show, setShow] = useState(false);
@@ -1200,12 +1350,17 @@ function SignIn({ org, onBack, onSignIn }) {
   const attempt = () => {
     const entered = username.trim().toLowerCase();
     if (!entered) {
-      setError("Enter your username.");
+      setError("Enter your email or username.");
       return;
     }
-    const found = org.people.find((p) => (p.username || "").toLowerCase() === entered);
+    /* People arrive here having typed an email, so accept either — asking
+       them to remember a second identifier at the second step would be an
+       odd thing to do. */
+    const found = org.people.find(
+      (p) => (p.username || "").toLowerCase() === entered || (p.email || "").toLowerCase() === entered
+    );
     if (!found) {
-      setError(`No account with that username at ${org.name}. Your scheduler sets it up.`);
+      setError(`No account for that email or username at ${org.name}. Your scheduler sets it up.`);
       return;
     }
     if (found.active === false) {
@@ -1229,7 +1384,7 @@ function SignIn({ org, onBack, onSignIn }) {
     <AuthShell>
       <div className="px-5 pb-5" style={{ paddingTop: desktop ? "1.5rem" : "calc(2rem + env(safe-area-inset-top))", backgroundColor: org.brand }}>
         <button onClick={onBack} className="mb-4 flex items-center gap-1 text-xs font-medium text-white">
-          <ArrowLeft size={14} /> All organizations
+          <ArrowLeft size={14} /> Use a different email
         </button>
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-sm font-bold" style={{ color: org.deep }}>
@@ -1246,7 +1401,7 @@ function SignIn({ org, onBack, onSignIn }) {
 
       <div className="px-5 pt-5">
         <div className="text-lg font-bold">Sign in</div>
-        <div className="mt-1 text-sm" style={{ color: C.sub }}>Use the username your scheduler set up for you.</div>
+        <div className="mt-1 text-sm" style={{ color: C.sub }}>Use your work email, or the username your scheduler set up.</div>
 
         {org.sso ? (
           <>
@@ -1267,7 +1422,7 @@ function SignIn({ org, onBack, onSignIn }) {
 
         <div className="space-y-3">
           <div>
-            <div className="mb-1 text-xs font-semibold" style={{ color: C.sub }}>Username</div>
+            <div className="mb-1 text-xs font-semibold" style={{ color: C.sub }}>Email or username</div>
             <input
               value={username}
               onChange={(e) => {
@@ -1285,7 +1440,7 @@ function SignIn({ org, onBack, onSignIn }) {
               autoComplete="username"
               enterKeyHint="next"
               spellCheck={false}
-              placeholder="mboyd"
+              placeholder="you@hospital.org"
               className="w-full rounded-md border bg-white px-3 py-2.5 text-sm outline-none"
               style={{ borderColor: error ? C.danger : C.line }}
             />
