@@ -37,7 +37,56 @@ Rules:
 
 ---
 
-## 2. Authentication — TODO, blocked on backend
+## 2. Tenancy and onboarding
+
+Agreed 2026-07-27. Three tiers, and each one only ever sees its own level down.
+
+| Tier | Who | Can do |
+| --- | --- | --- |
+| **Operator** | the site owner | Creates organizations; seats each one's first Admin. Nothing else — not a member of any tenant. |
+| **Admin** | the org's own manager | Runs their roster: add, edit, deactivate, set access level. Cannot create organizations. |
+| **Supervisor / Staff** | everyone else | Their own shifts, requests, and the phone list. |
+
+**Onboarding.** A company emails the owner asking to join. The owner creates
+the organization and seats the person who asked as its Admin. From that point
+the organization runs itself — the owner is not involved in their staffing.
+
+**Why the boundary is where it is.** An Admin cannot create a second
+organization, and that is a billing boundary as much as a security one: each
+organization is a paying tenant, so minting one has to stay with the operator.
+
+**Already built (UI).** `PeopleAdminView` and `PersonSheet` give an Admin add,
+edit, search, deactivate, and an Access selector covering Staff / Supervisor /
+Admin. So the Admin half of this model exists as screens; what it lacks is a
+backend to enforce it.
+
+**Encoded in `firestore.rules`.**
+
+- `isOwner()` reads an `owner` custom claim. Only the operator creates,
+  updates or deletes an org document.
+- Admins write `people` in their own org and nowhere else, and **cannot edit
+  their own record** — access level and active status are the first things an
+  attacker reaches for.
+- A `joinRequests` collection is create-only for the public and readable only
+  by the operator, for if the email request ever becomes a form. The list of
+  who is evaluating the product should not be public.
+
+**The escalation to watch.** An Admin promoting someone in `PersonSheet` edits
+a roster *document*. Real privilege lives in custom claims, which only the
+provisioning function sets. That function must refuse to grant `owner` on a
+tenant's say-so — otherwise an Admin could write a document that promotes them
+off their own tenant. Nothing enforces this yet because the function does not
+exist; it is the first thing to get right when it does.
+
+**Not built:** the operator's own screen for creating an org and seating its
+Admin. Today that is the Firebase console plus the Admin SDK.
+
+**Billing** is out of scope so far. The tenancy boundary above is what makes it
+possible later; no payment provider has been chosen or wired.
+
+---
+
+## 3. Authentication — TODO, blocked on backend
 
 Current state: `attempt()` in `OnCallApp.jsx` checks the username exists and
 the password box is non-empty, then signs in. **Any password works.** There is
@@ -98,9 +147,20 @@ browser.
 
 **Until both exist, no real staff data goes on the public URL.**
 
+### Demo data stays for now
+
+Decided 2026-07-27. The three seeded organizations and their 56 placeholder
+accounts stay exactly as they are so the client can walk the app themselves and
+give feedback. Do not migrate the roster into Firestore or strip `ORGS` yet —
+the demo *is* the review copy, and taking it away would leave nothing to review.
+
+This is also why the auth work above is a seam rather than a switch-over:
+adding the Firebase config turns on real sign-in without disturbing the seeded
+data, and leaving it off changes nothing at all.
+
 ---
 
-## 3. Desktop layout — WIP
+## 4. Desktop layout — WIP
 
 Reference screenshots (Drive, 2026-07-24) show the SharePoint original the
 supervisors already use. It is **full-bleed**: the app fills the viewport edge
@@ -147,7 +207,7 @@ to edge, with a narrow icon rail down the left and dense table-style rows.
   and refresh belong to a backend that does not exist yet: this app writes on
   change, so a Save button would be decoration. Revisit with the API.
 
-## 4. Navigation — WIP
+## 5. Navigation — WIP
 
 The client's app has six sections in its side menu. Corrected 2026-07-27: an
 earlier reading of the *mobile* screenshot suggested My Shifts held three tabs
@@ -204,7 +264,7 @@ owner called out as the better answer — keep it.
   per row.
 - The reference has a **Call Info** button on each My Shifts row.
 
-## 5. UI alignment with customer visuals — TODO
+## 6. UI alignment with customer visuals — TODO
 
 Screenshots and videos live in a Google Drive folder shared by the owner. They
 had not been readable from a working session yet — the connector was not bound

@@ -20,6 +20,14 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    /* The platform operator, above any tenant. Onboarding runs through them:
+       a company asks for an organization, the operator creates it and names
+       their first Admin, and that Admin runs their own roster from there.
+       Deliberately not grantable from inside the app — see the people rules. */
+    function isOwner() {
+      return signedIn() && request.auth.token.owner == true;
+    }
+
     /* Which tenant this token belongs to. */
     function memberOf(orgId) {
       return signedIn() && request.auth.token.orgId == orgId;
@@ -44,20 +52,35 @@ service cloud.firestore {
     }
 
     match /orgs/{orgId} {
-      /* Branding and unit name. Readable by its own members; changed by an
-         operator through the console, not from a browser. */
+      /* An organization exists because the operator created it after the
+         company asked to join. Nobody self-registers, and an Admin cannot mint
+         a second tenant — that is the billing boundary as much as the security
+         one. Members read their own org's branding and unit name. */
       allow read: if memberOf(orgId) && passwordSettled();
-      allow write: if false;
+      allow create, delete: if isOwner();
+      /* The operator owns the tenancy record. Anything an Admin should be able
+         to change about their own org belongs in a settings subcollection with
+         its own rule, not in this document. */
+      allow update: if isOwner();
 
       match /people/{personId} {
         /* Everyone in the org needs the phone list. */
         allow read: if memberOf(orgId) && passwordSettled();
 
-        /* People administration is the manager's job. Nobody edits their own
-           record: role and active status are exactly what an attacker would
-           reach for, and the fields worth self-serving (password, email) are
-           Firebase Auth's, not ours. */
-        allow create, update, delete: if isManager(orgId) && passwordSettled();
+        /* Running the roster is the Admin's job, and the whole point of the
+           model: the operator seats the first Admin, they take it from there.
+           Nobody edits their own record — access level and active status are
+           exactly what an attacker would reach for, and the fields worth
+           self-serving (password, email) belong to Firebase Auth, not us. */
+        allow create, update, delete: if isManager(orgId)
+                                      && passwordSettled()
+                                      && personId != request.auth.uid;
+
+        /* An Admin promoting someone here changes a roster document, not what
+           that person can actually do. Real privileges live in custom claims,
+           which only the provisioning function sets — and it must refuse to
+           grant `owner` from a tenant request, or an Admin could write
+           themselves a document that promotes them off their own tenant. */
       }
 
       match /shifts/{shiftId} {
@@ -89,6 +112,15 @@ service cloud.firestore {
         /* History is not the client's to erase — retracting sets a status. */
         allow delete: if false;
       }
+    }
+
+    /* Requests to join the platform. A company reaches the operator by email
+       today; if that ever becomes a form on the site, it writes here. Write-only
+       for the public, readable only by the operator — otherwise the list of who
+       is evaluating the product would be readable by anyone. */
+    match /joinRequests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isOwner();
     }
 
     /* Anything not named above stays closed. */
