@@ -96,7 +96,31 @@ and `attempt()` for identity.
 
 ---
 
-## 3. UI alignment with customer visuals — TODO
+## 3. Desktop layout — WIP
+
+Reference screenshots (Drive, 2026-07-24) show the SharePoint original the
+supervisors already use. It is **full-bleed**: the app fills the viewport edge
+to edge, with a narrow icon rail down the left and dense table-style rows.
+
+**DONE** — the desktop shell no longer renders as a centered 1040px card with
+border, radius, shadow and page padding. It fills the viewport on both axes.
+
+**TODO — still off-reference:**
+
+- **Rows stretch instead of sitting in columns.** They use
+  `justify-between`, so on a 1920px screen the name sits far left and the
+  phone far right with a large empty gap. The reference lays each row out in
+  fixed columns: badge + time · name + role · phone · second phone.
+- **Role filters are horizontal scrolling chips.** The reference puts them in
+  a left-hand column beside the list, under a "Filter by specific role"
+  heading, with the day header above the list.
+- **Header actions.** The reference has an org/service label and a Print
+  button in the top bar.
+- **"Desktop View" toggle.** The reference has an explicit toggle in the
+  header rather than relying only on viewport width. Confirm whether this is
+  wanted before building it.
+
+## 4. UI alignment with customer visuals — TODO
 
 Screenshots and videos live in a Google Drive folder shared by the owner. They
 had not been readable from a working session yet — the connector was not bound

@@ -71,7 +71,6 @@ const LIGHT = {
   disabledBg: "#EDEDF2",
   disabledFg: "#A2A2AC",
   toastBg: "#26262F",
-  pageDesk: "#E7E7EE",
   stepIdle: "#D8D8E2",
   stepIdleBorder: "#C9C9D4",
   navIdle: "#8A8A94",
@@ -101,7 +100,6 @@ const DARK = {
   disabledBg: "#2A2A33",
   disabledFg: "#6A6A78",
   toastBg: "#3A3A46",
-  pageDesk: "#0D0D11",
   stepIdle: "#3A3A46",
   stepIdleBorder: "#4A4A58",
   navIdle: "#8A8A99",
@@ -1417,30 +1415,27 @@ function Shell({ org, db, setDb, viewerId, setViewerId, onSignOut, onSwitchOrg, 
         style={{
           minHeight: "100vh",
           display: desktop ? "flex" : "block",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: desktop ? 28 : 0,
+          padding: 0,
           boxSizing: "border-box",
-          backgroundColor: desktop ? C.pageDesk : C.bg,
+          backgroundColor: C.bg,
           color: C.ink,
           fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
         }}
       >
+        {/* Desktop fills the viewport edge to edge, matching the board the
+            supervisors already read. A centered card would waste the width
+            that makes the call list scannable in one look. The phone keeps a
+            readable column so lines do not run the width of a tablet. */}
         <div
-          className="oncall-window mx-auto flex w-full"
+          className="oncall-window flex w-full"
           style={
             desktop
               ? {
-                  maxWidth: 1040,
-                  height: "min(860px, calc(100vh - 56px))",
-                  margin: "0 auto",
+                  height: "100vh",
                   backgroundColor: C.bg,
-                  border: `1px solid ${C.line}`,
-                  borderRadius: 16,
                   overflow: "hidden",
-                  boxShadow: "0 12px 32px rgba(24, 24, 48, 0.10)",
                 }
-              : { maxWidth: 448, minHeight: "100vh", flexDirection: "column", backgroundColor: C.bg }
+              : { maxWidth: 448, minHeight: "100vh", flexDirection: "column", backgroundColor: C.bg, marginLeft: "auto", marginRight: "auto" }
           }
         >
           {desktop ? (
