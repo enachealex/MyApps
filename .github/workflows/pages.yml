@@ -74,6 +74,7 @@ jobs:
           set -e
           mkdir -p _site
           cp index.html _site/index.html
+          cp -r icons _site/icons
           cp -r puttcount _site/puttcount
           cp -r oncall/dist _site/oncall
           cp -r my-tasks/dist _site/my-tasks
