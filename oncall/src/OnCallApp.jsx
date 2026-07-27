@@ -1216,7 +1216,6 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
   const pwRef = useRef(null);
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");
-  const [pickList, setPickList] = useState(false);
 
   const attempt = () => {
     const entered = username.trim().toLowerCase();
@@ -1245,11 +1244,6 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
     onSignIn(found.id);
   };
 
-  const demoAccounts = [
-    org.people.find((p) => p.kind === "manager"),
-    org.people.find((p) => p.kind === "supervisor"),
-    ...org.people.filter((p) => p.kind === "staff").slice(0, 3),
-  ].filter(Boolean);
 
   return (
     <AuthShell>
@@ -1352,31 +1346,6 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
             Sign in
           </Btn>
         </div>
-
-        <button onClick={() => setPickList((v) => !v)} className="mt-5 w-full text-center text-xs font-semibold" style={{ color: org.link }}>
-          {pickList ? "Hide demo accounts" : "Show demo accounts"}
-        </button>
-
-        {pickList ? (
-          <div className="mt-2 overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.line }}>
-            {demoAccounts.map((p, i) => (
-              <button
-                key={p.id}
-                onClick={() => onSignIn(p.id)}
-                className="flex w-full items-center justify-between px-3 py-2.5 text-left"
-                style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{p.name}</div>
-                  <div className="truncate text-xs" style={{ color: C.sub }}>
-                    {p.role} · <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{p.username}</span>
-                  </div>
-                </div>
-                <ChevronRight size={16} style={{ color: C.chevron }} />
-              </button>
-            ))}
-          </div>
-        ) : null}
 
         <div className="pb-10" />
       </div>
