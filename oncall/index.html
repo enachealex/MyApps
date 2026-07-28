@@ -9,6 +9,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="OnCall" />
+    <!-- iOS ignores the manifest's icons and reads this one, and it will not
+         take an SVG. Without it an iPhone home screen shows a screenshot of
+         the page instead of the mark. Relative, because the app is served from
+         a subpath. -->
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
     <link rel="manifest" href="manifest.webmanifest" />
     <title>OnCall Schedule</title>
   </head>
