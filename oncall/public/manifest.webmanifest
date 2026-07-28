@@ -1,7 +1,7 @@
 {
   "name": "OnCall Schedule",
   "short_name": "OnCall",
-  "description": "On-call schedule, check-in, and shift trades.",
+  "description": "On-call schedule, phone list, and shift trades.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
