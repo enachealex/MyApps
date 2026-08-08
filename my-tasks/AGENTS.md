@@ -28,6 +28,15 @@ See README.md for features and user-facing setup.
   via `setThemePref` under AsyncStorage key `my-tasks/theme-pref`. Smart-list accents have
   per-theme variants — use `smartColor(meta, colors.dark)` from `src/constants.ts`, never
   `meta.color` directly. List colors (`listColors`) are stored in data and theme-independent.
+- Backgrounds: bundled gradient JPGs in `assets/backgrounds/`, registered in
+  `src/backgrounds.ts`. A LIST's background is data (`TaskList.background`, syncs);
+  a SMART list's background is a device pref (`smartBackgrounds` in `src/theme.ts`).
+  Picker is `BackgroundSheet` (palette icon on smart lists, list menu otherwise). When a
+  background is active, ListPane overlays a theme-aware scrim and switches header/section
+  text to the `textOnPhoto`/`dimTextOnPhoto` styles.
+- Completion feedback lives in `src/feedback.ts` (haptics native, vibrate on Android web),
+  called from `toggleTaskCompleted`; the checkbox pop/fade animation is in TaskItem. Sound
+  files are not wired yet — the hook point is documented in feedback.ts.
 - Dates are local-timezone `YYYY-MM-DD` strings (`src/utils/dates.ts`); "My Day" membership is
   `myDayDate === todayStr()` so it naturally resets each day.
 - Web quirks handled already: `Alert.alert` doesn't work on web (use `src/utils/ui.ts` helpers),

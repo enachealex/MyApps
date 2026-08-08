@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme } from 'react-native';
 import { create } from 'zustand';
+import type { SmartListId } from './types';
 
 export interface ThemeColors {
   dark: boolean;
@@ -76,27 +77,60 @@ export function avatarColor(id: string): string {
 export type ThemePref = 'system' | 'light' | 'dark';
 
 const THEME_KEY = 'my-tasks/theme-pref';
+const SMART_BG_KEY = 'my-tasks/smart-backgrounds';
+const HAPTICS_KEY = 'my-tasks/haptics';
 
 interface ThemeState {
   pref: ThemePref;
+  /** Device-level background choice per smart list (list backgrounds sync as data). */
+  smartBackgrounds: Partial<Record<SmartListId, string | null>>;
+  /** Vibration/haptics on task completion. */
+  haptics: boolean;
 }
 
-export const useThemeStore = create<ThemeState>(() => ({ pref: 'system' }));
+export const useThemeStore = create<ThemeState>(() => ({
+  pref: 'system',
+  smartBackgrounds: { myday: 'sunrise' },
+  haptics: true,
+}));
 
 export async function loadThemePref(): Promise<void> {
   try {
-    const v = await AsyncStorage.getItem(THEME_KEY);
+    const [v, bg, haptics] = await Promise.all([
+      AsyncStorage.getItem(THEME_KEY),
+      AsyncStorage.getItem(SMART_BG_KEY),
+      AsyncStorage.getItem(HAPTICS_KEY),
+    ]);
     if (v === 'system' || v === 'light' || v === 'dark') {
       useThemeStore.setState({ pref: v });
     }
+    if (bg) {
+      useThemeStore.setState({
+        smartBackgrounds: JSON.parse(bg) as ThemeState['smartBackgrounds'],
+      });
+    }
+    if (haptics != null) {
+      useThemeStore.setState({ haptics: haptics === '1' });
+    }
   } catch {
-    // First run / storage unavailable: keep the default.
+    // First run / storage unavailable: keep the defaults.
   }
 }
 
 export function setThemePref(pref: ThemePref): void {
   useThemeStore.setState({ pref });
   AsyncStorage.setItem(THEME_KEY, pref).catch(() => {});
+}
+
+export function setSmartBackground(id: SmartListId, background: string | null): void {
+  const next = { ...useThemeStore.getState().smartBackgrounds, [id]: background };
+  useThemeStore.setState({ smartBackgrounds: next });
+  AsyncStorage.setItem(SMART_BG_KEY, JSON.stringify(next)).catch(() => {});
+}
+
+export function setHaptics(enabled: boolean): void {
+  useThemeStore.setState({ haptics: enabled });
+  AsyncStorage.setItem(HAPTICS_KEY, enabled ? '1' : '0').catch(() => {});
 }
 
 // --- Hooks --------------------------------------------------------------------

@@ -75,6 +75,7 @@ export function buildList(
     ownerId: uid,
     memberIds: [uid],
     shareCode: null,
+    background: null,
     isDefault,
     createdAt: now,
     updatedAt: now,

@@ -1,3 +1,4 @@
+import { completionFeedback } from '../feedback';
 import type { Task } from '../types';
 import { nextOccurrence, todayStr } from '../utils/dates';
 import { isCloudEnabled } from './firebase';
@@ -21,6 +22,7 @@ export async function toggleTaskCompleted(task: Task): Promise<void> {
     await api.updateTask(task.id, { completed: false, completedAt: null });
     return;
   }
+  completionFeedback();
   await api.updateTask(task.id, { completed: true, completedAt: Date.now() });
   if (task.repeat) {
     const today = todayStr();

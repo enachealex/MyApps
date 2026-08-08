@@ -52,6 +52,8 @@ export interface TaskList {
   ownerId: string;
   memberIds: string[];
   shareCode: string | null;
+  /** Decorative background id from src/backgrounds.ts, or null for plain. */
+  background?: string | null;
   /** The built-in "Tasks" list. Cannot be deleted or renamed. */
   isDefault?: boolean;
   createdAt: number;

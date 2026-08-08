@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
+  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,17 +10,19 @@ import {
   Text,
   View,
 } from 'react-native';
+import { backgroundSource } from '../backgrounds';
 import type { IconName } from '../constants';
 import { SMART_LISTS, smartColor } from '../constants';
 import { api, toggleTaskCompleted } from '../data/api';
 import type { TaskDraft } from '../data/service';
 import { getDefaultList, tasksForSmartList, useAppStore } from '../data/store';
 import type { SmartListId, Task } from '../types';
-import { ThemeColors, useThemedStyles } from '../theme';
+import { setSmartBackground, ThemeColors, useThemedStyles, useThemeStore } from '../theme';
 import { addDaysStr, formatLongDate, todayStr } from '../utils/dates';
 import { confirmDialog, showMessage } from '../utils/ui';
 import { AddTaskBar } from './AddTaskBar';
 import { Avatar } from './Avatar';
+import { BackgroundSheet } from './BackgroundSheet';
 import { ChatSheet } from './ChatSheet';
 import { ListEditorModal } from './ListEditorModal';
 import { ShareSheet } from './ShareSheet';
@@ -101,6 +104,7 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
   const [editOpen, setEditOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [bgOpen, setBgOpen] = useState(false);
 
   const list = listId ? lists.find((l) => l.id === listId) : undefined;
   const smartMeta = smart ? SMART_LISTS[smart] : undefined;
@@ -113,6 +117,22 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
     ? smartColor(smartMeta, colors.dark)
     : list?.color ?? colors.primary;
   const title = smartMeta?.name ?? list?.name ?? '';
+
+  const smartBackgrounds = useThemeStore((s) => s.smartBackgrounds);
+  const backgroundId = list ? list.background ?? null : smart ? smartBackgrounds[smart] ?? null : null;
+  const bgSource = backgroundSource(backgroundId);
+  const onPhoto = bgSource != null;
+
+  const handlePickBackground = (background: string | null) => {
+    if (smart) setSmartBackground(smart, background);
+    else if (list) {
+      api
+        .updateList(list.id, { background })
+        .catch((e) =>
+          showMessage('Could not update list', e instanceof Error ? e.message : String(e))
+        );
+    }
+  };
   const isOwner = !list || list.ownerId === user?.id;
   const isShared = (list?.memberIds.length ?? 0) > 1;
 
@@ -220,13 +240,23 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
 
   return (
     <View style={styles.container}>
+      {bgSource && (
+        <ImageBackground source={bgSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+          <View style={[StyleSheet.absoluteFill, styles.scrim]} />
+        </ImageBackground>
+      )}
       <View style={styles.titleRow}>
         <View style={styles.titleBlock}>
-          <Text style={[styles.title, { color: accent }]} numberOfLines={1}>
+          <Text
+            style={[styles.title, { color: accent }, onPhoto && styles.textOnPhoto]}
+            numberOfLines={1}
+          >
             {title}
           </Text>
           {smart === 'myday' && (
-            <Text style={styles.subtitle}>{formatLongDate(new Date())}</Text>
+            <Text style={[styles.subtitle, onPhoto && styles.dimTextOnPhoto]}>
+              {formatLongDate(new Date())}
+            </Text>
           )}
           {list && isShared && (
             <Pressable style={styles.membersRow} onPress={handleShare}>
@@ -235,10 +265,21 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
                   <Avatar id={id} name={members[id]?.name ?? '?'} size={24} />
                 </View>
               ))}
-              <Text style={styles.membersLabel}>{list.memberIds.length} members</Text>
+              <Text style={[styles.membersLabel, onPhoto && styles.dimTextOnPhoto]}>
+                {list.memberIds.length} members
+              </Text>
             </Pressable>
           )}
         </View>
+        {smart && (
+          <Pressable hitSlop={10} onPress={() => setBgOpen(true)} style={styles.topIcon}>
+            <Ionicons
+              name="color-palette-outline"
+              size={22}
+              color={onPhoto ? '#FFFFFF' : accent}
+            />
+          </Pressable>
+        )}
         {list && isShared && mode === 'cloud' && (
           <Pressable hitSlop={10} onPress={() => setChatOpen(true)} style={styles.topIcon}>
             <Ionicons name="chatbubbles-outline" size={22} color={accent} />
@@ -274,13 +315,17 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
                     size={16}
                     color={colors.textSecondary}
                   />
-                  <Text style={styles.completedTitle}>
+                  <Text style={[styles.completedTitle, onPhoto && styles.dimTextOnPhoto]}>
                     {item.title} {item.count}
                   </Text>
                 </Pressable>
               );
             }
-            return <Text style={styles.sectionTitle}>{item.title}</Text>;
+            return (
+              <Text style={[styles.sectionTitle, onPhoto && styles.dimTextOnPhoto]}>
+                {item.title}
+              </Text>
+            );
           }
           return (
             <TaskItem
@@ -341,6 +386,14 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
               <SheetItem icon="person-add-outline" label="Share list" onPress={handleShare} />
             )}
             <SheetItem
+              icon="color-palette-outline"
+              label="Change background"
+              onPress={() => {
+                setMenuOpen(false);
+                setBgOpen(true);
+              }}
+            />
+            <SheetItem
               icon={showCompleted ? 'eye-off-outline' : 'eye-outline'}
               label={showCompleted ? 'Hide completed tasks' : 'Show completed tasks'}
               onPress={() => {
@@ -383,6 +436,13 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
           <ChatSheet visible={chatOpen} onClose={() => setChatOpen(false)} list={list} />
         </>
       )}
+
+      <BackgroundSheet
+        visible={bgOpen}
+        onClose={() => setBgOpen(false)}
+        current={backgroundId}
+        onSelect={handlePickBackground}
+      />
     </View>
   );
 }
@@ -391,6 +451,21 @@ const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
   container: {
     flex: 1,
+  },
+  scrim: {
+    backgroundColor: colors.dark ? 'rgba(27, 26, 25, 0.32)' : 'rgba(250, 249, 248, 0.16)',
+  },
+  textOnPhoto: {
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  dimTextOnPhoto: {
+    color: 'rgba(255, 255, 255, 0.92)',
+    textShadowColor: 'rgba(0, 0, 0, 0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   titleRow: {
     flexDirection: 'row',

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useRef } from 'react';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Task } from '../types';
 import { ThemeColors, useThemedStyles } from '../theme';
 import { formatDueDate, isOverdue, todayStr } from '../utils/dates';
@@ -28,6 +28,38 @@ export function TaskItem({
   onToggleImportant,
 }: Props) {
   const { colors, styles } = useThemedStyles(createStyles);
+
+  // Completing gets a little ceremony: the checkbox pops and the card fades
+  // for a beat before the task re-sorts into Completed.
+  const checkScale = useRef(new Animated.Value(1)).current;
+  const cardOpacity = useRef(new Animated.Value(1)).current;
+  const completing = useRef(false);
+  const native = Platform.OS !== 'web';
+
+  const handleToggle = () => {
+    if (completing.current) return;
+    if (task.completed) {
+      onToggle();
+      return;
+    }
+    completing.current = true;
+    Animated.sequence([
+      Animated.timing(checkScale, { toValue: 1.3, duration: 110, useNativeDriver: native }),
+      Animated.timing(checkScale, { toValue: 1, duration: 110, useNativeDriver: native }),
+    ]).start();
+    Animated.timing(cardOpacity, {
+      toValue: 0.35,
+      duration: 200,
+      delay: 90,
+      useNativeDriver: native,
+    }).start(() => {
+      completing.current = false;
+      cardOpacity.setValue(1);
+      checkScale.setValue(1);
+      onToggle();
+    });
+  };
+
   const meta: React.ReactNode[] = [];
   const push = (node: React.ReactNode) => {
     if (meta.length > 0) {
@@ -84,11 +116,14 @@ export function TaskItem({
   }
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={onPress}
-    >
-      <TaskCheckbox checked={task.completed} color={accentColor} onToggle={onToggle} />
+    <Animated.View style={{ opacity: cardOpacity }}>
+      <Pressable
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+        onPress={onPress}
+      >
+        <Animated.View style={{ transform: [{ scale: checkScale }] }}>
+          <TaskCheckbox checked={task.completed} color={accentColor} onToggle={handleToggle} />
+        </Animated.View>
       <View style={styles.body}>
         <Text
           style={[styles.title, task.completed && styles.titleCompleted]}
@@ -105,7 +140,8 @@ export function TaskItem({
           color={task.important ? accentColor : colors.textTertiary}
         />
       </Pressable>
-    </Pressable>
+      </Pressable>
+    </Animated.View>
   );
 }
 

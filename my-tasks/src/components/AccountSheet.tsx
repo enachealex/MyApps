@@ -5,6 +5,7 @@ import { api } from '../data/api';
 import { useAppStore } from '../data/store';
 import { promptInstall, useInstallStore } from '../pwa';
 import {
+  setHaptics,
   setThemePref,
   ThemeColors,
   ThemePref,
@@ -31,6 +32,7 @@ export function AccountSheet({ visible, onClose }: Props) {
   const user = useAppStore((s) => s.user);
   const mode = useAppStore((s) => s.mode);
   const themePref = useThemeStore((s) => s.pref);
+  const haptics = useThemeStore((s) => s.haptics);
   const canInstall = useInstallStore((s) => s.canInstall);
 
   const signOut = async () => {
@@ -79,6 +81,30 @@ export function AccountSheet({ visible, onClose }: Props) {
               </Pressable>
             );
           })}
+        </View>
+
+        <Text style={styles.sectionTitle}>Completing tasks</Text>
+        <View style={styles.themeGroup}>
+          <Pressable
+            style={({ pressed }) => [styles.themeRow, pressed && styles.themeRowPressed]}
+            onPress={() => setHaptics(!haptics)}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: haptics }}
+          >
+            <Ionicons
+              name="pulse-outline"
+              size={19}
+              color={haptics ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[styles.themeLabel, haptics && { color: colors.primary }]}>
+              Vibration & haptics
+            </Text>
+            <Ionicons
+              name={haptics ? 'checkmark-circle' : 'ellipse-outline'}
+              size={20}
+              color={haptics ? colors.primary : colors.textTertiary}
+            />
+          </Pressable>
         </View>
 
         {canInstall && (
