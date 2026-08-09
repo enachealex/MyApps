@@ -13,7 +13,7 @@ import {
 import type { IconName } from '../constants';
 import { MY_DAY_SOFT_LIMIT } from '../constants';
 import { api, toggleTaskCompleted } from '../data/api';
-import { myDayIncompleteCount, useAppStore } from '../data/store';
+import { blockerOf, myDayIncompleteCount, useAppStore } from '../data/store';
 import type { Task, TaskStep } from '../types';
 import { ThemeColors, useThemedStyles } from '../theme';
 import {
@@ -26,7 +26,9 @@ import {
 import { genId } from '../utils/id';
 import { confirmDialog, showMessage } from '../utils/ui';
 import { AssignSheet } from './AssignSheet';
+import { BlockerSheet } from './BlockerSheet';
 import { DueDateSheet } from './DueDateSheet';
+import { MoveToSectionSheet } from './MoveToSectionSheet';
 import { RepeatSheet } from './RepeatSheet';
 import { TaskCheckbox } from './TaskCheckbox';
 
@@ -45,12 +47,14 @@ function reportError(e: unknown) {
 interface StepRowProps {
   step: TaskStep;
   accent: string;
+  /** Lockstep mode: previous steps must be completed first. */
+  locked?: boolean;
   onToggle: () => void;
   onRename: (title: string) => void;
   onRemove: () => void;
 }
 
-function StepRow({ step, accent, onToggle, onRename, onRemove }: StepRowProps) {
+function StepRow({ step, accent, locked, onToggle, onRename, onRemove }: StepRowProps) {
   const { colors, styles } = useThemedStyles(createStyles);
   const [text, setText] = useState(step.title);
 
@@ -65,8 +69,20 @@ function StepRow({ step, accent, onToggle, onRename, onRemove }: StepRowProps) {
   };
 
   return (
-    <View style={styles.stepRow}>
-      <TaskCheckbox checked={step.completed} color={accent} onToggle={onToggle} size={18} />
+    <View style={[styles.stepRow, locked && styles.stepLocked]}>
+      <TaskCheckbox
+        checked={step.completed}
+        color={accent}
+        locked={locked}
+        onToggle={() => {
+          if (locked) {
+            showMessage('Steps go in order', 'Finish the previous step first.');
+            return;
+          }
+          onToggle();
+        }}
+        size={18}
+      />
       <TextInput
         style={[styles.stepInput, step.completed && styles.stepCompleted]}
         value={text}
@@ -85,6 +101,7 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
   const { colors, styles } = useThemedStyles(createStyles);
   const task = useAppStore((s) => s.tasks.find((t) => t.id === taskId));
   const lists = useAppStore((s) => s.lists);
+  const allTasks = useAppStore((s) => s.tasks);
   const mode = useAppStore((s) => s.mode);
   const members = useAppStore((s) => s.members);
 
@@ -97,6 +114,8 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
   const [dueOpen, setDueOpen] = useState(false);
   const [repeatOpen, setRepeatOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [blockerOpen, setBlockerOpen] = useState(false);
+  const [sectionOpen, setSectionOpen] = useState(false);
 
   useEffect(() => {
     if (!task) onClose();
@@ -170,6 +189,14 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
   const assignee = task.assigneeId ? members[task.assigneeId] : undefined;
   const canAssign = mode === 'cloud' && (list?.memberIds.length ?? 0) > 1;
 
+  const blocker = blockerOf(task, allTasks);
+  const blockerCandidates = allTasks.some(
+    (t) => t.listId === task.listId && t.id !== task.id && !t.completed
+  );
+  const sections = [...(list?.sections ?? [])].sort((a, b) => a.order - b.order);
+  const currentSection = sections.find((s) => s.id === task.sectionId);
+  const firstIncompleteStep = task.steps.findIndex((s) => !s.completed);
+
   const handleDelete = () => {
     confirmDialog(
       'Delete task',
@@ -206,7 +233,14 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
               <TaskCheckbox
                 checked={task.completed}
                 color={accent}
-                onToggle={() => toggleTaskCompleted(task).catch(reportError)}
+                locked={blocker != null && !task.completed}
+                onToggle={() => {
+                  if (blocker && !task.completed) {
+                    showMessage('Task is blocked', `Finish "${blocker.title}" first.`);
+                    return;
+                  }
+                  toggleTaskCompleted(task).catch(reportError);
+                }}
               />
               <TextInput
                 style={[styles.titleInput, task.completed && styles.titleCompleted]}
@@ -228,11 +262,17 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
               </Pressable>
             </View>
 
-            {task.steps.map((step) => (
+            {task.steps.map((step, index) => (
               <StepRow
                 key={step.id}
                 step={step}
                 accent={accent}
+                locked={
+                  task.stepsInOrder === true &&
+                  !step.completed &&
+                  firstIncompleteStep !== -1 &&
+                  index > firstIncompleteStep
+                }
                 onToggle={() =>
                   updateSteps(
                     task.steps.map((s) =>
@@ -262,7 +302,59 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
                 blurOnSubmit={false}
               />
             </View>
+            {task.steps.length > 1 && (
+              <Pressable
+                style={[styles.stepRow, styles.lockstepRow]}
+                onPress={() => update({ stepsInOrder: task.stepsInOrder !== true })}
+              >
+                <Ionicons
+                  name={task.stepsInOrder ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={18}
+                  color={task.stepsInOrder ? accent : colors.textTertiary}
+                />
+                <Text
+                  style={[styles.lockstepLabel, task.stepsInOrder === true && { color: accent }]}
+                >
+                  Complete steps in order
+                </Text>
+              </Pressable>
+            )}
           </View>
+
+          {list && sections.length > 0 && (
+            <View style={styles.card}>
+              <Pressable style={styles.optionRow} onPress={() => setSectionOpen(true)}>
+                <Ionicons
+                  name="folder-outline"
+                  size={20}
+                  color={currentSection ? accent : colors.textSecondary}
+                />
+                <Text style={[styles.optionLabel, currentSection != null && { color: accent }]}>
+                  {currentSection ? currentSection.name : 'Add to section'}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {(blockerCandidates || task.blockedBy != null) && (
+            <View style={styles.card}>
+              <Pressable style={styles.optionRow} onPress={() => setBlockerOpen(true)}>
+                <Ionicons
+                  name={blocker ? 'lock-closed' : 'lock-closed-outline'}
+                  size={20}
+                  color={blocker ? colors.danger : colors.textSecondary}
+                />
+                <Text style={[styles.optionLabel, blocker != null && { color: colors.danger }]}>
+                  {blocker ? `Blocked by "${blocker.title}"` : 'Blocked by…'}
+                </Text>
+                {task.blockedBy && (
+                  <Pressable hitSlop={8} onPress={() => update({ blockedBy: null })}>
+                    <Ionicons name="close" size={18} color={colors.textTertiary} />
+                  </Pressable>
+                )}
+              </Pressable>
+            </View>
+          )}
 
           <View style={styles.card}>
             <Pressable style={styles.optionRow} onPress={toggleMyDay}>
@@ -392,6 +484,15 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
           onSelect={(assigneeId) => update({ assigneeId })}
         />
       )}
+      {list && (
+        <MoveToSectionSheet
+          visible={sectionOpen}
+          onClose={() => setSectionOpen(false)}
+          list={list}
+          task={task}
+        />
+      )}
+      <BlockerSheet visible={blockerOpen} onClose={() => setBlockerOpen(false)} task={task} />
     </View>
   );
 }
@@ -460,6 +561,17 @@ const createStyles = (colors: ThemeColors) =>
   stepCompleted: {
     textDecorationLine: 'line-through',
     color: colors.textSecondary,
+  },
+  stepLocked: {
+    opacity: 0.55,
+  },
+  lockstepRow: {
+    alignItems: 'center',
+  },
+  lockstepLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginLeft: 12,
   },
   optionRow: {
     flexDirection: 'row',

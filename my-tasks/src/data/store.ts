@@ -64,6 +64,22 @@ export function myDayIncompleteCount(tasks: Task[]): number {
   return incompleteCount(tasksForSmartList(tasks, 'myday'));
 }
 
+/** Manual sort key; legacy tasks without one keep newest-first placement. */
+export function effectiveOrder(t: Task): number {
+  return t.order ?? -t.createdAt;
+}
+
+export function sortByOrder(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => effectiveOrder(a) - effectiveOrder(b));
+}
+
+/** The incomplete task blocking this one, if any. */
+export function blockerOf(task: Task, tasks: Task[]): Task | null {
+  if (!task.blockedBy) return null;
+  const blocker = tasks.find((t) => t.id === task.blockedBy);
+  return blocker && !blocker.completed ? blocker : null;
+}
+
 /** Incomplete tasks whose due date has slipped past — rollover candidates. */
 export function overdueTasks(tasks: Task[]): Task[] {
   const today = todayStr();

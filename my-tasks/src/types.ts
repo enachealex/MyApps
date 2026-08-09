@@ -40,6 +40,12 @@ export interface TaskStep {
   completed: boolean;
 }
 
+export interface TaskSection {
+  id: string;
+  name: string;
+  order: number;
+}
+
 export interface Task {
   id: string;
   listId: string;
@@ -55,6 +61,14 @@ export interface Task {
   repeat: Repeat | null;
   /** Parked in the Someday list: out of every active view, never lost. */
   someday?: boolean;
+  /** Section within the list; unknown/absent ids render as unsectioned. */
+  sectionId?: string | null;
+  /** Manual sort key (ascending). Falls back to -createdAt (newest first). */
+  order?: number;
+  /** Lockstep mode: steps can only be completed top to bottom. */
+  stepsInOrder?: boolean;
+  /** Task in the same list that must be completed before this one. */
+  blockedBy?: string | null;
   steps: TaskStep[];
   assigneeId: string | null;
   createdBy: string;
@@ -71,6 +85,8 @@ export interface TaskList {
   shareCode: string | null;
   /** Decorative background id from src/backgrounds.ts, or null for plain. */
   background?: string | null;
+  /** Sections tasks can be grouped into (also the Kanban columns). */
+  sections?: TaskSection[];
   /** The built-in "Tasks" list. Cannot be deleted or renamed. */
   isDefault?: boolean;
   createdAt: number;

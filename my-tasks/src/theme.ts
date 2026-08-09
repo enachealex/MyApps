@@ -79,6 +79,9 @@ export type ThemePref = 'system' | 'light' | 'dark';
 const THEME_KEY = 'my-tasks/theme-pref';
 const SMART_BG_KEY = 'my-tasks/smart-backgrounds';
 const HAPTICS_KEY = 'my-tasks/haptics';
+const VIEW_MODES_KEY = 'my-tasks/view-modes';
+
+export type ListViewMode = 'list' | 'board';
 
 interface ThemeState {
   pref: ThemePref;
@@ -86,20 +89,24 @@ interface ThemeState {
   smartBackgrounds: Partial<Record<SmartListId, string | null>>;
   /** Vibration/haptics on task completion. */
   haptics: boolean;
+  /** Per-list view choice (checklist vs Kanban board), per device. */
+  listViewModes: Record<string, ListViewMode>;
 }
 
 export const useThemeStore = create<ThemeState>(() => ({
   pref: 'system',
   smartBackgrounds: { myday: 'sunrise' },
   haptics: true,
+  listViewModes: {},
 }));
 
 export async function loadThemePref(): Promise<void> {
   try {
-    const [v, bg, haptics] = await Promise.all([
+    const [v, bg, haptics, viewModes] = await Promise.all([
       AsyncStorage.getItem(THEME_KEY),
       AsyncStorage.getItem(SMART_BG_KEY),
       AsyncStorage.getItem(HAPTICS_KEY),
+      AsyncStorage.getItem(VIEW_MODES_KEY),
     ]);
     if (v === 'system' || v === 'light' || v === 'dark') {
       useThemeStore.setState({ pref: v });
@@ -111,6 +118,11 @@ export async function loadThemePref(): Promise<void> {
     }
     if (haptics != null) {
       useThemeStore.setState({ haptics: haptics === '1' });
+    }
+    if (viewModes) {
+      useThemeStore.setState({
+        listViewModes: JSON.parse(viewModes) as ThemeState['listViewModes'],
+      });
     }
   } catch {
     // First run / storage unavailable: keep the defaults.
@@ -131,6 +143,12 @@ export function setSmartBackground(id: SmartListId, background: string | null): 
 export function setHaptics(enabled: boolean): void {
   useThemeStore.setState({ haptics: enabled });
   AsyncStorage.setItem(HAPTICS_KEY, enabled ? '1' : '0').catch(() => {});
+}
+
+export function setListViewMode(listId: string, mode: ListViewMode): void {
+  const next = { ...useThemeStore.getState().listViewModes, [listId]: mode };
+  useThemeStore.setState({ listViewModes: next });
+  AsyncStorage.setItem(VIEW_MODES_KEY, JSON.stringify(next)).catch(() => {});
 }
 
 // --- Hooks --------------------------------------------------------------------

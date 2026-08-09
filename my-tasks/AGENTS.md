@@ -37,6 +37,19 @@ See README.md for features and user-facing setup.
 - Completion feedback lives in `src/feedback.ts` (haptics native, vibrate on Android web),
   called from `toggleTaskCompleted`; the checkbox pop/fade animation is in TaskItem. Sound
   files are not wired yet — the hook point is documented in feedback.ts.
+- Sections & ordering: `TaskList.sections` (id/name/order) group tasks via `Task.sectionId`
+  (dangling ids render as unsectioned — deleting a section never touches tasks). Manual sort
+  uses `Task.order` ascending with `effectiveOrder()` falling back to `-createdAt`; drags
+  write fractional midpoints. DnD lives in ListPane (PanResponder on the row drag handle,
+  rows measured with measureInWindow at drag start). The Kanban board (`KanbanBoard.tsx`,
+  toggled per list per device via `listViewModes` in theme.ts) renders sections as columns
+  over the same data.
+- Blockers & lockstep: `Task.blockedBy` (same-list prerequisite; UI guards completion and
+  shows a lock) and `Task.stepsInOrder` (steps must be completed top-to-bottom). Both are
+  enforced in UI handlers, not in the data layer.
+- Repeat rules are encoded strings (see `Repeat` in types.ts): five basics plus `after:N`
+  (from completion day) and `monthweekday:W:D`. Always use `repeatLabel()`/`nextOccurrence()`
+  from utils/dates.ts; never switch on the raw string elsewhere.
 - Dates are local-timezone `YYYY-MM-DD` strings (`src/utils/dates.ts`); "My Day" membership is
   `myDayDate === todayStr()` so it naturally resets each day.
 - Web quirks handled already: `Alert.alert` doesn't work on web (use `src/utils/ui.ts` helpers),

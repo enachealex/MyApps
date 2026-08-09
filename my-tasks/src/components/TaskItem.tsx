@@ -13,6 +13,10 @@ interface Props {
   listName?: string;
   /** Suppress the "My Day" badge (when already inside My Day). */
   hideMyDayBadge?: boolean;
+  /** Waiting on another task: lock the checkbox (parent shows the message). */
+  blocked?: boolean;
+  /** Reorder handle (parent supplies gesture handlers). */
+  dragHandle?: React.ReactNode;
   onPress: () => void;
   onToggle: () => void;
   onToggleImportant: () => void;
@@ -23,6 +27,8 @@ export function TaskItem({
   accentColor,
   listName,
   hideMyDayBadge,
+  blocked,
+  dragHandle,
   onPress,
   onToggle,
   onToggleImportant,
@@ -72,6 +78,14 @@ export function TaskItem({
     meta.push(node);
   };
 
+  if (blocked) {
+    push(
+      <React.Fragment key="blocked">
+        <Ionicons name="lock-closed" size={11} color={colors.textSecondary} />
+        <Text style={styles.metaText}> Blocked</Text>
+      </React.Fragment>
+    );
+  }
   if (listName) {
     push(
       <Text key="list" style={styles.metaText}>
@@ -122,7 +136,12 @@ export function TaskItem({
         onPress={onPress}
       >
         <Animated.View style={{ transform: [{ scale: checkScale }] }}>
-          <TaskCheckbox checked={task.completed} color={accentColor} onToggle={handleToggle} />
+          <TaskCheckbox
+            checked={task.completed}
+            color={accentColor}
+            onToggle={handleToggle}
+            locked={blocked}
+          />
         </Animated.View>
       <View style={styles.body}>
         <Text
@@ -140,6 +159,7 @@ export function TaskItem({
           color={task.important ? accentColor : colors.textTertiary}
         />
       </Pressable>
+      {dragHandle}
       </Pressable>
     </Animated.View>
   );
