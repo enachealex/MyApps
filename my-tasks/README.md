@@ -24,6 +24,15 @@ work on the same checklist together in real time.
 - **List chat** (cloud mode) — every shared list has a live group chat for its members.
 - **Sign in with email or Google** (cloud mode) — the Google button gives the familiar
   account-chooser experience on the web app.
+- **Natural-language quick add** — type "Call dentist next Tuesday at 3pm !" and the due date
+  and priority are parsed automatically (a hint chip lets you keep it as plain text).
+- **Flexible repeats** — besides daily/weekly/monthly: "N days after completion" (a late task
+  never stacks up overdue copies) and "monthly on the 1st Monday"-style rules.
+- **Someday** — a pressure-free parking lot outside every active view, plus a soft 5-task
+  My Day limit that nudges you to prioritize.
+- **Daily rollover** — once a day, overdue tasks trigger a batch offer: move to today or
+  tomorrow, drop the dates, or park everything in Someday.
+- **Search** — everything you've ever added, completed history included, from the sidebar.
 
 ## Privacy & account security
 

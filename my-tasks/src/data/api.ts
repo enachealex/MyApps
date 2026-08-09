@@ -1,6 +1,6 @@
 import { completionFeedback } from '../feedback';
 import type { Task } from '../types';
-import { nextOccurrence, todayStr } from '../utils/dates';
+import { isAfterCompletion, nextOccurrence, todayStr } from '../utils/dates';
 import { isCloudEnabled } from './firebase';
 import type { DataService } from './service';
 import { firebaseService } from './firebaseService';
@@ -26,7 +26,10 @@ export async function toggleTaskCompleted(task: Task): Promise<void> {
   await api.updateTask(task.id, { completed: true, completedAt: Date.now() });
   if (task.repeat) {
     const today = todayStr();
-    let next = nextOccurrence(task.dueDate ?? today, task.repeat);
+    // "After completion" rules count from the day it was actually finished,
+    // so a delayed task never piles up overdue occurrences.
+    const base = isAfterCompletion(task.repeat) ? today : task.dueDate ?? today;
+    let next = nextOccurrence(base, task.repeat);
     while (next < today) next = nextOccurrence(next, task.repeat);
     await api.createTask({
       listId: task.listId,

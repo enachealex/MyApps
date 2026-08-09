@@ -12,7 +12,10 @@ export function HomeScreen({ navigation }: Props) {
   const { styles } = useThemedStyles(createStyles);
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <Sidebar onSelect={(selection) => navigation.navigate('List', selection)} />
+      <Sidebar
+        onSelect={(selection) => navigation.navigate('List', selection)}
+        onOpenTask={(taskId) => navigation.navigate('Task', { taskId })}
+      />
     </SafeAreaView>
   );
 }

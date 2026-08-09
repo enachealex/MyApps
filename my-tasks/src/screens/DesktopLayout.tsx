@@ -27,7 +27,7 @@ export function DesktopLayout() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.row}>
         <View style={styles.sidebar}>
-          <Sidebar selection={selection} onSelect={select} />
+          <Sidebar selection={selection} onSelect={select} onOpenTask={setOpenTaskId} />
         </View>
         <View style={styles.main}>
           <ListPane

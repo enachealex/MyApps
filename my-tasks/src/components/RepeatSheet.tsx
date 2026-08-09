@@ -1,29 +1,49 @@
 import type { Repeat } from '../types';
-import { REPEAT_LABELS } from '../utils/dates';
+import { monthWeekdayRuleFor, repeatLabel, todayStr } from '../utils/dates';
 import { Sheet, SheetItem } from './Sheet';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   current: Repeat | null;
+  /** Basis for the "monthly on the Nth weekday" option (the task's due date). */
+  referenceDate?: string | null;
   onSelect: (repeat: Repeat | null) => void;
 }
 
-const OPTIONS = Object.keys(REPEAT_LABELS) as Repeat[];
+const BASICS: Repeat[] = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
+const AFTER_COMPLETION: Repeat[] = ['after:3', 'after:7', 'after:30'];
 
-export function RepeatSheet({ visible, onClose, current, onSelect }: Props) {
+export function RepeatSheet({ visible, onClose, current, referenceDate, onSelect }: Props) {
   const pick = (repeat: Repeat | null) => {
     onSelect(repeat);
     onClose();
   };
 
+  const monthWeekday = monthWeekdayRuleFor(referenceDate ?? todayStr());
+
   return (
     <Sheet visible={visible} onClose={onClose} title="Repeat">
-      {OPTIONS.map((option) => (
+      {BASICS.map((option) => (
         <SheetItem
           key={option}
           icon="repeat"
-          label={REPEAT_LABELS[option]}
+          label={repeatLabel(option)}
+          selected={current === option}
+          onPress={() => pick(option)}
+        />
+      ))}
+      <SheetItem
+        icon="calendar-outline"
+        label={repeatLabel(monthWeekday)}
+        selected={current === monthWeekday}
+        onPress={() => pick(monthWeekday)}
+      />
+      {AFTER_COMPLETION.map((option) => (
+        <SheetItem
+          key={option}
+          icon="checkmark-done-outline"
+          label={repeatLabel(option)}
           selected={current === option}
           onPress={() => pick(option)}
         />

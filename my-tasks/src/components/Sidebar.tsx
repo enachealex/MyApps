@@ -18,6 +18,7 @@ import { Avatar } from './Avatar';
 import { FriendsSheet } from './FriendsSheet';
 import { JoinSheet } from './JoinSheet';
 import { ListEditorModal } from './ListEditorModal';
+import { SearchSheet } from './SearchSheet';
 
 /** What is shown in the main pane: exactly one of smart / listId. */
 export interface ListSelection {
@@ -29,6 +30,8 @@ interface Props {
   /** Highlighted entry (desktop two-pane mode); omit on phones. */
   selection?: ListSelection;
   onSelect: (selection: ListSelection) => void;
+  /** Opens a task found via search (detail pane on desktop, push on phones). */
+  onOpenTask: (taskId: string) => void;
 }
 
 interface Row {
@@ -43,7 +46,7 @@ interface Row {
   onPress: () => void;
 }
 
-export function Sidebar({ selection, onSelect }: Props) {
+export function Sidebar({ selection, onSelect, onOpenTask }: Props) {
   const { colors, styles } = useThemedStyles(createStyles);
   const lists = useAppStore((s) => s.lists);
   const tasks = useAppStore((s) => s.tasks);
@@ -56,6 +59,7 @@ export function Sidebar({ selection, onSelect }: Props) {
   const [joinOpen, setJoinOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const hasFriendRequests = friends.some((f) => f.status === 'incoming');
 
@@ -64,6 +68,7 @@ export function Sidebar({ selection, onSelect }: Props) {
 
   const smartIds: SmartListId[] = ['myday', 'important', 'planned'];
   if (mode === 'cloud') smartIds.push('assigned');
+  smartIds.push('someday');
 
   const rows: Row[] = smartIds.map((id) => {
     const meta = SMART_LISTS[id];
@@ -72,7 +77,8 @@ export function Sidebar({ selection, onSelect }: Props) {
       icon: meta.icon,
       color: smartColor(meta, colors.dark),
       name: meta.name,
-      count: incompleteCount(tasksForSmartList(tasks, id, user?.id)),
+      // Someday is deliberately badge-free — it's a pressure-free parking lot.
+      count: id === 'someday' ? 0 : incompleteCount(tasksForSmartList(tasks, id, user?.id)),
       selected: selection?.smart === id,
       onPress: () => onSelect({ smart: id }),
     };
@@ -158,6 +164,11 @@ export function Sidebar({ selection, onSelect }: Props) {
         </Pressable>
       </View>
 
+      <Pressable style={styles.searchRow} onPress={() => setSearchOpen(true)}>
+        <Ionicons name="search" size={16} color={colors.textSecondary} />
+        <Text style={styles.searchText}>Search</Text>
+      </Pressable>
+
       <FlatList
         data={rows}
         keyExtractor={(row) => row.key}
@@ -211,6 +222,11 @@ export function Sidebar({ selection, onSelect }: Props) {
         onJoined={(listId) => onSelect({ listId })}
       />
       <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
+      <SearchSheet
+        visible={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onOpenTask={onOpenTask}
+      />
       <FriendsSheet visible={friendsOpen} onClose={() => setFriendsOpen(false)} />
     </View>
   );
@@ -258,6 +274,23 @@ const createStyles = (colors: ThemeColors) =>
     height: 8,
     borderRadius: 4,
     backgroundColor: colors.danger,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 14,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  searchText: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
   listContent: {
     paddingBottom: 12,

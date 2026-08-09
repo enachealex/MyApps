@@ -11,15 +11,16 @@ import {
   View,
 } from 'react-native';
 import type { IconName } from '../constants';
+import { MY_DAY_SOFT_LIMIT } from '../constants';
 import { api, toggleTaskCompleted } from '../data/api';
-import { useAppStore } from '../data/store';
+import { myDayIncompleteCount, useAppStore } from '../data/store';
 import type { Task, TaskStep } from '../types';
 import { ThemeColors, useThemedStyles } from '../theme';
 import {
   formatDueDate,
   formatTimestamp,
   isOverdue,
-  REPEAT_LABELS,
+  repeatLabel,
   todayStr,
 } from '../utils/dates';
 import { genId } from '../utils/id';
@@ -135,7 +136,30 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
   };
 
   const inMyDay = task.myDayDate === todayStr();
-  const toggleMyDay = () => update({ myDayDate: inMyDay ? null : todayStr() });
+  const toggleMyDay = () => {
+    if (inMyDay) {
+      update({ myDayDate: null });
+      return;
+    }
+    const add = () => update({ myDayDate: todayStr(), someday: false });
+    const staged = myDayIncompleteCount(useAppStore.getState().tasks);
+    if (staged >= MY_DAY_SOFT_LIMIT) {
+      confirmDialog(
+        'My Day is full',
+        `You already have ${MY_DAY_SOFT_LIMIT} tasks staged for today. Consider finishing or parking one in Someday first.`,
+        'Add anyway',
+        add,
+        false
+      );
+    } else {
+      add();
+    }
+  };
+
+  const toggleSomeday = () => {
+    if (task.someday) update({ someday: false });
+    else update({ someday: true, myDayDate: null, dueDate: null });
+  };
 
   const dueColor = task.dueDate
     ? !task.completed && isOverdue(task.dueDate)
@@ -252,6 +276,18 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
               </Text>
               {inMyDay && <Ionicons name="close" size={18} color={colors.textTertiary} />}
             </Pressable>
+            <View style={styles.rowDivider} />
+            <Pressable style={styles.optionRow} onPress={toggleSomeday}>
+              <Ionicons
+                name="file-tray-full-outline"
+                size={20}
+                color={task.someday ? accent : colors.textSecondary}
+              />
+              <Text style={[styles.optionLabel, task.someday && { color: accent }]}>
+                {task.someday ? 'Parked in Someday' : 'Move to Someday'}
+              </Text>
+              {task.someday && <Ionicons name="close" size={18} color={colors.textTertiary} />}
+            </Pressable>
           </View>
 
           <View style={styles.card}>
@@ -274,7 +310,7 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
                 color={task.repeat ? accent : colors.textSecondary}
               />
               <Text style={[styles.optionLabel, task.repeat != null && { color: accent }]}>
-                {task.repeat ? REPEAT_LABELS[task.repeat] : 'Repeat'}
+                {task.repeat ? repeatLabel(task.repeat) : 'Repeat'}
               </Text>
               {task.repeat && (
                 <Pressable hitSlop={8} onPress={() => update({ repeat: null })}>
@@ -339,6 +375,7 @@ export function TaskDetailPane({ taskId, onClose, dismissIcon = 'chevron-back' }
         visible={repeatOpen}
         onClose={() => setRepeatOpen(false)}
         current={task.repeat}
+        referenceDate={task.dueDate}
         onSelect={(repeat) => {
           // A repeating task needs a due date to schedule from.
           const patch: Partial<Task> = { repeat };

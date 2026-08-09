@@ -1,4 +1,19 @@
-export type Repeat = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly';
+/**
+ * Repetition rule, stored as a string for backend compatibility:
+ * - the five basics ('daily' … 'yearly')
+ * - `after:N` — due N days after the task is completed (a delayed task never
+ *   stacks up overdue occurrences)
+ * - `monthweekday:W:D` — the W-th (1-4) weekday D (0=Sun) of every month,
+ *   e.g. `monthweekday:1:1` = every 1st Monday
+ */
+export type Repeat =
+  | 'daily'
+  | 'weekdays'
+  | 'weekly'
+  | 'monthly'
+  | 'yearly'
+  | `after:${number}`
+  | `monthweekday:${number}:${number}`;
 
 export type FriendStatus = 'incoming' | 'outgoing' | 'accepted';
 
@@ -17,7 +32,7 @@ export interface ChatMessage {
   createdAt: number;
 }
 
-export type SmartListId = 'myday' | 'important' | 'planned' | 'assigned';
+export type SmartListId = 'myday' | 'important' | 'planned' | 'assigned' | 'someday';
 
 export interface TaskStep {
   id: string;
@@ -38,6 +53,8 @@ export interface Task {
   /** YYYY-MM-DD */
   dueDate: string | null;
   repeat: Repeat | null;
+  /** Parked in the Someday list: out of every active view, never lost. */
+  someday?: boolean;
   steps: TaskStep[];
   assigneeId: string | null;
   createdBy: string;

@@ -12,15 +12,20 @@ import {
 } from 'react-native';
 import { backgroundSource } from '../backgrounds';
 import type { IconName } from '../constants';
-import { SMART_LISTS, smartColor } from '../constants';
+import { MY_DAY_SOFT_LIMIT, SMART_LISTS, smartColor } from '../constants';
 import { api, toggleTaskCompleted } from '../data/api';
 import type { TaskDraft } from '../data/service';
-import { getDefaultList, tasksForSmartList, useAppStore } from '../data/store';
+import {
+  getDefaultList,
+  myDayIncompleteCount,
+  tasksForSmartList,
+  useAppStore,
+} from '../data/store';
 import type { SmartListId, Task } from '../types';
 import { setSmartBackground, ThemeColors, useThemedStyles, useThemeStore } from '../theme';
 import { addDaysStr, formatLongDate, todayStr } from '../utils/dates';
 import { confirmDialog, showMessage } from '../utils/ui';
-import { AddTaskBar } from './AddTaskBar';
+import { AddTaskBar, QuickAddPayload } from './AddTaskBar';
 import { Avatar } from './Avatar';
 import { BackgroundSheet } from './BackgroundSheet';
 import { ChatSheet } from './ChatSheet';
@@ -83,6 +88,11 @@ const EMPTY_STATES: Record<string, { icon: IconName; title: string; hint: string
     icon: 'person-outline',
     title: 'Nothing assigned to you',
     hint: 'Tasks that friends assign to you in shared lists show up here.',
+  },
+  someday: {
+    icon: 'file-tray-full-outline',
+    title: 'Nothing parked here',
+    hint: 'Send ideas and low-priority tasks here — out of your way, never lost.',
   },
   list: {
     icon: 'clipboard-outline',
@@ -175,18 +185,38 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
 
   const listNameOf = (id: string) => lists.find((l) => l.id === id)?.name;
 
-  const handleAdd = async (taskTitle: string) => {
+  const handleAdd = (payload: QuickAddPayload) => {
     const targetListId = listId ?? getDefaultList(lists, user?.id)?.id;
     if (!targetListId) return;
-    const draft: TaskDraft = { listId: targetListId, title: taskTitle };
+    const draft: TaskDraft = {
+      listId: targetListId,
+      title: payload.title,
+      dueDate: payload.dueDate,
+      important: payload.important || smart === 'important',
+    };
     if (smart === 'myday') draft.myDayDate = todayStr();
-    if (smart === 'important') draft.important = true;
-    if (smart === 'planned') draft.dueDate = todayStr();
-    try {
-      await api.createTask(draft);
-    } catch (e) {
-      showMessage('Could not add task', e instanceof Error ? e.message : String(e));
+    if (smart === 'planned' && !draft.dueDate) draft.dueDate = todayStr();
+    if (smart === 'someday') draft.someday = true;
+
+    const create = () =>
+      api
+        .createTask(draft)
+        .catch((e) =>
+          showMessage('Could not add task', e instanceof Error ? e.message : String(e))
+        );
+
+    // The Stage stays small: My Day nudges before a 6th commitment.
+    if (smart === 'myday' && myDayIncompleteCount(tasks) >= MY_DAY_SOFT_LIMIT) {
+      confirmDialog(
+        'My Day is full',
+        `You already have ${MY_DAY_SOFT_LIMIT} tasks staged for today. Consider finishing or parking one in Someday first.`,
+        'Add anyway',
+        create,
+        false
+      );
+      return;
     }
+    create();
   };
 
   const handleShare = () => {
@@ -366,7 +396,14 @@ export function ListPane({ listId, smart, onOpenTask, onBack, onMissing }: Props
                 <Ionicons name="chevron-back" size={24} color={accent} />
               </Pressable>
             )}
-            {showAddBar && <AddTaskBar accentColor={accent} onAdd={handleAdd} style={styles.addBar} />}
+            {showAddBar && (
+              <AddTaskBar
+                accentColor={accent}
+                placeholder={smart === 'someday' ? 'Add an idea' : undefined}
+                onAdd={handleAdd}
+                style={styles.addBar}
+              />
+            )}
           </View>
         </KeyboardAvoidingView>
       )}

@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { RolloverPrompt } from './src/components/RolloverPrompt';
 import { initData } from './src/data/api';
 import { useAppStore } from './src/data/store';
 import { setupPwa, updateThemeColorMeta } from './src/pwa';
@@ -102,6 +103,7 @@ export default function App() {
     <SafeAreaProvider>
       <StatusBar style={colors.dark ? 'light' : 'dark'} />
       {body}
+      <RolloverPrompt />
     </SafeAreaProvider>
   );
 }

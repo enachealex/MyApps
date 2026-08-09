@@ -42,17 +42,32 @@ export function tasksForSmartList(tasks: Task[], smart: SmartListId, uid?: strin
   const today = todayStr();
   switch (smart) {
     case 'myday':
-      return tasks.filter((t) => t.myDayDate === today);
+      return tasks.filter((t) => t.myDayDate === today && !t.someday);
     case 'important':
-      return tasks.filter((t) => t.important);
+      return tasks.filter((t) => t.important && !t.someday);
     case 'planned':
-      return tasks.filter((t) => t.dueDate != null);
+      return tasks.filter((t) => t.dueDate != null && !t.someday);
     case 'assigned':
       return tasks.filter((t) => t.assigneeId != null && t.assigneeId === uid);
+    case 'someday':
+      return tasks.filter((t) => t.someday === true);
   }
 }
 
 /** Count shown next to a list on the Home screen: incomplete tasks only. */
 export function incompleteCount(tasks: Task[]): number {
   return tasks.reduce((n, t) => n + (t.completed ? 0 : 1), 0);
+}
+
+/** How many incomplete tasks are staged in My Day right now. */
+export function myDayIncompleteCount(tasks: Task[]): number {
+  return incompleteCount(tasksForSmartList(tasks, 'myday'));
+}
+
+/** Incomplete tasks whose due date has slipped past — rollover candidates. */
+export function overdueTasks(tasks: Task[]): Task[] {
+  const today = todayStr();
+  return tasks.filter(
+    (t) => !t.completed && !t.someday && t.dueDate != null && t.dueDate < today
+  );
 }

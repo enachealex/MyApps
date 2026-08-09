@@ -52,6 +52,7 @@ export function buildTask(draft: TaskDraft, uid: string, id: string): Task {
     myDayDate: draft.myDayDate ?? null,
     dueDate: draft.dueDate ?? null,
     repeat: draft.repeat ?? null,
+    someday: draft.someday ?? false,
     steps: draft.steps ?? [],
     assigneeId: draft.assigneeId ?? null,
     createdBy: uid,
