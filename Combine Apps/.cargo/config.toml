@@ -1,0 +1,4 @@
+[env]
+# DeckCraft, DesignCraft and CADCraft embed the shared craft-fonts collection when this is set
+# (their release builds do); without it they build with fewer bundled fonts.
+CRAFT_FONTS_DIR = { value = "vendor/craft-fonts", relative = true }

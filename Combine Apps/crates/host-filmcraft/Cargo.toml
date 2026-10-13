@@ -1,0 +1,47 @@
+[package]
+name = "host-filmcraft"
+description = "FilmCraft as a tab of the ArtCraft suite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-suite = { workspace = true }
+filmcraft-engine = { path = "../../vendor/filmcraft/crates/engine" }
+filmcraft-export = { path = "../../vendor/filmcraft/crates/export" }
+filmcraft-gpu = { path = "../../vendor/filmcraft/crates/gpu" }
+filmcraft-platform = { path = "../../vendor/filmcraft/crates/platform" }
+filmcraft-project = { path = "../../vendor/filmcraft/crates/project" }
+filmcraft-render = { path = "../../vendor/filmcraft/crates/render" }
+filmcraft-time = { path = "../../vendor/filmcraft/crates/time" }
+filmcraft-ui-egui = { path = "../../vendor/filmcraft/crates/ui-egui" }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence", "wayland", "x11"] }
+egui = { workspace = true }
+log = { workspace = true }
+serde_json = { workspace = true }
+# As in FilmCraft's own app.
+rfd = "0.17"
+cpal = "0.16"
+# Files and images on the system clipboard for Paste (#611).
+arboard = "3"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+sys-locale = "0.3"
+# Help menu / About / Discord links in the system browser.
+open = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# App Nap stays off while FilmCraft runs (app_nap.rs).
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSProcessInfo", "NSString", "NSArray"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Settings ▸ Appearance ▸ Sync with system: the XDG desktop portal's colour scheme (appearance.rs).
+zbus = "5.19"
+
+# file_filters.rs's test of the case-insensitive patterns rfd's Linux and BSD dialogs get.
+[target.'cfg(not(any(target_os = "windows", target_os = "macos")))'.dev-dependencies]
+glob = "0.3"

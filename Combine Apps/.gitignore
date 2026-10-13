@@ -1,0 +1,5 @@
+/target/
+# Upstream checkouts, recreated by scripts/fetch-upstream.* from upstream.lock.
+/vendor/
+# Screenshots from `--screenshot-all` runs.
+/screenshots/

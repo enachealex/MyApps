@@ -1,0 +1,38 @@
+[package]
+name = "host-cadcraft"
+description = "CADCraft as a tab of the ArtCraft suite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-suite = { workspace = true }
+cadcraft-engine = { path = "../../vendor/cadcraft/crates/engine" }
+cadcraft-io = { path = "../../vendor/cadcraft/crates/io" }
+cadcraft-ui-egui = { path = "../../vendor/cadcraft/crates/ui-egui" }
+# `links`: Help links open in the system browser, as in CADCraft.
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence", "wayland", "x11", "links"] }
+egui = { workspace = true }
+log = { workspace = true }
+# As in CADCraft's own manifests.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.17"
+sys-locale = "0.3"
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+# View ▸ Theme ▸ System: the desktop's light/dark choice from the XDG desktop portal (desktop_theme.rs).
+zbus = { version = "=5.19.0", default-features = false, features = ["async-io", "blocking-api"] }
+
+# The 3D mouse (spacemouse.rs): Rust HID backends, no proprietary SDK or C HID library.
+[target.'cfg(target_os = "windows")'.dependencies]
+hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+hidapi = { version = "2.6.7", default-features = false, features = ["linux-native-basic-udev"] }

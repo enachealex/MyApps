@@ -1,0 +1,53 @@
+[package]
+name = "host-photocraft"
+description = "PhotoCraft as a tab of the ArtCraft suite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-suite = { workspace = true }
+photocraft-codecs = { path = "../../vendor/photocraft/crates/codecs" }
+photocraft-doc = { path = "../../vendor/photocraft/crates/doc" }
+photocraft-engine = { path = "../../vendor/photocraft/crates/engine" }
+photocraft-format = { path = "../../vendor/photocraft/crates/format" }
+photocraft-io = { path = "../../vendor/photocraft/crates/io" }
+photocraft-raster = { path = "../../vendor/photocraft/crates/raster" }
+photocraft-ui-egui = { path = "../../vendor/photocraft/crates/ui-egui" }
+# Pen tablet pressure/tilt on macOS and X11 (PhotoCraft's one isolated unsafe helper crate).
+photocraft-tablet = { path = "../../vendor/photocraft/crates/tablet" }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence", "wayland", "x11"] }
+egui = { workspace = true }
+log = { workspace = true }
+
+# As in PhotoCraft's own manifests (apps/photocraft/Cargo.toml).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.17"
+arboard = { version = "3.6", features = ["wayland-data-control"] }
+open = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics2 = { version = "=0.6.1", default-features = false, features = ["display", "window", "link", "event"] }
+objc2 = "=0.6.4"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSArray", "NSEnumerator", "NSGeometry"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSApplicationScripting", "NSEvent", "NSResponder", "NSView", "NSWindow"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+photocraft-cms = { path = "../../vendor/photocraft/crates/cms" }
+x11rb = { version = "=0.13.2", default-features = false, features = ["image", "randr", "xkb"] }
+zbus = "=5.19.0"
+futures-lite = "=2.6.1"
+async-io = "=2.6.0"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+xcap = "=0.9.8"
+winsafe = { version = "=0.0.29", default-features = false, features = ["user"] }
+
+[dev-dependencies]
+# The pen tablet module's own tests.
+serde_json = { workspace = true }

@@ -1,0 +1,36 @@
+[package]
+name = "host-lightcraft"
+description = "LightCraft as a tab of the ArtCraft suite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-suite = { workspace = true }
+# As LightCraft's own app builds it: AI masks (SAM 3) and, its default feature, AI denoise.
+lightcraft-engine = { path = "../../vendor/lightcraft/crates/engine", features = ["sam", "denoise"] }
+lightcraft-sysmem = { path = "../../vendor/lightcraft/crates/sysmem" }
+lightcraft-ui-egui = { path = "../../vendor/lightcraft/crates/ui-egui" }
+lightcraft-codecs = { path = "../../vendor/lightcraft/crates/codecs" }
+lightcraft-raster = { path = "../../vendor/lightcraft/crates/raster" }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence", "wayland", "x11"] }
+egui = { workspace = true }
+log = { workspace = true }
+# As in LightCraft's own workspace.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.17"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "=5.19.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSColorSpace", "NSResponder", "NSScreen", "NSWindow"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData"] }

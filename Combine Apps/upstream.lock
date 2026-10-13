@@ -1,0 +1,20 @@
+# The upstream ArtCraft repositories this suite builds, pinned to exact commits.
+# scripts/fetch-upstream.ps1 (or .sh) checks each one out under vendor/<name>.
+# To move to newer upstream code: change a commit here, fetch, build, and fix the host crate
+# (crates/host-<name>) if the app's startup code changed.
+#
+# name           commit                                    repository
+photocraft       649b1d5d92c08bf846631a868adc8a5c6ec6e888  https://github.com/storytold/photocraft
+lightcraft       76b5377868d912db69a777bda253a5b1b96b22bd  https://github.com/storytold/lightcraft
+vectorcraft      fecea5390def92699673bcb876000d343d2c1846  https://github.com/storytold/vectorcraft
+filmcraft        78fe0102bd0bbe9e55070a4fb4a3924faa545d02  https://github.com/storytold/filmcraft
+effectcraft      67434e90388b6dca4417555346fa6850b6f96033  https://github.com/storytold/effectcraft
+soundcraft       acb08ff5f00d654a5303194ad04dad799c68a9fb  https://github.com/storytold/soundcraft
+cadcraft         c57879a5c8f5e3a6be574a820add5e28eb25e9b1  https://github.com/storytold/cadcraft
+pdfcraft         4e53e5ffbd11bdb9edb086b472851ef894b55941  https://github.com/storytold/pdfcraft
+designcraft      835edae6594f10892142eda9c64141471a009d4c  https://github.com/storytold/designcraft
+wordcraft        ad8c26442076e357f5bb88515b25dfbf73c81e2e  https://github.com/storytold/wordcraft
+gridcraft        3926d21aa9a79d272b9f71ae60d67d7d7e5bd2c2  https://github.com/storytold/gridcraft
+deckcraft        be14248577b92059eb2b8c0c9460cceffbc1f01d  https://github.com/storytold/deckcraft
+craft-launcher   78ef4a8c777470bdbf8504d05fe5ff1e94088feb  https://github.com/storytold/craft-launcher
+craft-fonts      3d9ab3a132ed0eff457e424226a435a901da30d3  https://github.com/storytold/craft-fonts

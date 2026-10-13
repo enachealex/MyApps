@@ -1,0 +1,37 @@
+[package]
+name = "host-wordcraft"
+description = "WordCraft as a tab of the ArtCraft suite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-suite = { workspace = true }
+wordcraft-doc = { path = "../../vendor/wordcraft/crates/doc" }
+wordcraft-engine = { path = "../../vendor/wordcraft/crates/engine" }
+wordcraft-fonts = { path = "../../vendor/wordcraft/crates/fonts" }
+wordcraft-ui-egui = { path = "../../vendor/wordcraft/crates/ui-egui" }
+wordcraft-control-key = { path = "../../vendor/wordcraft/crates/control-key" }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence", "wayland", "x11", "links"] }
+egui = { workspace = true }
+log = { workspace = true }
+serde_json = { workspace = true }
+# As in WordCraft's own workspace.
+rfd = "0.17"
+pollster = "0.4"
+arboard = { version = "3.6", default-features = false, features = ["image-data"] }
+open = "5.4"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace", "NSAccessibility", "NSApplication"] }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = ["UI_ViewManagement"] }

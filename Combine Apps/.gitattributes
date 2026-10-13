@@ -1,0 +1,3 @@
+# Patches apply to upstream's LF sources: keep them byte for byte.
+*.patch -text
+*.sh text eol=lf

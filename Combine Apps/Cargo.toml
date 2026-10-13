@@ -1,0 +1,64 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*"]
+# The upstream apps (scripts/fetch-upstream.*). Each is its own workspace; the host crates depend
+# on its library crates by path.
+exclude = ["vendor"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.dependencies]
+craft-suite = { path = "crates/craft-suite" }
+host-photocraft = { path = "crates/host-photocraft" }
+host-lightcraft = { path = "crates/host-lightcraft" }
+host-vectorcraft = { path = "crates/host-vectorcraft" }
+host-filmcraft = { path = "crates/host-filmcraft" }
+host-effectcraft = { path = "crates/host-effectcraft" }
+host-soundcraft = { path = "crates/host-soundcraft" }
+host-cadcraft = { path = "crates/host-cadcraft" }
+host-pdfcraft = { path = "crates/host-pdfcraft" }
+host-designcraft = { path = "crates/host-designcraft" }
+host-wordcraft = { path = "crates/host-wordcraft" }
+host-gridcraft = { path = "crates/host-gridcraft" }
+host-deckcraft = { path = "crates/host-deckcraft" }
+
+# Everything below is what the upstream apps use too. Never enable eframe's `glow` feature:
+# FilmCraft and EffectCraft implement `App::on_exit` without the GL argument it adds.
+egui = "0.36"
+eframe = { version = "0.36", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
+log = { version = "0.4", features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ron = "0.12"
+
+# PdfCraft's patched crates, for the whole suite: one winit and one egui-wgpu serve every app, and
+# PdfCraft's fixes are for problems every app has (mixed-DPI windows, Korean IME, surface sizes
+# over the device limit). See vendor/pdfcraft/vendor/README.md for each patch.
+[patch.crates-io]
+hayro-interpret = { path = "vendor/pdfcraft/vendor/hayro-interpret" }
+hayro = { path = "vendor/pdfcraft/vendor/hayro" }
+hayro-syntax = { path = "vendor/pdfcraft/vendor/hayro-syntax" }
+hayro-jbig2 = { path = "vendor/pdfcraft/vendor/hayro-jbig2" }
+lopdf = { path = "vendor/pdfcraft/vendor/lopdf" }
+winit = { path = "vendor/pdfcraft/vendor/winit" }
+egui-wgpu = { path = "vendor/pdfcraft/vendor/egui-wgpu" }
+
+# The upstream apps' own profiles: dependencies optimized even in debug builds, or image, video
+# and PDF work is too slow to use.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = "thin"

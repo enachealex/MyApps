@@ -1,0 +1,26 @@
+[package]
+name = "host-gridcraft"
+description = "GridCraft as a tab of the ArtCraft suite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-suite = { workspace = true }
+gridcraft-engine = { path = "../../vendor/gridcraft/crates/engine" }
+gridcraft-ui-egui = { path = "../../vendor/gridcraft/crates/ui-egui" }
+eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "persistence", "wayland", "x11"] }
+egui = { workspace = true }
+log = { workspace = true }
+serde_json = { workspace = true }
+# As in GridCraft's own workspace.
+rfd = "0.17"
+arboard = { version = "3.6", default-features = false }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+arboard = { version = "3.6", default-features = false, features = ["wayland-data-control"] }
