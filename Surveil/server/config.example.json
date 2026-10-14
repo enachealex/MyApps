@@ -1,0 +1,18 @@
+{
+  "port": 8080,
+  "dataDir": "./data",
+  "adapters": {
+    "demo": { "enabled": true },
+    "alarmcom": {
+      "enabled": false,
+      "username": "you@example.com",
+      "password": "your-alarm.com-password",
+      "deviceName": "Surveil"
+    }
+  },
+  "alerts": {
+    "ntfy": "",
+    "cooldownSec": 60
+  },
+  "cameraRefreshSec": 60
+}
