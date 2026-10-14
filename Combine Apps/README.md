@@ -22,13 +22,17 @@ The apps are the real upstream apps, not copies: this repository pins each one t
 You need [Rust](https://rustup.rs) 1.95 or newer and git.
 
 ```bash
-./scripts/fetch-upstream.ps1        # or scripts/fetch-upstream.sh: checks the apps out into vendor/
-cargo run --release -p craft-studio
-cargo run --release -p craft-docs
+./scripts/build.ps1        # or scripts/build.sh
 ```
 
-The first build compiles about 2.5 million lines of Rust and takes a while; later builds are
-incremental. The executables end up in `target/release/`.
+This checks the apps out into `vendor/` (`scripts/fetch-upstream.*`), builds both windows, and
+puts the two programs in `dist/`: `craft-studio.exe` and `craft-docs.exe`. They need nothing
+else; copy them anywhere.
+
+The first build compiles about 2.5 million lines of Rust and takes about 20 minutes. Its cache in
+`target/` (about 7 GB) makes later builds take minutes; `./scripts/build.ps1 -Clean` (or
+`cargo clean`) deletes it afterwards, at the cost of a full build next time. Debug builds
+(`cargo build`, `cargo test`) keep their own cache in `target/debug`, which is safe to delete too.
 
 ### Command line
 

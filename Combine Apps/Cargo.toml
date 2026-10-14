@@ -57,8 +57,14 @@ egui-wgpu = { path = "vendor/pdfcraft/vendor/egui-wgpu" }
 [profile.dev.package."*"]
 opt-level = 2
 
+# Debug builds keep line numbers for backtraces but not full debug info, and build without
+# incremental caches: with 2.5 million lines of dependencies, full debug info and the incremental
+# caches of the test and lint builds came to over 170 GB. (Incremental compilation only ever
+# applies to this workspace's own crates, which are small.)
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
+incremental = false
 
 [profile.release]
 lto = "thin"

@@ -1,4 +1,6 @@
 /target/
+# The built programs (scripts/build.*).
+/dist/
 # Upstream checkouts, recreated by scripts/fetch-upstream.* from upstream.lock.
 /vendor/
 # Screenshots from `--screenshot-all` runs.
