@@ -1,4 +1,7 @@
 # Local reproduction of what .github/workflows/pages.yml assembles
 _site/
 node_modules/
+# Except in the pre-built demos: Expo's web export puts library assets (the icon fonts) under
+# assets/__<app>/node_modules/, and the demos are served exactly as committed.
+!demos/**/node_modules/
 .DS_Store
