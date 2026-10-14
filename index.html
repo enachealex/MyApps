@@ -217,6 +217,39 @@ footer a{color:var(--accent);text-decoration:none;}
 @media (prefers-reduced-motion: reduce){
   *{transition:none !important;animation:none !important;}
 }
+
+/* ── Demo screen ─────────────────────────────────────────────────────────
+   A sandboxed copy of the app, embedded in the sheet. The iframe is
+   deliberately locked down in openSheet(); see the sandbox attribute. */
+.demo-wrap{margin:0 0 20px;}
+.demo-head{display:flex;align-items:center;gap:8px;margin:0 0 8px;flex-wrap:wrap;}
+.demo-tag{
+  font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  padding:3px 8px;border-radius:999px;
+  background:rgba(61,220,145,.16);color:#3DDC91;
+}
+.demo-sub{font-size:12px;color:var(--dim);}
+.demo-reset{
+  margin-left:auto;font:inherit;font-size:12px;font-weight:600;
+  padding:5px 10px;border-radius:999px;cursor:pointer;
+  color:var(--dim);background:transparent;
+  border:1px solid rgba(255,255,255,.18);
+}
+.demo-reset:hover{color:#fff;}
+.demo-frame{
+  position:relative;width:100%;height:min(560px,64dvh);
+  border-radius:14px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.14);
+  background:#0d1117;
+}
+.demo-frame iframe{width:100%;height:100%;border:0;display:block;}
+.demo-fallback{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;height:100%;padding:24px;text-align:center;
+}
+.demo-fallback p{margin:0;color:var(--dim);font-size:14px;line-height:1.5;max-width:38ch;}
+.demo-fallback p strong{color:var(--text);}
+@media (min-width:640px){ .demo-frame{height:min(600px,60dvh);} }
 </style>
 </head>
 <body>
@@ -275,6 +308,17 @@ footer a{color:var(--accent);text-decoration:none;}
 
     <p class="sheet-desc" id="sheet-desc"></p>
 
+    <!-- Demo screen: a sandboxed, throwaway copy of the app. Populated by
+         openSheet() only for apps that declare a `demo` path. -->
+    <div class="demo-wrap" id="sheet-demo" hidden>
+      <div class="demo-head">
+        <span class="demo-tag">Live demo</span>
+        <span class="demo-sub">Runs in your browser &middot; nothing is saved</span>
+        <button class="demo-reset" id="demo-reset" type="button">Reset</button>
+      </div>
+      <div class="demo-frame" id="demo-frame"></div>
+    </div>
+
     <div class="sheet-actions">
       <a class="btn btn-primary" id="sheet-open" href="#">Open app</a>
       <span id="sheet-dl-slot"></span>
@@ -298,14 +342,14 @@ footer a{color:var(--accent);text-decoration:none;}
    Descriptions marked TODO are placeholders — replace them.             */
 const APPS = [
   { name:"Putt Count", category:"Scorekeeping", url:"puttcount/", color:"#3DDC91", offline:true,
-    repo:"enachealex/MyApps", asset:".apk",
+    repo:"enachealex/MyApps", asset:".apk", demo:"demos/puttcount/",
     description:"A mini golf scorecard for your group. Set the holes, add players, and tap in each putt as you go — running totals, a full scorecard, and past rounds kept on your phone." },
 
   { name:"OnCall Schedule", category:"Scheduling", url:"oncall/", color:"#4C8DFF",
     description:"See who is on call tonight and reach them in one tap. Check in for your shift, and hand shifts off — offer up, trade, or pick up — through co-worker confirmation and management approval." },
 
   { name:"My Tasks", category:"Productivity", url:"my-tasks/", color:"#2564CF", offline:true,
-    icon:"my-tasks/icons/icon-192.png",
+    icon:"my-tasks/icons/icon-192.png", demo:"demos/my-tasks/",
     description:"A Microsoft To Do-style checklist and to-do app. Plan your day with My Day, star what's important, add steps, due dates and repeats. Installs to your home screen and works offline." },
 
   { name:"Chillist",          category:"Music",     url:"#", color:"#4C8DFF", description:"TODO — one line about Chillist." },
@@ -445,6 +489,124 @@ function downloadControl({ href, label, disabled }){
   return el;
 }
 
+/* ── Demo screen ──────────────────────────────────────────────────────────
+   Each demo is a separate, stripped copy of the app under demos/.
+
+     sandbox="allow-scripts"
+         Scripts only. Deliberately NO allow-same-origin, which is what gives
+         the frame an OPAQUE origin. In an opaque origin the browser itself
+         enforces the privacy promise:
+             window.localStorage      throws SecurityError
+             window.sessionStorage    throws SecurityError
+             document.cookie          throws SecurityError
+             indexedDB.open()         throws SecurityError
+             navigator.serviceWorker  undefined
+         and those guarantees inherit into any nested frame or worker. The
+         demo cannot reach this page, our cookies, our storage, or any
+         same-origin endpoint. No forms, no popups, no top-level navigation,
+         no downloads, no modals, no pointer lock.
+
+         Do NOT add allow-same-origin. Because the demos are served from the
+         same origin as the launcher, that flag would let the frame reach
+         parent.document, read this site's storage, and even remove its own
+         sandbox attribute. Both demos have been verified to run correctly
+         WITHOUT it, so it would buy nothing and cost the guarantee.
+
+     allow=""            denies camera, microphone, geolocation and every
+                         other permission-gated feature.
+     referrerpolicy=no-referrer
+
+   The frame is torn down on close so the demo stops running and its memory
+   state is discarded — nothing about a visit survives.
+
+   KNOWN: some content blockers (uBlock's "block 3rd-party frames" switch,
+   aggressive Brave Shields) cancel opaque-origin subframe loads outright —
+   the request fails with net::ERR_BLOCKED_BY_CLIENT and the frame is blank.
+   We cannot see into the frame to detect that, so each demo posts a
+   "jvdemo-ready" message on boot; if it does not arrive we show an
+   "open in a new tab" card instead of a silent blank box. See armDemoFallback. */
+const demoWrap  = document.getElementById("sheet-demo");
+const demoFrame = document.getElementById("demo-frame");
+const demoReset = document.getElementById("demo-reset");
+let   demoSrc   = null;
+
+function buildDemoFrame(src){
+  const f = document.createElement("iframe");
+  f.setAttribute("sandbox", "allow-scripts");
+  f.setAttribute("allow", "");
+  f.setAttribute("referrerpolicy", "no-referrer");
+  // Deliberately NOT loading="lazy": the frame is built while the <dialog> is
+  // still closed, and a lazy frame in a hidden container never starts loading.
+  f.title = "Interactive demo";
+  f.src = src;
+  return f;
+}
+
+/* An opaque-origin frame is unreadable from here, so "did the demo actually
+   start?" cannot be answered by inspecting it — and a blocked navigation
+   still fires load. Each demo therefore posts {type:"jvdemo-ready"} on boot.
+   No message within the grace period means blocked (or broken), and we swap
+   in a link rather than leaving a silent black rectangle. */
+const DEMO_READY_MS = 4000;
+let demoReadyTimer = null;
+let demoFrameEl    = null;
+
+function armDemoFallback(app){
+  clearTimeout(demoReadyTimer);
+  demoReadyTimer = setTimeout(() => showDemoFallback(app), DEMO_READY_MS);
+}
+
+function showDemoFallback(app){
+  demoFrame.replaceChildren();
+  demoFrameEl = null;
+  const box = document.createElement("div");
+  box.className = "demo-fallback";
+  box.innerHTML =
+    "<p><strong>The demo could not start here.</strong></p>" +
+    "<p>A content blocker or privacy extension is most likely stopping the " +
+    "embedded demo from loading. It still works in its own tab.</p>";
+  const a = document.createElement("a");
+  a.className = "btn btn-primary";
+  a.href = app.demo;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = "Open the demo in a new tab";
+  box.appendChild(a);
+  demoFrame.replaceChildren(box);
+}
+
+window.addEventListener("message", (e) => {
+  // Opaque-origin frames post with origin "null", so identify by source.
+  if (!demoFrameEl || e.source !== demoFrameEl.contentWindow) return;
+  if (e.data && e.data.type === "jvdemo-ready") clearTimeout(demoReadyTimer);
+});
+
+function mountDemo(app){
+  unmountDemo();
+  if (!app.demo){ demoWrap.hidden = true; return; }
+  demoSrc = app.demo;
+  demoWrap.hidden = false;
+  demoFrameEl = buildDemoFrame(demoSrc);
+  demoFrame.replaceChildren(demoFrameEl);
+  armDemoFallback(app);
+}
+
+function unmountDemo(){
+  clearTimeout(demoReadyTimer);
+  demoFrame.replaceChildren();   // destroys the frame and its state
+  demoFrameEl = null;
+  demoWrap.hidden = true;
+  demoSrc = null;
+}
+
+demoReset.addEventListener("click", () => {
+  if (!demoSrc) return;
+  const app = APPS.find((a) => a.demo === demoSrc);
+  demoFrameEl = buildDemoFrame(demoSrc);
+  demoFrame.replaceChildren(demoFrameEl);
+  if (app) armDemoFallback(app);
+});
+
 /* ── The sheet ────────────────────────────────────────────────────────── */
 function openSheet(app, fromEl){
   opener = fromEl || null;
@@ -466,6 +628,8 @@ function openSheet(app, fromEl){
   openBtn.textContent = real ? "Open app" : "Not published yet";
   openBtn.classList.toggle("btn-primary", !!real);
   openBtn.setAttribute("aria-disabled", real ? "false" : "true");
+
+  mountDemo(app);
 
   const meta = document.getElementById("sheet-meta");
   meta.replaceChildren();
@@ -527,6 +691,7 @@ function closeSheet(){
    the cleanup lives here and runs exactly once per dismissal. */
 sheet.addEventListener("close", () => {
   document.body.classList.remove("locked");
+  unmountDemo();                       // stop the demo; discard its state
   if (opener && document.contains(opener)) opener.focus();
   opener = null;
 });

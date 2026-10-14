@@ -1,0 +1,80 @@
+rules_version = '2';
+
+// Pragmatic rules for the My Tasks app.
+// Deploy from the Firebase console (Firestore Database -> Rules) or with:
+//   firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isListMember(listId) {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/lists/$(listId)).data.memberIds;
+    }
+
+    // Public profiles: display name + a one-way email hash used for friend
+    // lookup. Deliberately NO email addresses or other personal data here.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid;
+
+      // Friend edges are mirrored: users/A/friends/B and users/B/friends/A.
+      // Each side is writable by its owner and by the friend it points at
+      // (needed to deliver requests and mirror accept/remove).
+      match /friends/{friendId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow write: if signedIn()
+          && (request.auth.uid == uid || request.auth.uid == friendId);
+      }
+    }
+
+    match /lists/{listId} {
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.auth.uid in request.resource.data.memberIds;
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+      // Members can edit the list. Additionally, anyone signed in may add
+      // themselves to memberIds (joining via an invite code) or remove
+      // themselves (leaving) — list ids are only discoverable through invites.
+      allow update: if signedIn()
+        && (
+          request.auth.uid in resource.data.memberIds
+          || (
+            // Only memberIds changes, and only affecting yourself.
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+            && request.resource.data.memberIds.toSet()
+                .difference(resource.data.memberIds.toSet())
+                .hasOnly([request.auth.uid])
+            && resource.data.memberIds.toSet()
+                .difference(request.resource.data.memberIds.toSet())
+                .hasOnly([request.auth.uid])
+          )
+        );
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /tasks/{taskId} {
+      allow create: if isListMember(request.resource.data.listId);
+      allow read, update, delete: if isListMember(resource.data.listId);
+    }
+
+    // Chat: one conversation per shared list, visible to its members only.
+    match /messages/{messageId} {
+      allow create: if isListMember(request.resource.data.listId)
+        && request.resource.data.authorId == request.auth.uid;
+      allow read: if isListMember(resource.data.listId);
+      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // Invite codes. The 6-character code is the secret; anyone signed in with
+    // the code can look up the list it points to.
+    match /invites/{code} {
+      allow read: if signedIn();
+      allow create: if isListMember(request.resource.data.listId);
+      allow delete: if isListMember(resource.data.listId);
+    }
+  }
+}

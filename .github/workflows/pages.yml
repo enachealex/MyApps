@@ -75,8 +75,14 @@ jobs:
           cp -r puttcount _site/puttcount
           cp -r oncall/dist _site/oncall
           cp -r my-tasks/dist _site/my-tasks
+          # The in-page demos the launcher embeds. These MUST land at exactly
+          # _site/demos, because demos/my-tasks/index.html is built with
+          # baseUrl "/demos/my-tasks" and so references its bundle by absolute
+          # path — mounted anywhere else it 404s and the frame goes blank.
+          cp -r demos _site/demos
           # Without .nojekyll, Pages drops files and folders beginning with an
-          # underscore — which is what Vite names some chunks.
+          # underscore — which is what Vite names some chunks, and what Expo
+          # names the demo bundle directory (_expo).
           touch _site/.nojekyll
           # Keeps the custom domain attached across deployments.
           echo 'myapps.thejumpvault.com' > _site/CNAME

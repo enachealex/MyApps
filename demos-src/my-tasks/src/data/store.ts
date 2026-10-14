@@ -1,0 +1,89 @@
+import { create } from 'zustand';
+import type { FriendEntry, SmartListId, Task, TaskList, UserProfile } from '../types';
+import { todayStr } from '../utils/dates';
+
+export type Mode = 'local' | 'cloud';
+
+export interface AppState {
+  mode: Mode;
+  /** True once we know whether a user is signed in (cloud) or local data is loaded. */
+  authReady: boolean;
+  /** True once lists/tasks have been loaded at least once. */
+  dataReady: boolean;
+  user: UserProfile | null;
+  lists: TaskList[];
+  tasks: Task[];
+  /** Profiles of everyone who shares a list with us, keyed by user id. */
+  members: Record<string, UserProfile>;
+  /** Friend connections: accepted friends plus pending requests (cloud mode). */
+  friends: FriendEntry[];
+}
+
+export const useAppStore = create<AppState>(() => ({
+  mode: 'local',
+  authReady: false,
+  dataReady: false,
+  user: null,
+  lists: [],
+  tasks: [],
+  members: {},
+  friends: [],
+}));
+
+export function getDefaultList(lists: TaskList[], uid?: string): TaskList | undefined {
+  if (uid) {
+    const own = lists.find((l) => l.isDefault && l.ownerId === uid);
+    if (own) return own;
+  }
+  return lists.find((l) => l.isDefault);
+}
+
+export function tasksForSmartList(tasks: Task[], smart: SmartListId, uid?: string): Task[] {
+  const today = todayStr();
+  switch (smart) {
+    case 'myday':
+      return tasks.filter((t) => t.myDayDate === today && !t.someday);
+    case 'important':
+      return tasks.filter((t) => t.important && !t.someday);
+    case 'planned':
+      return tasks.filter((t) => t.dueDate != null && !t.someday);
+    case 'assigned':
+      return tasks.filter((t) => t.assigneeId != null && t.assigneeId === uid);
+    case 'someday':
+      return tasks.filter((t) => t.someday === true);
+  }
+}
+
+/** Count shown next to a list on the Home screen: incomplete tasks only. */
+export function incompleteCount(tasks: Task[]): number {
+  return tasks.reduce((n, t) => n + (t.completed ? 0 : 1), 0);
+}
+
+/** How many incomplete tasks are staged in My Day right now. */
+export function myDayIncompleteCount(tasks: Task[]): number {
+  return incompleteCount(tasksForSmartList(tasks, 'myday'));
+}
+
+/** Manual sort key; legacy tasks without one keep newest-first placement. */
+export function effectiveOrder(t: Task): number {
+  return t.order ?? -t.createdAt;
+}
+
+export function sortByOrder(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => effectiveOrder(a) - effectiveOrder(b));
+}
+
+/** The incomplete task blocking this one, if any. */
+export function blockerOf(task: Task, tasks: Task[]): Task | null {
+  if (!task.blockedBy) return null;
+  const blocker = tasks.find((t) => t.id === task.blockedBy);
+  return blocker && !blocker.completed ? blocker : null;
+}
+
+/** Incomplete tasks whose due date has slipped past — rollover candidates. */
+export function overdueTasks(tasks: Task[]): Task[] {
+  const today = todayStr();
+  return tasks.filter(
+    (t) => !t.completed && !t.someday && t.dueDate != null && t.dueDate < today
+  );
+}
