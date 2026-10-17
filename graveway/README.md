@@ -58,6 +58,10 @@ Almost everything about how the game *feels* is one number in
 | `sw.js` | Offline support. Add new files to its list and bump `CACHE` |
 | `android.json` | Android app settings read by `tools/android/build-apk.mjs` |
 
+Playtest notes (pause → **Leave a note**) go to Claude through
+**Settings → Playtest notes → Send to Claude**, which opens a pre-filled
+GitHub issue on `FEEDBACK_REPO` (set in `config.js`).
+
 From the browser console (or `chrome://inspect` for the Android app),
 `graveway.game` and `graveway.save` let you poke at a running game, for
 example `graveway.save.coins = 5000`.

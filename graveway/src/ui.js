@@ -4,7 +4,7 @@
 
 import {
   WEAPONS, WEAPON_UPGRADES, PLAYER_UPGRADES, CHARACTERS, weaponStats, playerStats,
-  weaponUpgradeCost, playerUpgradeCost, characterDef, weaponDef,
+  weaponUpgradeCost, playerUpgradeCost, characterDef, weaponDef, FEEDBACK_REPO,
 } from './config.js';
 import { save, persist, resetSave, weaponUps, notes, persistNotes } from './save.js';
 import { sfx, setSoundEnabled } from './audio.js';
@@ -14,6 +14,10 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const fmt = (n) => Math.floor(n).toLocaleString();
 const coin = (n) => `<i class="coin" aria-hidden="true"></i>${fmt(n)}`;
 const START_AT = [0, 200, 500, 1000];
+const when = (iso) => {
+  try { return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+  catch { return iso; }
+};
 
 const GUN_SVG = {
   pistol:   'M14 6h28v6H24l-2 2v8h-7l1-10h-2z',
@@ -112,6 +116,7 @@ export class UI {
     });
     on('ns-close', () => this.closeNotes());
     on('ns-copy', () => this.copyNotes());
+    on('ns-send', () => this.sendNotes());
     on('ns-clear', () => {
       if (!this.clearArmed) { this.clearArmed = true; $('ns-clear').textContent = 'Tap again to delete'; return; }
       notes.length = 0;
@@ -226,6 +231,9 @@ export class UI {
     $('m-coins').innerHTML = coin(save.coins);
     $('m-best').textContent = save.best ? `${fmt(save.best)} m` : '—';
     $('m-runs').textContent = save.runs ? `${save.runs} run${save.runs === 1 ? '' : 's'} · ${fmt(save.kills)} kills` : 'No runs yet';
+    const unsent = notes.filter((n) => !n.sent).length;
+    $('m-notes-badge').textContent = unsent;
+    $('m-notes-badge').hidden = !unsent;
     const c = characterDef(save.character);
     $('m-char').innerHTML = `${this.portraitHtml(c, 'sm')}<span><small>Survivor</small><b>${esc(c.name)}</b></span>`;
   }
@@ -645,27 +653,85 @@ export class UI {
     notes.push({ at: new Date().toISOString(), tags, text, ctx: this.noteCtx });
     persistNotes();
     this.closeNote();
-    this.toast(`Note saved (${notes.length} total)`);
+    const unsent = notes.filter((n) => !n.sent).length;
+    this.toast(`Note saved · ${unsent} to send (Settings → Playtest notes)`);
   }
 
   notesText() {
-    const when = (iso) => {
-      try { return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
-      catch { return iso; }
-    };
     const head = `Graveway playtest notes\n${this.build || 'Web'} · screen ${window.innerWidth}×${window.innerHeight} · ${notes.length} note${notes.length === 1 ? '' : 's'}\n`;
     return head + notes.map((n, i) =>
-      `\n${i + 1}. ${n.tags.length ? `[${n.tags.join(', ')}] ` : ''}${n.text || '(no comment)'}\n   ${n.ctx}\n   ${when(n.at)}`).join('\n');
+      `\n${i + 1}. ${n.tags.length ? `[${n.tags.join(', ')}] ` : ''}${n.text || '(no comment)'}\n   ${n.ctx}\n   ${when(n.at)}${n.sent ? ' · sent' : ''}`).join('\n');
   }
 
   openNotes() {
     this.clearArmed = false;
+    const unsent = notes.filter((n) => !n.sent).length;
     $('ns-clear').textContent = 'Delete all';
     $('ns-clear').disabled = !notes.length;
     $('ns-copy').disabled = !notes.length;
+    $('ns-send').disabled = !notes.length;
+    $('ns-send').textContent = unsent || !notes.length ? 'Send to Claude' : 'Send all again';
     $('ns-text').value = notes.length ? this.notesText() : 'No notes yet. While playing, pause and tap "Leave a note".';
-    $('ns-count').textContent = notes.length ? `${notes.length} note${notes.length === 1 ? '' : 's'}` : '';
+    $('ns-count').textContent = !notes.length ? ''
+      : `${notes.length} note${notes.length === 1 ? '' : 's'}${!unsent ? ' · all sent' : unsent < notes.length ? ` · ${unsent} not sent yet` : ''}`;
     $('notes').hidden = false;
+  }
+
+  /* "Send to Claude": opens a new GitHub issue on FEEDBACK_REPO with the
+     notes filled in, so all that's left is tapping Submit. Notes not sent
+     before go first; if they've all been sent, they all go again. A URL can
+     only carry so much, so a long backlog goes over several sends. */
+  sendNotes() {
+    const unsent = notes.filter((n) => !n.sent);
+    const pool = unsent.length ? unsent : notes.slice();
+    if (!pool.length) return;
+    const base = `https://github.com/${FEEDBACK_REPO}/issues/new?`;
+    const build = (list, left) => {
+      const title = `Playtest notes: ${list.length} from ${this.build || 'Web'}`;
+      const body = this.issueBody(list, left);
+      return { body, url: `${base}title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}` };
+    };
+    let n = pool.length, out = build(pool, 0);
+    while (out.url.length > 7000 && n > 1) { n--; out = build(pool.slice(0, n), pool.length - n); }
+    if (out.url.length > 7000) {
+      // One enormous note: send the start of it.
+      const one = { ...pool[0], text: pool[0].text.slice(0, 2500) + ' …(cut short)' };
+      out = build([one], pool.length - 1);
+    }
+    const at = new Date().toISOString();
+    for (const x of pool.slice(0, n)) x.sent = at;
+    persistNotes();
+    // A copy on the clipboard too, in case the page opens with an empty form.
+    try { navigator.clipboard?.writeText(out.body).catch(() => {}); } catch { /* no clipboard */ }
+    this.openExternal(out.url);
+    this.toast(pool.length > n ? `Sending ${n} of ${pool.length} · send again for the rest` : 'Tap Submit on GitHub to send it');
+    this.openNotes();
+    this.renderMenu();
+  }
+
+  issueBody(list, left) {
+    const lines = [
+      '<!-- graveway-playtest -->',
+      `**Build:** ${this.build || 'Web'} · screen ${window.innerWidth}×${window.innerHeight}`,
+      `**Sent:** ${when(new Date().toISOString())}`,
+      '',
+    ];
+    list.forEach((n, i) => {
+      lines.push(`${i + 1}. ${n.tags.length ? `**[${n.tags.join(', ')}]** ` : ''}${n.text || '(no comment)'}`);
+      lines.push(`   _${n.ctx}_`);
+      lines.push(`   _${when(n.at)}_`);
+    });
+    if (left) lines.push('', `_${left} more note${left === 1 ? '' : 's'} didn't fit. They'll come in the next send._`);
+    return lines.join('\n');
+  }
+
+  /* Inside the Android app, the WebView hands outside links to the phone's
+     browser and stays on the game; in a browser, use a new tab. */
+  openExternal(url) {
+    if (window.Capacitor?.isNativePlatform?.()) { window.location.href = url; return; }
+    const w = window.open(url, '_blank');
+    if (w) w.opener = null;
+    else window.location.href = url;
   }
 
   closeNotes() {

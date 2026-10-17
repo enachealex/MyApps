@@ -87,9 +87,14 @@ After that, `--install` works the same as over USB.
 ## Testing tips
 
 - **Leave notes while you play.** Pause, then tap **Leave a note**. Each
-  note saves where you were, your survivor, gun, health and frame rate. Then
-  go to **Settings → Playtest notes → Copy all** and paste the notes to
-  Claude.
+  note saves where you were, your survivor, gun, health and frame rate. A
+  gold badge on the menu's settings button counts the notes not yet sent.
+- **Send them to Claude:** **Settings → Playtest notes → Send to Claude**
+  opens a GitHub issue on this repo with the notes filled in. Tap
+  **Submit**, and Claude can read them in any session (they're the issues
+  titled "Playtest notes"). The notes are also copied to the clipboard, in
+  case the page opens with an empty form. **Copy all** still works for
+  pasting straight into a chat.
 - **Settings → Playtest tools**: free coins, start runs at 200, 500 or
   1000 m, invincibility, and a frame-rate readout.
 - **Debug the game's WebView from a computer**: with the phone plugged in,

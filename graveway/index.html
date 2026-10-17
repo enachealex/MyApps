@@ -272,6 +272,11 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 .credits{margin:16px 0 0;font-size:12px;color:var(--dim);}
 
 /* ── Playtest bits ───────────────────────────────────────────────────── */
+#m-settings{position:relative;}
+.badge-dot{position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;
+  background:var(--gold);color:#1a1200;font-size:11px;font-weight:800;line-height:20px;text-align:center;}
+#ns-send{margin-top:0;}
+.card .fine{margin:6px 0 12px;}
 #h-debug{position:absolute;left:calc(12px + var(--sl));top:calc(76px + var(--st));font-size:11px;font-weight:800;
   letter-spacing:.06em;color:#ffd166;text-shadow:0 1px 4px #000;}
 .card{max-height:100%;overflow-y:auto;}
@@ -314,6 +319,7 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
   <div class="menu-top">
     <span class="wallet" id="m-coins"></span>
     <button class="icon-btn" id="m-settings" type="button" aria-label="Settings">
+      <span class="badge-dot" id="m-notes-badge" hidden></span>
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
     </button>
   </div>
@@ -506,12 +512,14 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 <div id="notes" class="modal" hidden>
   <div class="card">
     <h2>Playtest notes</h2>
-    <p class="sub">Copy them all and paste them into your chat with Claude. <span id="ns-count"></span></p>
+    <p class="sub" id="ns-count"></p>
     <label class="sr" for="ns-text">All notes</label>
     <textarea id="ns-text" rows="10" readonly></textarea>
+    <button class="btn primary wide" id="ns-send" type="button">Send to Claude</button>
+    <p class="fine">Opens a GitHub issue with your notes filled in. Tap <b>Submit</b> and Claude can read them.</p>
     <div class="row-btns">
       <button class="btn" id="ns-clear" type="button">Delete all</button>
-      <button class="btn primary" id="ns-copy" type="button">Copy all</button>
+      <button class="btn" id="ns-copy" type="button">Copy all</button>
     </div>
     <button class="btn wide" id="ns-close" type="button">Done</button>
   </div>

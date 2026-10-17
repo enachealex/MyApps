@@ -5,6 +5,9 @@
 
 export const GAME_NAME = 'Graveway';
 
+/* "Send to Claude" files playtest notes as an issue on this GitHub repo. */
+export const FEEDBACK_REPO = 'enachealex/MyApps';
+
 /* ── Weapons ───────────────────────────────────────────────────────────────
    Each entry is one weapon definition; src/weapons.js turns it into a live
    Weapon (ammo, reload timer, recoil) for a run.
