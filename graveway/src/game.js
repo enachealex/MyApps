@@ -419,12 +419,14 @@ export class Game {
       if (d2 > range * range || d2 < minRange * minRange) continue;
       const d = Math.sqrt(d2);
       let score = d + (dz > 1 ? 4 : 0) + (p.target && p.target.zombie === z ? -1.5 : 0);
+      const hit = rayProps(props, p.x, p.z, dx / d, dz / d, d - z.radius);
       if (!w.explosive) {
-        const hit = rayProps(props, p.x, p.z, dx / d, dz / d, d - z.radius);
         if (hit.prop) {
           if (hit.prop.hp === null) continue;
           score += 8;
         }
+      } else if (hit.prop && hit.prop.height > 2 && hit.t < w.stats.blast.radius + 0.5) {
+        continue;   // a grenade's arc clears a car, but not a wall right beside you
       }
       if (score < bestScore) { bestScore = score; best = z; }
     }
@@ -434,6 +436,8 @@ export class Game {
       const dx = b.x - p.x, dz = b.z - p.z, d = Math.hypot(dx, dz);
       const r = b.def.explodes.radius;
       if (d > range || d < r + 1) continue;
+      // Bullets have to actually reach it: not through a wreck.
+      if (!w.explosive && rayProps(props, p.x, p.z, dx / d, dz / d, d).prop !== b) continue;
       let n = 0;
       for (const z of this.zombies) if (!z.dead && Math.hypot(z.x - b.x, z.z - b.z) < r) n++;
       if (n < 2) continue;
@@ -463,7 +467,7 @@ export class Game {
       const speed = 15, t = Math.max(d / speed, 0.15);
       if (this.grenades.length < MAX_GRENADES) {
         this.grenades.push({
-          x: mx, y: 1.45, z: mz, vx: dx / t, vy: (0 - 1.45 + 0.5 * GRAVITY * t * t) / t, vz: dz / t,
+          x: mx, y: 1.45, z: mz, sx: mx, sz: mz, vx: dx / t, vy: (0 - 1.45 + 0.5 * GRAVITY * t * t) / t, vz: dz / t,
           life: t + 0.6, damage: s.damage, blast: s.blast, spin: 0,
         });
       }
@@ -586,8 +590,11 @@ export class Game {
         }
         continue;
       }
-      // Far behind the survivor, off the built road: gone.
-      if (z.z > p.z + 45 && z !== this.run?.boss) {
+      // Far behind the survivor, off the built road: gone. A boss gets more
+      // rope, but one you've outrun is gone too.
+      const isBoss = this.run && z === this.run.boss;
+      if (z.z > p.z + (isBoss ? 60 : 45)) {
+        if (isBoss) this.run.boss = null;
         this.scene.remove(m.root);
         zs.splice(i, 1);
         continue;
@@ -843,7 +850,9 @@ export class Game {
           if (!z.dead && g.y < 2 * z.scale && Math.hypot(z.x - g.x, z.z - g.z) < z.radius + 0.2) { boom = true; break; }
         }
       }
-      if (!boom) {
+      // Not armed against props until it's 1.5 m out, so firing over a car
+      // you're leaning on doesn't blow up in your hands.
+      if (!boom && Math.hypot(g.x - g.sx, g.z - g.sz) > 1.5) {
         for (const c of props) {
           if (c.destroyed || g.y > c.height) continue;
           const ox = g.x - c.x, oz = g.z - c.z;

@@ -45,6 +45,7 @@ export class NavGrid {
     this.z0 = pz - AHEAD;
     this.goal = -1;
     this.dirty = true;
+    this.timer = 0;
   }
 
   cellOf(x, z) {
@@ -59,9 +60,10 @@ export class NavGrid {
 
   update(dt, px, pz, props, rough) {
     this.timer -= dt;
-    // Slide the window along with the survivor.
+    // Slide the window along with the survivor, and rebuild right away: until
+    // it is, every cell would describe ground 6 m away.
     const centre = this.z0 + AHEAD;
-    if (Math.abs(pz - centre) > 6) { this.z0 = pz - AHEAD; this.dirty = true; }
+    if (Math.abs(pz - centre) > 6) { this.z0 = pz - AHEAD; this.dirty = true; this.timer = 0; }
     const goal = this.cellOf(px, pz);
     if ((goal === this.goal && !this.dirty) || this.timer > 0) return;
     this.timer = REBUILD_EVERY;

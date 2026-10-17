@@ -51,7 +51,8 @@ export class Weapon {
 
   /* Spends one shot. Returns true when that emptied the magazine. */
   consume() {
-    if (this.cooldown < 0) this.cooldown = 0;
+    // Any time left over from this frame carries into the next shot (tick
+    // floors it at -0.05 s), so fire rate doesn't round up to whole frames.
     this.cooldown += 1 / this.stats.fireRate;
     this.ammo--;
     const rc = this.def.recoil;

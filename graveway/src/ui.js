@@ -134,14 +134,17 @@ export class UI {
     for (const id of ['h-pause', 'h-weapon', 'h-wbar']) {
       $(id).addEventListener('pointerdown', (e) => e.stopPropagation());
     }
-    $('h-weapon').addEventListener('click', () => this.game.reload());
+    $('h-weapon').addEventListener('click', (e) => { e.currentTarget.blur(); this.game.reload(); });
     $('h-wbar').addEventListener('click', (e) => {
       const b = e.target.closest('[data-w]');
-      if (b) this.game.selectWeapon(Number(b.dataset.w));
+      if (b) { b.blur(); this.game.selectWeapon(Number(b.dataset.w)); }
     });
 
-    input.onKey = (code) => {
+    input.onKey = (code, e) => {
       const st = this.game.state;
+      // Mid-run, Tab and Space are game keys: don't let the browser move focus
+      // or press whichever HUD button last had it.
+      if (st === 'playing' && (code === 'Tab' || code === 'Space')) e.preventDefault();
       if (code === 'Escape') {
         if (this.current !== 'menu' || !$('settings').hidden) this.back();
       } else if (code === 'KeyP') {
@@ -325,7 +328,7 @@ export class UI {
     const ws = h.weapons;
     set('wbar', ws.map((w) => w.id).join(','), () => {
       $('h-wbar').innerHTML = ws.length < 2 ? '' : ws.map((w, i) =>
-        `<button type="button" data-w="${i}" aria-label="${esc(w.name)}">${gunIcon(w.id)}<i></i><span>${i + 1}</span></button>`).join('');
+        `<button type="button" tabindex="-1" data-w="${i}" aria-label="${esc(w.name)}">${gunIcon(w.id)}<i></i><span>${i + 1}</span></button>`).join('');
       c.wsel = null;
     });
     if (ws.length > 1) {

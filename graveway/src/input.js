@@ -24,7 +24,7 @@ export class Input {
     window.addEventListener('keydown', (e) => {
       if (e.repeat || e.target.closest?.('textarea, input')) return;
       this.keys.add(e.code);
-      if (this.onKey) this.onKey(e.code);
+      if (this.onKey) this.onKey(e.code, e);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
   }

@@ -111,6 +111,10 @@ fs.writeFileSync(path.join(work, 'capacitor.config.json'), JSON.stringify({
 }, null, 2));
 
 const android = path.join(work, 'android');
+// A project left half-made by an interrupted run is thrown away and redone.
+if (fs.existsSync(android) && !fs.existsSync(path.join(android, 'app', 'build.gradle'))) {
+  fs.rmSync(android, { recursive: true, force: true });
+}
 if (!fs.existsSync(android)) {
   step('Creating the Android project');
   run('npx', ['cap', 'add', 'android'], work);
@@ -202,7 +206,8 @@ if (process.env.GITHUB_OUTPUT) {
 if (flag('install') || flag('launch')) {
   step('Installing on the connected phone');
   const adb = findAdb();
-  const r = spawnSync(adb, ['install', '-r', apk], { encoding: 'utf8', shell: WIN });
+  // adb is a real executable, so no shell: paths with spaces stay intact.
+  const r = spawnSync(adb, ['install', '-r', apk], { encoding: 'utf8' });
   process.stdout.write(r.stdout || '');
   process.stderr.write(r.stderr || '');
   const out = `${r.stdout}\n${r.stderr}`;
@@ -219,7 +224,7 @@ then run this again.`);
     fail('adb install failed (see above).');
   }
   if (flag('launch')) {
-    spawnSync(adb, ['shell', 'monkey', '-p', cfg.appId, '-c', 'android.intent.category.LAUNCHER', '1'], { stdio: 'inherit', shell: WIN });
+    spawnSync(adb, ['shell', 'monkey', '-p', cfg.appId, '-c', 'android.intent.category.LAUNCHER', '1'], { stdio: 'inherit' });
   }
   step('Installed.');
 }
