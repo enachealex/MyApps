@@ -198,7 +198,7 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 #banner-s{margin-top:6px;font-weight:700;color:#d5ddd2;text-shadow:0 2px 6px #000;}
 #banner.show{animation:bannerIn .35s cubic-bezier(.2,1.6,.4,1);}
 @keyframes bannerIn{from{opacity:0;transform:scale(1.4);}to{opacity:1;transform:none;}}
-#toast{position:fixed;left:50%;top:calc(96px + var(--st));z-index:4;transform:translateX(-50%);pointer-events:none;
+#toast{position:fixed;left:50%;top:calc(96px + var(--st));z-index:9;transform:translateX(-50%);pointer-events:none;
   padding:6px 14px;border-radius:99px;background:var(--panel);border:1px solid var(--line);font-weight:800;}
 #toast[data-kind="heal"]{color:#7dff8a;}
 #toast[data-kind="armor"]{color:var(--armor);}
@@ -232,6 +232,27 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 #s-reset{color:#ff8a8a;}
 #s-reset.armed{background:rgba(255,77,77,.16);border-color:rgba(255,77,77,.5);}
 .credits{margin:16px 0 0;font-size:12px;color:var(--dim);}
+
+/* ── Playtest bits ───────────────────────────────────────────────────── */
+#h-debug{position:absolute;left:calc(12px + var(--sl));top:calc(76px + var(--st));font-size:11px;font-weight:800;
+  letter-spacing:.06em;color:#ffd166;text-shadow:0 1px 4px #000;}
+.card{max-height:100%;overflow-y:auto;}
+.note-btn{color:var(--dim);font-size:14px;min-height:42px;}
+.note-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.s-head{margin:20px 0 0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-align:left;}
+.stack.tight{margin-top:8px;}
+.ctx{font-size:12px;line-height:1.45;}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:0 0 12px;}
+.chips button{min-height:36px;padding:0 12px;border-radius:99px;border:1px solid var(--line);background:rgba(255,255,255,.05);
+  font-size:13px;font-weight:700;cursor:pointer;}
+.chips button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:transparent;}
+.card textarea{width:100%;margin:0 0 12px;padding:12px;border-radius:12px;border:1px solid var(--line);background:rgba(0,0,0,.35);
+  color:var(--text);font:14px/1.45 system-ui, sans-serif;resize:vertical;touch-action:pan-y;
+  -webkit-user-select:text;user-select:text;}
+.card textarea:focus{outline:2px solid var(--accent);outline-offset:1px;}
+#ns-text{font:12px/1.5 ui-monospace, Menlo, Consolas, monospace;}
+.btn:disabled{opacity:.4;cursor:default;}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
 
 #nogl{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:24px;text-align:center;background:var(--bg);}
 #nogl p{max-width:34ch;color:var(--dim);}
@@ -302,6 +323,7 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
     </button>
   </div>
   <div id="h-kills"></div>
+  <div id="h-debug" hidden></div>
   <div id="h-boss" hidden><small>BOSS</small><i></i></div>
   <div class="h-bottom">
     <div class="vitals">
@@ -341,6 +363,10 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
         <button class="btn" id="p-restart" type="button">Restart</button>
         <button class="btn" id="p-quit" type="button">Quit</button>
       </div>
+      <button class="btn note-btn" id="p-note" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+        Leave a note
+      </button>
     </div>
   </div>
 </div>
@@ -359,6 +385,10 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
         <button class="btn" id="r-armory" type="button">Armory</button>
         <button class="btn" id="r-menu" type="button">Menu</button>
       </div>
+      <button class="btn note-btn" id="r-note" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+        Leave a note about this run
+      </button>
     </div>
   </div>
 </div>
@@ -371,10 +401,62 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
       <button class="toggle" id="s-sound" type="button" role="switch">Sound <b></b></button>
       <button class="toggle" id="s-haptics" type="button" role="switch">Vibration <b></b></button>
       <button class="toggle" id="s-quality" type="button" role="switch">Graphics <b></b></button>
+      <button class="toggle" id="s-notes" type="button">Playtest notes <b id="s-notes-n">0</b></button>
+    </div>
+    <h3 class="s-head">Playtest tools</h3>
+    <div class="stack tight">
+      <div class="row-btns">
+        <button class="btn small" id="t-coins" type="button">+1,000 coins</button>
+        <button class="btn small" id="t-levels" type="button">Unlock levels</button>
+      </div>
+      <button class="toggle" id="t-god" type="button" role="switch">Invincible <b></b></button>
+      <button class="toggle" id="t-fps" type="button" role="switch">Show frame rate <b></b></button>
+    </div>
+    <div class="stack">
       <button class="btn" id="s-reset" type="button">Reset progress</button>
       <button class="btn primary" id="s-close" type="button">Done</button>
     </div>
-    <p class="credits">3D by three.js (MIT). Bebas Neue font (OFL). Everything else is drawn and synthesised in code.</p>
+    <p class="credits"><span id="s-version"></span><br>3D by three.js (MIT). Bebas Neue font (OFL). Everything else is drawn and synthesised in code.</p>
+  </div>
+</div>
+
+<!-- Write a playtest note -->
+<div id="note" class="modal" hidden>
+  <div class="card">
+    <h2>Note</h2>
+    <p class="sub ctx" id="n-context"></p>
+    <div class="chips" id="n-tags">
+      <button type="button" data-tag="Bug" aria-pressed="false">Bug</button>
+      <button type="button" data-tag="Too hard" aria-pressed="false">Too hard</button>
+      <button type="button" data-tag="Too easy" aria-pressed="false">Too easy</button>
+      <button type="button" data-tag="Controls" aria-pressed="false">Controls</button>
+      <button type="button" data-tag="Camera" aria-pressed="false">Camera</button>
+      <button type="button" data-tag="Looks" aria-pressed="false">Looks</button>
+      <button type="button" data-tag="Sound" aria-pressed="false">Sound</button>
+      <button type="button" data-tag="Slow / laggy" aria-pressed="false">Slow / laggy</button>
+      <button type="button" data-tag="Idea" aria-pressed="false">Idea</button>
+    </div>
+    <label class="sr" for="n-text">What should change?</label>
+    <textarea id="n-text" rows="4" placeholder="What should change?"></textarea>
+    <div class="row-btns">
+      <button class="btn" id="n-cancel" type="button">Cancel</button>
+      <button class="btn primary" id="n-save" type="button">Save note</button>
+    </div>
+  </div>
+</div>
+
+<!-- Every note, ready to copy -->
+<div id="notes" class="modal" hidden>
+  <div class="card">
+    <h2>Playtest notes</h2>
+    <p class="sub">Copy them all and paste them into your chat with Claude. <span id="ns-count"></span></p>
+    <label class="sr" for="ns-text">All notes</label>
+    <textarea id="ns-text" rows="10" readonly></textarea>
+    <div class="row-btns">
+      <button class="btn" id="ns-clear" type="button">Delete all</button>
+      <button class="btn primary" id="ns-copy" type="button">Copy all</button>
+    </div>
+    <button class="btn wide" id="ns-close" type="button">Done</button>
   </div>
 </div>
 

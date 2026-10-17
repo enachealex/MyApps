@@ -22,7 +22,7 @@ export class Input {
     window.addEventListener('blur', () => { this.release(); this.keys.clear(); });
 
     window.addEventListener('keydown', (e) => {
-      if (e.repeat) return;
+      if (e.repeat || e.target.closest?.('textarea, input')) return;
       this.keys.add(e.code);
       if (this.onKey) this.onKey(e.code);
     });

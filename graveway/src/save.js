@@ -13,7 +13,7 @@ const defaults = () => ({
   equipped: 'pistol',   // the gun you start each level holding
   wup: {},              // weapon upgrades, e.g. { smg: { damage: 2 } }
   pup: {},              // survivor upgrades, e.g. { maxHp: 1 }
-  settings: { sound: true, haptics: true, quality: 'high' },
+  settings: { sound: true, haptics: true, quality: 'high', god: false, fps: false },
 });
 
 function merge(base, stored) {
@@ -51,3 +51,20 @@ export function resetSave() {
 }
 
 export const weaponUps = (id) => save.wup[id] || (save.wup[id] = {});
+
+/* Playtest notes are kept apart from progress, so "Reset progress" doesn't
+   throw away feedback. (Uninstalling the app still clears both.) */
+const NOTES_KEY = 'graveway.notes.v1';
+
+function loadNotes() {
+  try {
+    const a = JSON.parse(localStorage.getItem(NOTES_KEY) || '[]');
+    return Array.isArray(a) ? a : [];
+  } catch { return []; }
+}
+
+export const notes = loadNotes();
+
+export function persistNotes() {
+  try { localStorage.setItem(NOTES_KEY, JSON.stringify(notes)); } catch { /* storage unavailable */ }
+}

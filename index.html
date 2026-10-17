@@ -339,6 +339,10 @@ footer a{color:var(--accent);text-decoration:none;}
      repo      "owner/name" — enables the download button, which reads the
                repo's latest GitHub Release
      asset     file extension to look for in that release (default ".apk")
+     tag       release tag prefix, e.g. "graveway-": use the newest release
+               whose tag starts with it (pre-releases included) instead of
+               the repo's latest. The APK workflow tags every build
+               <folder>-v<version>-<run>.
    Descriptions marked TODO are placeholders — replace them.             */
 const APPS = [
   { name:"Putt Count", category:"Scorekeeping", url:"puttcount/", color:"#3DDC91", offline:true,
@@ -353,7 +357,7 @@ const APPS = [
     description:"A Microsoft To Do-style checklist and to-do app. Plan your day with My Day, star what's important, add steps, due dates and repeats. Installs to your home screen and works offline." },
 
   { name:"Graveway", category:"Games", url:"graveway/", color:"#9BE15D", offline:true,
-    icon:"graveway/icons/icon-192.png",
+    icon:"graveway/icons/icon-192.png", repo:"enachealex/MyApps", asset:".apk", tag:"graveway-",
     description:"A 3D zombie road shooter. Fight up a dead city street to the safe zone — one thumb to move, aiming is automatic. Pick up coins, unlock and upgrade five guns, and beat a boss every fifth level." },
 
   { name:"Chillist",          category:"Music",     url:"#", color:"#4C8DFF", description:"TODO — one line about Chillist." },
@@ -460,13 +464,16 @@ if ("IntersectionObserver" in window){
    Cached per page load: the unauthenticated API allows 60 requests an hour
    per IP, so re-opening a sheet must not spend another one.             */
 const releaseCache = new Map();
-function latestRelease(repo){
-  if (releaseCache.has(repo)) return releaseCache.get(repo);
-  const p = fetch("https://api.github.com/repos/" + repo + "/releases/latest",
-                  { headers:{ Accept:"application/vnd.github+json" } })
+function latestRelease(repo, tag){
+  const key = repo + "|" + (tag || "");
+  if (releaseCache.has(key)) return releaseCache.get(key);
+  const url = "https://api.github.com/repos/" + repo + (tag ? "/releases?per_page=30" : "/releases/latest");
+  const p = fetch(url, { headers:{ Accept:"application/vnd.github+json" } })
     .then((r) => (r.ok ? r.json() : null))
+    .then((data) => !tag ? data
+      : (Array.isArray(data) ? data : []).find((rel) => !rel.draft && String(rel.tag_name).startsWith(tag)) || null)
     .catch(() => null);
-  releaseCache.set(repo, p);
+  releaseCache.set(key, p);
   return p;
 }
 
@@ -655,7 +662,7 @@ function openSheet(app, fromEl){
     delete note.dataset.tone;
     note.innerHTML = '<span class="mini-spin"></span><span>Checking for a release…</span>';
 
-    latestRelease(app.repo).then((rel) => {
+    latestRelease(app.repo, app.tag).then((rel) => {
       if (openId !== app.name) return;            // a different sheet opened meanwhile
       const want = (app.asset || ".apk").toLowerCase();
       const asset = (rel && rel.assets || []).find((a) => a.name.toLowerCase().endsWith(want));

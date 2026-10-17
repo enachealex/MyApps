@@ -5,7 +5,7 @@ import {
   WEAPONS, WEAPON_UPGRADES, PLAYER_UPGRADES, weaponStats, playerStats,
   weaponUpgradeCost, playerUpgradeCost, levelSpec,
 } from './config.js';
-import { save, persist, resetSave, weaponUps } from './save.js';
+import { save, persist, resetSave, weaponUps, notes, persistNotes } from './save.js';
 import { sfx, setSoundEnabled } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -31,6 +31,9 @@ export class UI {
     this.bannerTimer = 0;
     this.toastTimer = 0;
     this.resetArmed = false;
+    this.clearArmed = false;
+    this.build = '';
+    this.onExit = null;           // set by main.js inside the Android app
 
     // What the Game calls. Bound here so `this` is the UI.
     this.hooks = {
@@ -76,6 +79,33 @@ export class UI {
       this.game.setQuality(save.settings.quality);
       this.renderSettings(); persist();
     });
+    on('s-notes', () => this.openNotes());
+    on('t-coins', () => { save.coins += 1000; persist(); this.renderMenu(); this.toast('+1,000 coins'); });
+    on('t-levels', () => {
+      save.unlocked = Math.max(save.unlocked, 25);
+      persist(); this.renderMenu(); this.toast('Levels 1–25 unlocked');
+    });
+    on('t-god', () => { save.settings.god = !save.settings.god; this.renderSettings(); persist(); });
+    on('t-fps', () => { save.settings.fps = !save.settings.fps; this.renderSettings(); persist(); });
+
+    on('p-note', () => this.openNote());
+    on('r-note', () => this.openNote());
+    on('n-cancel', () => this.closeNote());
+    on('n-save', () => this.saveNote());
+    $('n-tags').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-tag]');
+      if (!b) return;
+      b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true');
+    });
+    on('ns-close', () => this.closeNotes());
+    on('ns-copy', () => this.copyNotes());
+    on('ns-clear', () => {
+      if (!this.clearArmed) { this.clearArmed = true; $('ns-clear').textContent = 'Tap again to delete'; return; }
+      notes.length = 0;
+      persistNotes();
+      this.openNotes();
+    });
+
     on('s-reset', () => {
       if (!this.resetArmed) { this.resetArmed = true; this.renderSettings(); return; }
       resetSave();
@@ -96,9 +126,14 @@ export class UI {
 
     input.onKey = (code) => {
       const st = this.game.state;
-      if (code === 'Escape' || code === 'KeyP') {
+      if (code === 'Escape') {
+        if (this.current !== 'menu' || !$('settings').hidden) this.back();
+      } else if (code === 'KeyP') {
         if (st === 'playing') this.pause();
         else if (st === 'paused') this.resume();
+      } else if (code === 'KeyN' && (st === 'playing' || st === 'paused')) {
+        this.pause();
+        this.openNote();
       } else if (st === 'playing') {
         if (code === 'KeyR' || code === 'Space') this.game.reload();
         if (code === 'KeyQ') this.game.swapWeapon(-1);
@@ -111,6 +146,20 @@ export class UI {
     setSoundEnabled(save.settings.sound);
     this.renderMenu();
     this.show('menu');
+  }
+
+  /* Android back button (and Escape): close whatever is on top, pause a
+     running level, and only leave the app from the main menu. */
+  back() {
+    if (!$('note').hidden) return this.closeNote();
+    if (!$('notes').hidden) return this.closeNotes();
+    if (!$('settings').hidden) return this.closeSettings();
+    if (!$('result').hidden) return this.toMenu();
+    if (this.current === 'armory') return this.closeArmory();
+    const st = this.game.state;
+    if (st === 'playing') return this.pause();
+    if (st === 'paused') return this.resume();
+    if (this.current === 'menu' && this.onExit) this.onExit();
   }
 
   show(name) {
@@ -209,6 +258,8 @@ export class UI {
       $('h-boss').style.setProperty('--v', Math.max(0, v) / 100);
     });
     set('low', h.low, (v) => { $('vignette').classList.toggle('low', v); });
+    const dbg = [h.god ? 'INVINCIBLE' : '', h.fps !== null ? `${h.fps} fps` : ''].filter(Boolean).join(' · ');
+    set('dbg', dbg, (v) => { $('h-debug').textContent = v; $('h-debug').hidden = !v; });
   }
 
   flashHurt() {
@@ -441,6 +492,100 @@ export class UI {
     el.classList.add('nudge');
   }
 
+  /* ── Playtest notes ──────────────────────────────────────────────────────
+     A note records what was happening when you wrote it, so "this is too
+     hard" arrives with the level, gun, health and frame rate attached.     */
+  noteContext() {
+    const g = this.game;
+    const fps = `${Math.round(g.fps)} fps`;
+    if (!$('result').hidden && this.lastResult) {
+      const r = this.lastResult;
+      return `After level ${r.level} (${r.won ? 'cleared' : 'overrun'} in ${Math.round(r.time)}s, ${r.kills} kills) · ${this.loadoutText()} · ${fps}`;
+    }
+    if (g.run && ['playing', 'paused', 'dying', 'won'].includes(g.state)) {
+      const p = g.player, h = g.hudState();
+      return `Level ${g.levelNum} · ${g.weapon.stats.name} · ${Math.round(g.run.time)}s in · ` +
+        `${Math.ceil(p.hp)}/${p.maxHp} HP${p.armor > 0 ? ` + ${Math.ceil(p.armor)} armor` : ''} · ` +
+        `${g.run.kills} kills · ${Math.round(h.progress * 100)}% up the road · ${fps}`;
+    }
+    return `${this.current === 'armory' ? 'Armory' : 'Menu'} · ${this.loadoutText()} · ${fps}`;
+  }
+
+  loadoutText() {
+    const ups = (id) => Object.values(weaponUps(id)).reduce((a, b) => a + b, 0);
+    const guns = save.owned.map((id) => {
+      const w = WEAPONS.find((x) => x.id === id);
+      const n = ups(id);
+      return w ? w.name + (n ? ` +${n}` : '') : id;
+    });
+    return `${save.coins} coins · guns: ${guns.join(', ')}`;
+  }
+
+  openNote() {
+    this.noteCtx = this.noteContext();
+    $('n-context').textContent = this.noteCtx;
+    $('n-text').value = '';
+    for (const b of $('n-tags').querySelectorAll('[data-tag]')) b.setAttribute('aria-pressed', 'false');
+    $('note').hidden = false;
+    $('n-text').focus();
+  }
+
+  closeNote() {
+    $('note').hidden = true;
+    $('n-text').blur();
+  }
+
+  saveNote() {
+    const text = $('n-text').value.trim();
+    const tags = [...$('n-tags').querySelectorAll('[aria-pressed="true"]')].map((b) => b.dataset.tag);
+    if (!text && !tags.length) { sfx.denied(); this.nudge($('n-save')); return; }
+    notes.push({ at: new Date().toISOString(), tags, text, ctx: this.noteCtx });
+    persistNotes();
+    this.closeNote();
+    this.toast(`Note saved (${notes.length} total)`);
+  }
+
+  notesText() {
+    const when = (iso) => {
+      try { return new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+      catch { return iso; }
+    };
+    const head = `Graveway playtest notes\n${this.build || 'Web'} · screen ${window.innerWidth}×${window.innerHeight} · ${notes.length} note${notes.length === 1 ? '' : 's'}\n`;
+    return head + notes.map((n, i) =>
+      `\n${i + 1}. ${n.tags.length ? `[${n.tags.join(', ')}] ` : ''}${n.text || '(no comment)'}\n   ${n.ctx}\n   ${when(n.at)}`).join('\n');
+  }
+
+  openNotes() {
+    this.clearArmed = false;
+    $('ns-clear').textContent = 'Delete all';
+    $('ns-clear').disabled = !notes.length;
+    $('ns-copy').disabled = !notes.length;
+    $('ns-text').value = notes.length ? this.notesText() : 'No notes yet. While playing, pause and tap "Leave a note".';
+    $('ns-count').textContent = notes.length ? `${notes.length} note${notes.length === 1 ? '' : 's'}` : '';
+    $('notes').hidden = false;
+  }
+
+  closeNotes() {
+    $('notes').hidden = true;
+    this.renderSettings();
+  }
+
+  async copyNotes() {
+    const text = this.notesText();
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toast('Copied — paste it to Claude');
+    } catch {
+      // No clipboard access (some webviews): select it so a long-press copies.
+      const t = $('ns-text');
+      t.focus();
+      t.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch { /* not supported */ }
+      this.toast(ok ? 'Copied — paste it to Claude' : 'Selected — long-press to copy');
+    }
+  }
+
   /* ── Settings ────────────────────────────────────────────────────────── */
   openSettings() {
     this.resetArmed = false;
@@ -458,6 +603,10 @@ export class UI {
     sw('s-sound', s.sound, s.sound ? 'On' : 'Off');
     sw('s-haptics', s.haptics, s.haptics ? 'On' : 'Off');
     sw('s-quality', s.quality === 'high', s.quality === 'high' ? 'High' : 'Battery saver');
+    sw('t-god', s.god, s.god ? 'On' : 'Off');
+    sw('t-fps', s.fps, s.fps ? 'On' : 'Off');
+    $('s-notes-n').textContent = notes.length;
+    $('s-version').textContent = `Graveway · ${this.build || 'Web'}`;
     $('s-reset').textContent = this.resetArmed ? 'Tap again to erase everything' : 'Reset progress';
     $('s-reset').classList.toggle('armed', this.resetArmed);
   }

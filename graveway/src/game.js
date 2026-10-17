@@ -95,6 +95,7 @@ export class Game {
     this.parts = [];
     this.state = 'menu';
     this.time = 0;
+    this.fps = 60;                 // smoothed, measured in main.js
     this.quality = save.settings.quality;
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -418,6 +419,7 @@ export class Game {
   hurtPlayer(dmg, fromX, fromZ) {
     const p = this.player;
     if (this.state !== 'playing') return;
+    if (save.settings.god) dmg = 0;     // playtest tool: still flinch, never hurt
     if (p.armor > 0) {
       const soak = Math.min(p.armor, dmg * ARMOR_ABSORB);
       p.armor -= soak;
@@ -868,6 +870,7 @@ export class Game {
       reload: p.reloadT > 0 ? 1 - p.reloadT / w.stats.reload : null,
       next: p.loadout.length > 1 ? p.loadout[(p.wi + 1) % p.loadout.length].stats.name : null,
       kills: r.kills, boss, hurt: p.hurtT > 0, low: p.hp / p.maxHp < 0.3,
+      fps: save.settings.fps ? Math.round(this.fps) : null, god: save.settings.god,
     };
   }
 
