@@ -141,7 +141,7 @@ export const DIRECTOR = {
   damagePerStage: 0.05,
   speedPerStage: 0.025,
   maxSpeedMult: 1.45,
-  maxActive:    (stage) => Math.min(20 + stage * 6, 90),
+  maxActive:    (stage) => Math.min(20 + stage * 5, 64),   // 64: what a mid-range phone draws smoothly
   hordeEvery:   (stage) => Math.max(24 - stage * 1.2, 12),
   hordeSize:    (stage) => [2 + Math.floor(stage * 0.6), 4 + Math.floor(stage * 0.9)],
   trickleEvery: (stage) => Math.max(3.5 - stage * 0.25, 0.8),
