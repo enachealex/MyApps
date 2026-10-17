@@ -20,6 +20,7 @@ import { NavGrid } from './nav.js';
 import { PropSystem } from './props.js';
 import { Director } from './director.js';
 import { Weapon } from './weapons.js';
+import { VFX } from './vfx.js';
 import {
   initTextures, sharedGeo, makeSurvivor, makeZombie, makeGun, FLASH_MAT, TEX, scorchDecal, lambert,
 } from './models.js';
@@ -38,6 +39,12 @@ const lerpAngle = (a, b, t) => {
 };
 const damp = (k, dt) => 1 - Math.exp(-k * dt);
 const dummy = new THREE.Object3D();
+/* Is (x, z) inside the rotated box b, grown by pad? */
+const inBox = (b, x, z, pad) => {
+  const dx = x - b.x, dz = z - b.z;
+  const lx = dx * b.cos - dz * b.sin, lz = dx * b.sin + dz * b.cos;
+  return Math.abs(lx) < b.hw + pad && Math.abs(lz) < b.hd + pad;
+};
 const tmpColor = new THREE.Color();
 const steerOut = { x: 0, z: 0 };
 
@@ -96,6 +103,8 @@ export class Game {
     this.survivors = {};            // one model per character, built on first use
     this.surv = null;
     this.nav = new NavGrid();
+    this.vfx = new VFX(this.scene);
+    this.vfx.setQuality(save.settings.quality);
     this.propSys = new PropSystem(this);
     this.director = new Director(this);
     this.world = null;
@@ -128,6 +137,7 @@ export class Game {
 
   setQuality(q) {
     this.quality = q;
+    this.vfx.setQuality(q);
     this.resize();
   }
 
@@ -170,6 +180,7 @@ export class Game {
     this.parts.length = 0;
     this.pending.length = 0;
     this.propSys.reset();
+    this.vfx.clear();
     this.run = null;
   }
 
@@ -335,6 +346,7 @@ export class Game {
       this.updateBullets(dt);
       this.updateGrenades(dt);
       this.propSys.update(dt);
+      this.vfx.update(dt);
       this.updateCoins(dt);
       this.updateItems(dt);
       this.updateParticles(dt);
@@ -421,8 +433,13 @@ export class Game {
       let score = d + (dz > 1 ? 4 : 0) + (p.target && p.target.zombie === z ? -1.5 : 0);
       const hit = rayProps(props, p.x, p.z, dx / d, dz / d, d - z.radius);
       if (!w.explosive) {
+        // Round a building corner, into a wreck, or into a car or barrel
+        // close enough to take you with it: no shot.
+        if (this.world.facadeT(p.x, p.z, dx / d, dz / d, d) < d) continue;
         if (hit.prop) {
           if (hit.prop.hp === null) continue;
+          const ex = hit.prop.def.explodes;
+          if (ex && hit.t < ex.radius + 1) continue;
           score += 8;
         }
       } else if (hit.prop && hit.prop.height > 2 && hit.t < w.stats.blast.radius + 0.5) {
@@ -444,7 +461,26 @@ export class Game {
       const score = d - n * 3;
       if (score < bestScore) { bestScore = score; best = b; }
     }
+    // With a launcher: a condemned building with a crowd under where it
+    // would fall is worth bringing down on them.
+    if (w.explosive) {
+      for (const b of props) {
+        if (b.kind !== 'condemned' || b.destroyed) continue;
+        const d = Math.hypot(b.x - p.x, b.z - p.z);
+        if (d > range + 4) continue;
+        const fp = this.propSys.footprint({ p: b, fx: b.cos, fz: -b.sin });
+        if (inBox(fp, p.x, p.z, 1)) continue;
+        let n = 0;
+        for (const z of this.zombies) if (!z.dead && inBox(fp, z.x, z.z, 0)) n++;
+        if (n < 3) continue;
+        // aim at its base, on the road side
+        const tx = b.x + b.cos * 1.6, tz = b.z - b.sin * 1.6;
+        const score = Math.hypot(tx - p.x, tz - p.z) - n * 3;
+        if (score < bestScore) { bestScore = score; best = { kind: 'aim', x: tx, z: tz, prop: b }; }
+      }
+    }
     if (!best) return null;
+    if (best.kind === 'aim') return { x: best.x, z: best.z, prop: best.prop, zombie: null };
     return best.kind === 'barrel' && best.def
       ? { x: best.x, z: best.z, prop: best, zombie: null }
       : { x: best.x, z: best.z, prop: null, zombie: best };
@@ -477,7 +513,9 @@ export class Game {
         const a = p.yaw + (this.rng() * 2 - 1) * w.spread;
         const speed = 62 + this.rng() * 8;
         this.bullets.push({
-          x: mx, z: mz, dx: Math.sin(a), dz: Math.cos(a), speed, life: s.range / speed + 0.05,
+          // From the survivor's centre, not the muzzle: pressed against a wall,
+          // the muzzle is already past it.
+          x: p.x, z: p.z, dx: Math.sin(a), dz: Math.cos(a), speed, life: s.range / speed + 0.05,
           damage: s.damage, pierce: s.pierce, knock: s.knockback, hits: null,
         });
       }
@@ -581,7 +619,22 @@ export class Game {
         m.body.position.y = 0.12 * k;
         m.armL.rotation.x = m.armR.rotation.x = -Math.PI / 2 - k * 0.6;
         z.x += z.kx * dt; z.z += z.kz * dt;
-        z.kx *= 1 - damp(6, dt); z.kz *= 1 - damp(6, dt);
+        if (z.fly) {
+          // thrown by a blast: up, tumbling, down
+          const f = z.fly;
+          f.vy -= 20 * dt;
+          f.y += f.vy * dt;
+          m.root.rotation.x += f.sx * dt;
+          m.root.rotation.z += f.sz * dt;
+          if (f.y <= 0 && f.vy < 0) {
+            z.fly = null;
+            m.root.rotation.x = m.root.rotation.z = 0;
+            this.vfx.dust(z.x, z.z, 0.8, 2, undefined, 1);
+          }
+          m.root.position.y = Math.max(0, f.y);
+        } else {
+          z.kx *= 1 - damp(6, dt); z.kz *= 1 - damp(6, dt);
+        }
         if (z.deadT > 3) m.root.position.y -= dt * 0.5;
         m.root.position.x = z.x; m.root.position.z = z.z;
         if (z.deadT > 4.5) {
@@ -747,7 +800,7 @@ export class Game {
 
   pan(x) { return (x - this.player.x) / 10; }
 
-  damageZombie(z, dmg, dx, dz, knock) {
+  damageZombie(z, dmg, dx, dz, knock, launch = 0) {
     if (z.dead) return;
     z.hp -= dmg;
     if (z.state === 'idle') z.state = 'chase';
@@ -757,12 +810,26 @@ export class Game {
     z.flash = 0.07;
     this.burst(z.x, 1.2 * z.scale, z.z, 3, 0x6e0b0b, { speed: 2.5, size: 0.08 });
     sfx.hit(this.pan(z.x));
-    if (z.hp <= 0) this.killZombie(z, dx, dz);
+    if (z.hp <= 0) this.killZombie(z, dx, dz, launch);
   }
 
-  killZombie(z, dx, dz) {
+  /* Falling walls, lamp posts and buildings: everything under fp is hit. */
+  crush(fp, dmg, fx, fz) {
+    for (const z of this.zombies) {
+      if (!z.dead && inBox(fp, z.x, z.z, z.radius)) this.damageZombie(z, dmg, fx, fz, 2, 3);
+    }
+    const p = this.player;
+    if (this.state === 'playing' && inBox(fp, p.x, p.z, p.stats.radius)) {
+      this.hurtPlayer(Math.min(dmg * 0.35, 70), p.x - fx, p.z - fz);
+    }
+  }
+
+  killZombie(z, dx, dz, launch = 0) {
     z.dead = true;
     z.deadT = 0;
+    if (launch > 0.5) {
+      z.fly = { y: 0, vy: launch, sx: (this.rng() - 0.5) * 10, sz: (this.rng() - 0.5) * 10 };
+    }
     z.yaw = Math.atan2(-dx, -dz);       // fall away from the shot
     z.model.root.rotation.y = z.yaw;
     for (const mesh of z.model.meshes) mesh.material = mesh.userData.mat;
@@ -792,8 +859,10 @@ export class Game {
       const b = bs[i];
       let remaining = b.speed * dt;
       let alive = true;
-      // The first prop on this step's line stops the bullet there.
+      // The first prop or building front on this step's line stops it there.
       const wall = rayProps(props, b.x, b.z, b.dx, b.dz, remaining);
+      const facade = this.world.facadeT(b.x, b.z, b.dx, b.dz, remaining);
+      if (facade < wall.t) { wall.t = facade; wall.prop = null; }
       let toWall = wall.t;
       // Sweep the segment so fast bullets never skip a zombie.
       while (alive && remaining > 0) {
@@ -813,8 +882,12 @@ export class Game {
         if (!hit) {
           if (toWall <= remaining) {
             b.x += b.dx * toWall; b.z += b.dz * toWall;
-            this.propSys.damage(wall.prop, b.damage, b.dx, b.dz, 'bullet');
-            this.burst(b.x, 1.2, b.z, 3, wall.prop.kind === 'barrel' ? 0xffb040 : 0xd8d0b8, { speed: 2, size: 0.06, life: 0.3 });
+            const pr = wall.prop;
+            const mat = pr ? pr.def.material : 'concrete';
+            const y = pr ? Math.min(1.35, (pr.y || 0) + pr.height - 0.08) : 1.4;
+            if (pr) this.propSys.damage(pr, b.damage, b.dx, b.dz, 'bullet');
+            this.vfx.impact(b.x, y, b.z, mat, { x: b.dx, z: b.dz });
+            if (mat === 'metal') sfx.ricochet(this.pan(b.x)); else sfx.chip(this.pan(b.x));
             alive = false;
           } else {
             b.x += b.dx * remaining; b.z += b.dz * remaining;
@@ -841,8 +914,8 @@ export class Game {
       g.x += g.vx * dt; g.y += g.vy * dt; g.z += g.vz * dt;
       g.spin += dt * 12;
       g.life -= dt;
-      if (this.rng() < 0.5) this.parts.length < MAX_PARTS && this.parts.push({
-        x: g.x, y: g.y, z: g.z, vx: 0, vy: 0.4, vz: 0, life: 0.4, max: 0.4, size: 0.12, color: 0x8a8a80, gravity: -1,
+      if (this.rng() < 0.6) this.vfx.smokes.add({
+        x: g.x, y: g.y, z: g.z, vx: 0, vy: 0.3, vz: 0, drag: 2, life: 0.7, s0: 0.15, s1: 0.5, c0: [0.7, 0.7, 0.68], a: 0.5, fadeIn: 0.05,
       });
       let boom = g.y <= 0.15 || g.life <= 0;
       if (!boom) {
@@ -868,22 +941,22 @@ export class Game {
     }
   }
 
-  explodeLater(x, z, blast, delay) {
-    if (delay <= 0) this.explode(x, z, blast);
-    else this.pending.push({ t: delay, x, z, blast });
+  explodeLater(x, z, blast, delay, opts = {}) {
+    if (delay <= 0) this.explode(x, z, blast, opts);
+    else this.pending.push({ t: delay, x, z, blast, opts });
   }
 
   updatePending(dt) {
     for (let i = this.pending.length - 1; i >= 0; i--) {
       const e = this.pending[i];
       e.t -= dt;
-      if (e.t <= 0) { this.pending.splice(i, 1); this.explode(e.x, e.z, e.blast); }
+      if (e.t <= 0) { this.pending.splice(i, 1); this.explode(e.x, e.z, e.blast, e.opts); }
     }
   }
 
   /* A blast: damage falling off with distance to zombies, the survivor and
      props; a shove for everything that can move; fire, smoke and a flash. */
-  explode(x, z, { radius, damage, impulse }, { mine = false, scorch = false } = {}) {
+  explode(x, z, { radius, damage, impulse }, { mine = false, scorch = false, vehicle = false } = {}) {
     if (!this.world) return;
     const falloff = (d, r) => Math.max(0.25, Math.pow(1 - Math.min(d / r, 1), 0.7));
     for (const zb of this.zombies) {
@@ -891,7 +964,9 @@ export class Game {
       const dx = zb.x - x, dz = zb.z - z, d = Math.hypot(dx, dz);
       if (d > radius + zb.radius) continue;
       const u = d || 1;
-      this.damageZombie(zb, damage * falloff(d, radius + zb.radius), dx / u, dz / u, impulse * 0.5);
+      const f = falloff(d, radius + zb.radius);
+      // Anything the blast kills is thrown, harder the closer it stood.
+      this.damageZombie(zb, damage * f, dx / u, dz / u, impulse * 0.5, (4 + impulse * 0.35) * f / zb.scale);
     }
     const p = this.player;
     if (this.state === 'playing') {
@@ -903,20 +978,20 @@ export class Game {
       if (pr.destroyed) continue;
       const d = Math.hypot(pr.x - x, pr.z - z);
       if (d > radius + pr.r) continue;
-      this.propSys.damage(pr, damage * falloff(Math.max(0, d - pr.r * 0.5), radius) * (pr.kind === 'wall' ? 1.5 : 1), pr.x - x, pr.z - z, 'blast');
+      this.propSys.damage(pr, damage * falloff(Math.max(0, d - pr.r * 0.5), radius), pr.x - x, pr.z - z, 'blast');
     }
     this.propSys.impulse(x, z, radius * 1.3, impulse);
     this.world.navDirty = true;
 
-    this.burst(x, 0.8, z, 26, 0xffa030, { speed: 7, up: 6, size: 0.22, life: 0.5, gravity: 4 });
-    this.burst(x, 0.8, z, 14, 0xffe080, { speed: 10, up: 4, size: 0.1, life: 0.35, gravity: 8 });
-    this.burst(x, 1.0, z, 18, 0x3a3a3a, { speed: 2.5, up: 3, size: 0.4, life: 1.2, gravity: -1.5 });
-    this.blastLight.position.set(x, 1.6, z);
-    this.blastLight.intensity = 90;
-    this.blastT = 0.25;
+    this.vfx.explosion(x, 0.3, z, radius);
+    this.blastLight.position.set(x, 1.8, z);
+    this.blastLight.distance = radius * 4;
+    this.blastPeak = Math.max(this.blastT > 0 ? this.blastLight.intensity : 0, 60 + radius * 12);
+    this.blastLight.intensity = this.blastPeak;
+    this.blastT = 0.3;
     const pd = Math.hypot(p.x - x, p.z - z);
-    this.shake = Math.max(this.shake, Math.max(0.25, 0.9 - pd / 25));
-    sfx.boom();
+    this.shake = Math.max(this.shake, Math.max(0.25, (0.6 + radius * 0.06) - pd / 30));
+    if (vehicle || radius > 6) sfx.bigBoom(); else sfx.boom();
     vibrate(pd < 10 ? 60 : 25, save.settings.haptics);
     if (scorch) {
       const s = scorchDecal(radius * 1.2);
@@ -1049,7 +1124,8 @@ export class Game {
     }
     if (this.blastT > 0) {
       this.blastT -= dt;
-      this.blastLight.intensity = Math.max(0, this.blastT / 0.25) * 90;
+      const k = Math.max(0, this.blastT / 0.3);
+      this.blastLight.intensity = this.blastPeak * k * k;
     }
 
     // Instanced coins
@@ -1108,6 +1184,7 @@ export class Game {
     if (this.partMesh.instanceColor) this.partMesh.instanceColor.needsUpdate = true;
 
     this.propSys.draw();
+    this.vfx.draw(this.scene.fog);
   }
 
   /* ── Results & HUD ──────────────────────────────────────────────────── */

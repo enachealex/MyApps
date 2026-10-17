@@ -157,18 +157,42 @@ export const DIRECTOR = {
 };
 
 /* ── Props you can wreck ───────────────────────────────────────────────────
-   hp          damage to destroy (null = indestructible)
-   mass        how far explosions shove it (bigger = less); null = bolted down
-   explodes    blows up when destroyed: radius, damage, impulse
+   Everything on the street stops bullets and can be broken.
+
+   hp          damage to destroy it (null = indestructible)
+   material    what bullets hit: metal sparks, concrete/brick/wood dust
+   mass        how far blasts shove it (bigger = less); null = bolted down
+   explodes    blows up when destroyed: radius (m), damage, impulse
+   burns       smokes below smokeAt of its hp, catches fire below fireAt, and
+               leaves a burning wreck when it blows
    rubble      leaves a rough pile that slows everyone crossing it
+   topples     falls over when destroyed, crushing whatever it lands on for
+               `crush` damage
+   bulletMult / blastMult   scale incoming damage (a condemned building
+               shrugs off bullets but not explosions)
+   collapse    the big set piece: it creaks, then comes down across the road
+               as a rubble field with slabs in it
    Every one of these blocks zombie paths while it stands; the navigation
    grid is rebuilt whenever one breaks, falls or gets shoved.             */
 export const PROPS = {
-  car:       { hp: null, mass: 8,   blocksBullets: true },
-  barricade: { hp: 260,  mass: 3,   blocksBullets: true, rubble: true },
-  barrel:    { hp: 30,   mass: 1,   blocksBullets: true, explodes: { radius: 3.8, damage: 150, impulse: 12 } },
-  wall:      { hp: 480,  mass: null, blocksBullets: true, rubble: true, topples: true },
-  fire:      { hp: null, mass: null, blocksBullets: false },
+  car:       { hp: 420, material: 'metal', mass: 8, blocksBullets: true, burns: true, smokeAt: 0.6, fireAt: 0.3,
+               explodes: { radius: 5, damage: 170, impulse: 18 } },
+  tanker:    { hp: 520, material: 'metal', mass: 24, blocksBullets: true, burns: true, smokeAt: 0.6, fireAt: 0.35,
+               explodes: { radius: 9, damage: 320, impulse: 30 } },
+  barricade: { hp: 260, material: 'concrete', mass: 3, blocksBullets: true, rubble: true },
+  barrel:    { hp: 30, material: 'metal', mass: 1, blocksBullets: true, explodes: { radius: 3.8, damage: 150, impulse: 12 } },
+  wall:      { hp: 480, material: 'brick', mass: null, blocksBullets: true, rubble: true, topples: true, crush: 220, blastMult: 1.5 },
+  lamp:      { hp: 70, material: 'metal', mass: null, blocksBullets: true, topples: true, crush: 90 },
+  fire:      { hp: 60, material: 'metal', mass: 1, blocksBullets: true },
+  slab:      { hp: 320, material: 'concrete', mass: null, blocksBullets: true, rubble: true },
+  condemned: { hp: 900, material: 'concrete', mass: null, blocksBullets: true, topples: true, collapse: true,
+               crush: 2000, bulletMult: 0.15, blastMult: 1.6 },
+};
+// How often the road offers the big set pieces.
+export const SET_PIECES = {
+  condemnedEvery: 7,      // one condemned building every 7 chunks (~224 m)
+  tankerChance: 0.06,     // per row of props, once past tankerFrom metres
+  tankerFrom: 120,
 };
 export const RUBBLE_SLOW = 0.55;        // speed multiplier on rubble for zombies
 export const RUBBLE_SLOW_PLAYER = 0.75; // and for you

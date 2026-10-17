@@ -194,6 +194,40 @@ export const sfx = {
     tone({ freq: 220, to: 90, dur: 0.12, type: 'triangle', vol: 0.3 });
     noise({ dur: 0.06, freq: 900, q: 1, vol: 0.2 });
   },
+  ignite() {
+    if (!throttle('ignite', 0.3)) return;
+    noise({ dur: 0.6, freq: 900, q: 0.5, type: 'bandpass', vol: 0.35, attack: 0.08, sweep: 0.6 });
+  },
+  clang() {
+    if (!throttle('clang', 0.08)) return;
+    tone({ freq: 420 + Math.random() * 120, to: 300, dur: 0.35, type: 'square', vol: 0.08 });
+    noise({ dur: 0.12, freq: 2400, q: 3, vol: 0.18 });
+  },
+  ricochet(pan) {
+    if (!throttle('ricochet', 0.05)) return;
+    tone({ freq: 2200 + Math.random() * 1400, to: 900, dur: 0.12, type: 'triangle', vol: 0.05, pan });
+  },
+  chip(pan) {
+    if (!throttle('chip', 0.05)) return;
+    noise({ dur: 0.05, freq: 1800, q: 2, vol: 0.12, pan });
+  },
+  rumble() {
+    if (!throttle('rumble', 1)) return;
+    noise({ dur: 1.6, freq: 120, type: 'lowpass', vol: 0.7, attack: 0.4 });
+    tone({ freq: 45, to: 32, dur: 1.5, type: 'sine', vol: 0.4, attack: 0.3 });
+  },
+  collapse() {
+    if (!throttle('collapse', 1)) return;
+    noise({ dur: 2.8, freq: 260, type: 'lowpass', vol: 1.0, sweep: 0.3, attack: 0.02 });
+    noise({ dur: 1.4, freq: 1400, q: 0.8, vol: 0.35, sweep: 0.4 });
+    tone({ freq: 60, to: 22, dur: 1.6, type: 'sine', vol: 0.7 });
+  },
+  bigBoom() {
+    if (!throttle('bigBoom', 0.1)) return;
+    noise({ dur: 1.8, freq: 500, type: 'lowpass', vol: 1.0, sweep: 0.12 });
+    noise({ dur: 0.5, freq: 2000, q: 0.6, vol: 0.4, sweep: 0.3 });
+    tone({ freq: 70, to: 20, dur: 1.2, type: 'sine', vol: 0.8 });
+  },
   milestone() {
     if (!throttle('milestone', 0.5)) return;
     [523, 784].forEach((f, i) => tone({ freq: f, dur: 0.3, type: 'triangle', vol: 0.16, delay: i * 0.1 }));

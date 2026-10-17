@@ -10,15 +10,16 @@
    is raised and the navigation grid rebuilds. */
 
 import * as THREE from '../vendor/three.module.min.js';
-import { PROPS } from './config.js';
+import { PROPS, SET_PIECES } from './config.js';
 import {
   TEX, lambert, boxGeo, mergeGeos, glowDecal, makeCar, makeBarrier, makeLamp, makeFireBarrel,
-  makeHealthPack, makeArmorVest, makeExplosiveBarrel, makeWall,
+  makeHealthPack, makeArmorVest, makeExplosiveBarrel, makeWall, makeTanker, makeCondemned,
 } from './models.js';
 
 export const ROAD_HALF = 6;          // asphalt from -6 to 6
 export const WALK_HALF = 7.4;        // how far sideways anyone can go (the sidewalk edge)
 export const START_PZ = 2;           // where the survivor stands at 0 m
+export const FACADE_X = WALK_HALF + 0.6;   // where the building fronts are
 const CHUNK = 32;                    // metres; a multiple of the road texture's 16 m tile
 const EDGE = 14;                     // z where chunk 0 starts (behind the start barricade)
 const BUILD_AHEAD = 78;              // keep road built this far past the survivor
@@ -146,6 +147,7 @@ export class World {
     this.chunks.delete(i);
     this.scene.remove(ch.group);
     for (const d of ch.own) d.dispose();
+    for (const p of this.props) if (p.chunk === i) p.removed = true;   // stops their smoke and fire
     this.props = this.props.filter((p) => p.chunk !== i);
     this.rough = this.rough.filter((r) => r.chunk !== i);
     this.items = this.items.filter((it) => it.chunk !== i);
@@ -172,10 +174,27 @@ export class World {
       group.add(m);
     }
 
-    /* Buildings, with the odd alley for ambushes. */
+    /* Buildings, with the odd alley for ambushes, and now and then a
+       condemned building you can bring down across the road. */
+    const condemned = i % SET_PIECES.condemnedEvery === SET_PIECES.condemnedEvery - 2 && z0 < this.startZ - 40;
+    const condemnedSide = rng() < 0.5 ? -1 : 1;
     for (const s of [-1, 1]) {
       let z = z0;
+      let setPiece = condemned && s === condemnedSide;
       while (z > z1 + 0.5) {
+        if (setPiece && z - z1 > 11) {
+          setPiece = false;
+          const w = 9, h = 13;
+          const cb = makeCondemned(w, h);
+          this.addProp('condemned', cb, s * (FACADE_X + 0.6), z - 1 - w / 2, s > 0 ? Math.PI : 0, i, group, own);
+          // What's left standing behind it once it falls.
+          const back = new THREE.Mesh(facadeGeo(7, 9, w + 2), M.facades[Math.floor(rng() * M.facades.length)]);
+          own.push(back.geometry);
+          back.position.set(s * (FACADE_X + 2 + 3.5), 4.5, z - 1 - w / 2);
+          group.add(back);
+          z -= w + 2;
+          continue;
+        }
         const len = Math.min(rand(6, 13), z - z1);
         if (rng() < 0.15 && len > 4 && z < this.startZ - 8) {
           const w = 3.2;
@@ -203,14 +222,14 @@ export class World {
       }
     }
 
-    /* Lamps, every 16 m, alternating sides. */
+    /* Lamps, every 16 m, alternating sides. They stop bullets and can be
+       knocked down. */
     for (let k = 0; k < 2; k++) {
       const s = (i + k) % 2 ? 1 : -1;
       const lamp = makeLamp();
-      lamp.group.position.set(s * (ROAD_HALF + 0.6), 0, z0 - 6 - k * 16);
-      lamp.group.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
-      group.add(lamp.group);
-      if (rng() < 0.22) this.animated.push({ kind: 'flicker', head: lamp.head, pool: lamp.pool, seed: rng() * 100, chunk: i });
+      const p = this.addProp('lamp', lamp, s * (ROAD_HALF + 0.6), z0 - 6 - k * 16, s > 0 ? -Math.PI / 2 : Math.PI / 2, i, group, own);
+      p.light = lamp;
+      if (rng() < 0.22) this.animated.push({ kind: 'flicker', head: lamp.head, pool: lamp.pool, seed: rng() * 100, chunk: i, prop: p });
     }
 
     /* Litter: one merged mesh for every bag and box in the chunk. */
@@ -273,24 +292,50 @@ export class World {
     return this.props.some((c) => !c.destroyed && Math.abs(c.x - x) < c.r + pad && Math.abs(c.z - z) < c.r + pad);
   }
 
+  /* Puts a prop on the street: its model in the chunk, its collider in
+     world.props. Also used mid-run for slabs left by a collapse. */
+  addProp(kind, model, x, z, rot, chunk, group = this.chunks.get(chunk)?.group, own = this.chunks.get(chunk)?.own) {
+    if (!group) { for (const d of model.own || []) d.dispose(); return null; }
+    model.group.position.set(x, 0, z);
+    model.group.rotation.y = rot;
+    group.add(model.group);
+    const def = PROPS[kind];
+    const p = {
+      kind, def, chunk, x, z, y: 0, rot, hw: model.hw, hd: model.hd, height: model.height,
+      cos: Math.cos(rot), sin: Math.sin(rot), r: Math.hypot(model.hw, model.hd),
+      hp: def.hp, maxHp: def.hp, blocking: true, destroyed: false,
+      group: model.group, meshes: model.meshes, model, flash: 0,
+      vx: 0, vy: 0, vz: 0, va: 0, moving: false, airborne: false,
+    };
+    if (model.own) own.push(...model.own);
+    this.props.push(p);
+    this.navDirty = true;
+    return p;
+  }
+
+  /* Where a bullet's path meets a building front (outside an alley), as a
+     distance along it, or Infinity. */
+  facadeT(x, z, dx, dz, len) {
+    if (Math.abs(dx) < 1e-6) return Infinity;
+    const side = dx > 0 ? 1 : -1;
+    const t = (side * FACADE_X - x) / dx;
+    if (t < 0 || t > len) return Infinity;
+    const zc = z + dz * t;
+    for (const a of this.alleys) if (a.side === side && Math.abs(zc - a.z) < 1.5) return Infinity;
+    return t;
+  }
+
   /* One row of trouble across the road at z. */
   placeRow(rng, rand, z, chunk, group, own) {
     const r = rng();
-    const add = (kind, model, x, zz, rot) => {
-      model.group.position.set(x, 0, zz);
-      model.group.rotation.y = rot;
-      group.add(model.group);
-      const def = PROPS[kind];
-      const p = {
-        kind, def, chunk, x, z: zz, rot, hw: model.hw, hd: model.hd, height: model.height,
-        cos: Math.cos(rot), sin: Math.sin(rot), r: Math.hypot(model.hw, model.hd),
-        hp: def.hp, maxHp: def.hp, blocking: true, destroyed: false,
-        group: model.group, meshes: model.meshes, flash: 0, vx: 0, vz: 0, va: 0, moving: false,
-      };
-      if (model.own) own.push(...model.own);
-      this.props.push(p);
-      return p;
-    };
+    const add = (kind, model, x, zz, rot) => this.addProp(kind, model, x, zz, rot, chunk, group, own);
+
+    if (z < this.startZ - SET_PIECES.tankerFrom && rng() < SET_PIECES.tankerChance) {
+      // A fuel tanker, mostly along the road. Give it a wide berth.
+      const x = (rng() < 0.5 ? -1 : 1) * rand(2.4, 4.4);
+      add('tanker', makeTanker(rng), x, z, rand(-0.2, 0.2) + (rng() < 0.5 ? Math.PI : 0));
+      return;
+    }
 
     if (r < 0.36) {
       // A wreck or two, with the odd explosive barrel tucked beside it.
@@ -323,8 +368,8 @@ export class World {
       add('wall', makeWall(w), x, z, 0);
     } else {
       const fb = makeFireBarrel();
-      add('fire', fb, rand(-5, 5), z, 0);
-      this.animated.push({ kind: 'fire', flames: fb.flames, pool: fb.pool, seed: rng() * 100, chunk });
+      const p = add('fire', fb, rand(-5, 5), z, 0);
+      this.animated.push({ kind: 'fire', flames: fb.flames, pool: fb.pool, seed: rng() * 100, chunk, prop: p });
       own.push(fb.flames[0].material, fb.flames[0].geometry, fb.flames[1].geometry, fb.pool.material);
     }
   }
@@ -358,6 +403,7 @@ export class World {
 
   animate(t) {
     for (const a of this.animated) {
+      if (a.prop && a.prop.destroyed) continue;      // knocked over: no more flicker or flames
       if (a.kind === 'fire') {
         const f = 0.85 + Math.sin(t * 17 + a.seed) * 0.08 + Math.sin(t * 29 + a.seed * 2) * 0.07;
         a.flames[0].scale.set(f, 1 / f, 1);

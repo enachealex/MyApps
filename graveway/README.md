@@ -34,7 +34,7 @@ over) whatever you leave behind.
 | **A. Weapons** | `config.js` `WEAPONS`, `weapons.js` | Each gun is a definition: `fireRate`, `damage`, `spread`, `ammoCapacity`, `reloadTime`, `model`, `projectile`, plus optional `recoil` and `blast`. A `Weapon` wraps one per run with ammo, reloads and recoil bloom. The six guns are Pistol, SMG, Shotgun, Assault Rifle (recoil), Grenade Launcher (explosive) and Minigun. |
 | **B. Survivors** | `config.js` `CHARACTERS` | `name`, `role`, portrait (rendered from the 3D model), `baseHealth`, `moveSpeed`, `perk`, `startingWeapon`, `look`. The roster is Rook (faster reloads, pistol), Bram (starts with armor, shotgun), Juno (explosion resistant, launcher) and Wren (fast, extra coins, SMG). |
 | **C. Director** | `config.js` `DIRECTOR`, `director.js` | Tracks distance. Stage = metres ÷ 100. Zombie health = base × (1 + 0.15 × stage), with damage and speed scaling too. Horde spacing, horde size, straggler rate and the cap on zombies up at once all tighten per stage. Runners join at stage 1, tanks at stage 3, the boss at stage 5. |
-| **D. Destruction + pathfinding** | `config.js` `PROPS`, `props.js`, `nav.js` | Barrels explode and chain. Barricades and brick walls take damage from bullets, blasts and smashing tanks, and break into debris and rubble. Walls topple first. Blasts shove cars and barricades. A navigation grid with a flow field (the stand-in for a NavMesh) rebuilds whenever anything breaks, falls or moves. Zombies path round obstacles, wade slowly through rubble, and beat down barricades when there's no way round. |
+| **D. Destruction + pathfinding** | `config.js` `PROPS` / `SET_PIECES`, `props.js`, `nav.js`, `vfx.js` | Everything on the street stops bullets (props and building fronts) and can be wrecked. Cars and the rare fuel tanker smoke, catch fire, explode, get thrown and tumble, and land as burning wrecks. Barrels chain. Lamp posts and brick walls topple and crush what they land on. Condemned buildings creak, then collapse across the road into a rubble field with slabs. Blasts throw zombies and shove props. A navigation grid with a flow field (the stand-in for a NavMesh) rebuilds after every change, so zombies path round the wreckage, wade through rubble, and smash barricades when there's no way round. |
 
 ## Making it yours
 
@@ -47,7 +47,8 @@ Almost everything about how the game *feels* is one number in
 | `src/game.js` | The run: player, auto-aim, firing, zombies, bullets, grenades, explosions, camera, HUD state |
 | `src/director.js` | Who spawns, where and when, from the distance travelled |
 | `src/nav.js` | The navigation grid and flow field |
-| `src/props.js` | Damage, destruction, debris, rubble and shoves for street props |
+| `src/props.js` | Damage, destruction, toppling, collapses, flying wrecks, debris, rubble |
+| `src/vfx.js` | Fireballs, smoke, dust, sparks, embers and shock rings (camera-facing sprites) |
 | `src/world.js` | Streams the endless street in 32 m chunks and places props, pickups and alleys |
 | `src/weapons.js` | The `Weapon` class |
 | `src/models.js` | Every model, built from boxes, plus canvas-painted textures |

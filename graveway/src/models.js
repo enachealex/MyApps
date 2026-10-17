@@ -241,6 +241,84 @@ export function initTextures() {
     }
   });
 
+  // Smoke: a cluster of soft blobs with uneven shading, so a sprite reads as
+  // a billow rather than a disc. White, tinted per sprite.
+  TEX.smoke = canvasTex(128, 128, (g, w, h) => {
+    for (let i = 0; i < 16; i++) {
+      const a = Math.random() * Math.PI * 2, d = Math.random() * w * 0.2;
+      const x = w / 2 + Math.cos(a) * d, y = h / 2 + Math.sin(a) * d, r = w * (0.16 + Math.random() * 0.16);
+      const v = Math.round(185 + Math.random() * 70);
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, `rgba(${v},${v},${v},0.32)`);
+      grad.addColorStop(1, `rgba(${v},${v},${v},0)`);
+      g.fillStyle = grad;
+      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+    // fade the edges so no sprite shows a square
+    g.globalCompositeOperation = 'destination-in';
+    const edge = g.createRadialGradient(w / 2, h / 2, w * 0.2, w / 2, h / 2, w / 2);
+    edge.addColorStop(0, 'rgba(0,0,0,1)');
+    edge.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = edge;
+    g.fillRect(0, 0, w, h);
+  });
+
+  // Flame / glow: a hot core with a long soft falloff.
+  TEX.flame = canvasTex(64, 64, (g, w, h) => {
+    const r = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    r.addColorStop(0, 'rgba(255,255,255,1)');
+    r.addColorStop(0.18, 'rgba(255,255,255,0.85)');
+    r.addColorStop(0.45, 'rgba(255,255,255,0.3)');
+    r.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = r;
+    g.fillRect(0, 0, w, h);
+  });
+
+  // Condemned facade: grimy concrete panels with cracks and dead windows.
+  TEX.condemned = canvasTex(256, 512, (g, w, h) => {
+    g.fillStyle = '#6a6560';
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 1400; i++) {
+      g.fillStyle = `rgba(0,0,0,${Math.random() * 0.15})`;
+      g.fillRect(Math.random() * w, Math.random() * h, 3, 3);
+    }
+    for (let y = 30; y < h; y += 72) {
+      for (let x = 20; x < w; x += 78) {
+        g.fillStyle = Math.random() < 0.3 ? '#0a0a0a' : '#1a1d22';
+        g.fillRect(x, y, 44, 40);
+        g.fillStyle = 'rgba(0,0,0,0.4)';
+        g.fillRect(x - 3, y + 40, 50, 5);
+      }
+    }
+    g.strokeStyle = 'rgba(15,12,10,0.85)';
+    for (let i = 0; i < 9; i++) {
+      g.lineWidth = 1.5 + Math.random() * 2.5;
+      g.beginPath();
+      let x = Math.random() * w, y = Math.random() * h;
+      g.moveTo(x, y);
+      for (let s = 0; s < 9; s++) { x += (Math.random() - 0.5) * 50; y += Math.random() * 40; g.lineTo(x, y); }
+      g.stroke();
+    }
+    g.fillStyle = 'rgba(40,20,10,0.25)';
+    g.fillRect(0, h * 0.82, w, h * 0.18);
+  }, { repeat: true });
+
+  TEX.danger = canvasTex(256, 96, (g, w, h) => {
+    g.fillStyle = '#e8c21e';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#141414';
+    for (let x = -h; x < w; x += 40) {
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 20, 0); g.lineTo(x + 20 + h, h); g.lineTo(x + h, h); g.fill();
+    }
+    g.fillStyle = '#141414';
+    g.fillRect(28, 18, w - 56, h - 36);
+    g.fillStyle = '#e8c21e';
+    g.font = '52px "Bebas Neue", Impact, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('CONDEMNED', w / 2, h / 2 + 2);
+  });
+
   TEX.sign = canvasTex(512, 128, (g, w, h) => {
     g.fillStyle = '#0d1a10';
     g.fillRect(0, 0, w, h);
@@ -431,16 +509,95 @@ function carGeos() {
   return CAR_GEO;
 }
 
+/* Burnt-out wreck materials, swapped in when a vehicle blows up. */
+export const BURNT = {
+  get body() { return lambert(0x1e1b18); },
+  get glass() { return lambert(0x0a0a0a); },
+  get lamp() { return basic(0x1a1210); },
+};
+
 export function makeCar(rng) {
   const g = carGeos();
   const group = new THREE.Group();
-  group.add(new THREE.Mesh(g.body, lambert(CAR_COLORS[Math.floor(rng() * CAR_COLORS.length)])));
-  group.add(new THREE.Mesh(g.cabin, lambert(0x1a1f26)));
-  group.add(new THREE.Mesh(g.wheels, lambert(0x141414)));
-  group.add(new THREE.Mesh(g.lights, basic(0x7a1010)));
-  group.add(new THREE.Mesh(g.heads, basic(rng() < 0.25 ? 0xfff0b0 : 0x4a4a40)));
-  group.add(blobShadow(4.4, 0.5));
-  return { group, meshes: [], hw: 0.95, hd: 2.1, height: 1.6 };
+  const body = keep(new THREE.Mesh(g.body, lambert(CAR_COLORS[Math.floor(rng() * CAR_COLORS.length)])));
+  const cabin = keep(new THREE.Mesh(g.cabin, lambert(0x1a1f26)));
+  const lights = new THREE.Mesh(g.lights, basic(0x7a1010));
+  const heads = new THREE.Mesh(g.heads, basic(rng() < 0.25 ? 0xfff0b0 : 0x4a4a40));
+  const shadow = blobShadow(4.4, 0.5);
+  group.add(body, cabin, new THREE.Mesh(g.wheels, lambert(0x141414)), lights, heads, shadow);
+  return { group, meshes: [body, cabin], burn: { body, cabin, lights, heads }, shadow, hw: 0.95, hd: 2.1, height: 1.6 };
+}
+
+/* A fuel tanker: cab, chassis and a long tank. Rare, and very explosive. */
+let TANKER_GEO = null;
+export function makeTanker(rng) {
+  if (!TANKER_GEO) {
+    const wheels = [];
+    for (const z of [2.6, 1.0, -1.6, -2.8]) for (const x of [-1.05, 1.05]) {
+      wheels.push(new THREE.CylinderGeometry(0.46, 0.46, 0.32, 10).rotateZ(Math.PI / 2).translate(x, 0.46, z));
+    }
+    TANKER_GEO = {
+      cab: mergeGeos([boxGeo(2.2, 1.5, 1.9, 0, 1.25, 2.55), boxGeo(2.2, 0.9, 0.9, 0, 2.4, 2.4)]),
+      glass: boxGeo(2.0, 0.6, 0.06, 0, 2.15, 3.52),
+      chassis: boxGeo(1.6, 0.3, 7.2, 0, 0.75, -0.1),
+      tank: new THREE.CylinderGeometry(1.15, 1.15, 5.2, 16).rotateX(Math.PI / 2).translate(0, 2.0, -1.1),
+      bands: mergeGeos([-3.2, -1.1, 1.0].map((z) => new THREE.CylinderGeometry(1.18, 1.18, 0.14, 16).rotateX(Math.PI / 2).translate(0, 2.0, z))),
+      wheels: mergeGeos(wheels),
+    };
+  }
+  const G = TANKER_GEO;
+  const group = new THREE.Group();
+  const cab = keep(new THREE.Mesh(G.cab, lambert([0x8a2a22, 0x2a4a6a, 0xd0c8b0][Math.floor(rng() * 3)])));
+  const tank = keep(new THREE.Mesh(G.tank, lambert(0xb8b8b0)));
+  const bands = keep(new THREE.Mesh(G.bands, basic(0xe08a1a)));
+  const glass = new THREE.Mesh(G.glass, lambert(0x1a1f26));
+  group.add(cab, tank, bands, glass, new THREE.Mesh(G.chassis, lambert(0x222222)), new THREE.Mesh(G.wheels, lambert(0x141414)));
+  const shadow = blobShadow(8, 0.55);
+  shadow.scale.set(3.2, 1, 8);
+  group.add(shadow);
+  return { group, meshes: [cab, tank, bands], burn: { body: cab, cabin: tank, lights: bands, heads: glass }, shadow, hw: 1.15, hd: 3.6, height: 3.1 };
+}
+
+/* A condemned building front on the sidewalk, scaffolded and taped off.
+   Its long side runs along the road (local z); it falls toward local +x. */
+export function makeCondemned(width, height) {
+  const d = 1.2;
+  const g = new THREE.BoxGeometry(d, height, width);
+  const uv = g.attributes.uv;
+  const dims = [[width, height], [width, height], [d, width], [d, width], [d, height], [d, height]];
+  for (let f = 0; f < 6; f++) {
+    for (let v = 0; v < 4; v++) {
+      const i = f * 4 + v;
+      uv.setXY(i, uv.getX(i) * dims[f][0] / 8, uv.getY(i) * dims[f][1] / 16);
+    }
+  }
+  g.translate(0, height / 2, 0);
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: TEX.condemned });
+  const slab = keep(new THREE.Mesh(g, mat));
+  // Scaffolding: a grid of thin poles and planks on the road side.
+  const bars = [];
+  for (let z = -width / 2; z <= width / 2 + 0.01; z += width / 4) bars.push(boxGeo(0.08, height * 0.8, 0.08, d / 2 + 0.6, height * 0.4, z));
+  for (let y = 2.5; y < height * 0.8; y += 2.5) {
+    bars.push(boxGeo(0.06, 0.06, width, d / 2 + 0.6, y, 0));
+    bars.push(boxGeo(0.7, 0.05, width, d / 2 + 0.3, y, 0));
+  }
+  const scaffold = new THREE.Mesh(mergeGeos(bars), lambert(0x8a6a3a));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.98), new THREE.MeshBasicMaterial({ map: TEX.danger }));
+  sign.rotation.y = Math.PI / 2;
+  sign.position.set(d / 2 + 0.9, 2.2, 0);
+  const tape = new THREE.Mesh(boxGeo(0.04, 0.12, width, d / 2 + 0.95, 1.1, 0), basic(0xe8c21e));
+  const group = new THREE.Group();
+  group.add(slab, scaffold, sign, tape);
+  return { group, meshes: [slab], hw: d / 2 + 0.9, hd: width / 2, height, own: [g, mat, scaffold.geometry, sign.geometry, sign.material, tape.geometry] };
+}
+
+/* A broken-off chunk of concrete for collapses. */
+export function makeSlab(rng, w, h, d) {
+  const g = boxGeo(w, h, d, 0, h / 2, 0);
+  const mesh = keep(new THREE.Mesh(g, lambert(0x7a746c)));
+  const group = new THREE.Group();
+  group.add(mesh);
+  return { group, meshes: [mesh], hw: w / 2, hd: d / 2, height: h, own: [g] };
 }
 
 let BARRIER_GEO = null;
@@ -469,20 +626,23 @@ export function makeLamp() {
     };
   }
   const group = new THREE.Group();
-  group.add(new THREE.Mesh(LAMP_GEO.pole, lambert(0x3a3c40)));
+  const pole = keep(new THREE.Mesh(LAMP_GEO.pole, lambert(0x3a3c40)));
+  group.add(pole);
   const head = new THREE.Mesh(LAMP_GEO.head, basic(0xffc979));
   group.add(head);
   const pool = glowDecal(0xff9a3a, 7.5, 0.32);
   pool.position.set(0, 0.03, 1.6);
   group.add(pool);
-  return { group, head, pool };
+  // The collider is just the pole; the arm overhangs the road.
+  return { group, head, pool, meshes: [pole], hw: 0.13, hd: 0.13, height: 5.4 };
 }
 
 let BARREL_GEO = null;
 export function makeFireBarrel() {
   if (!BARREL_GEO) BARREL_GEO = new THREE.CylinderGeometry(0.34, 0.34, 0.95, 10).translate(0, 0.475, 0);
   const group = new THREE.Group();
-  group.add(new THREE.Mesh(BARREL_GEO, lambert(0x5a3a26)));
+  const drum = keep(new THREE.Mesh(BARREL_GEO, lambert(0x5a3a26)));
+  group.add(drum);
   const flameMat = new THREE.MeshBasicMaterial({
     map: TEX.fire, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
   });
@@ -496,7 +656,7 @@ export function makeFireBarrel() {
   }
   const pool = glowDecal(0xff7a2a, 6, 0.5, { own: true });
   group.add(pool);
-  return { group, flames, pool, meshes: [], hw: 0.36, hd: 0.36, height: 0.95 };
+  return { group, flames, pool, meshes: [drum], hw: 0.36, hd: 0.36, height: 0.95 };
 }
 
 export function makeHealthPack() {
