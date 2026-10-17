@@ -7,6 +7,7 @@ Small apps, one per folder, published together at
 | --- | --- | --- | --- |
 | My Apps landing page | [`index.html`](index.html) | / | static |
 | Putt Count | [`puttcount/`](puttcount) | /puttcount/ | static |
+| Graveway (zombie shooter) | [`graveway/`](graveway) | /graveway/ | static |
 | OnCall Schedule | [`oncall/`](oncall) | /oncall/ | Vite build |
 
 ## How deployment works
