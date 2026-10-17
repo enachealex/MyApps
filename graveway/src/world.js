@@ -1,17 +1,28 @@
-/* Builds one level: a long city street running away from the camera (-z),
-   lined with buildings and lamps, littered with wrecks, with a safe zone at
-   the far end. The layout is seeded by the level number, so a level looks
-   the same every time you play it. */
+/* The street: one endless road running away from the camera (-z), built in
+   32 m chunks just beyond the fog and torn down once they're behind you.
+   Each chunk is seeded by its index, so the same run seed always lays out
+   the same road.
+
+   Chunks hold scenery (road, buildings, lamps, litter), pickups, and props:
+   wrecked cars, barricades, explosive barrels and brick walls. Props live in
+   `world.props`; what happens when they're shot, blown up or shoved is in
+   props.js. Whenever the set of standing props changes, `world.navDirty`
+   is raised and the navigation grid rebuilds. */
 
 import * as THREE from '../vendor/three.module.min.js';
+import { PROPS } from './config.js';
 import {
   TEX, lambert, boxGeo, mergeGeos, glowDecal, makeCar, makeBarrier, makeLamp, makeFireBarrel,
-  makeHealthPack, makeArmorVest,
+  makeHealthPack, makeArmorVest, makeExplosiveBarrel, makeWall,
 } from './models.js';
 
 export const ROAD_HALF = 6;          // asphalt from -6 to 6
 export const WALK_HALF = 7.4;        // how far sideways anyone can go (the sidewalk edge)
-export const START_Z = 6;            // the barricade behind you
+export const START_PZ = 2;           // where the survivor stands at 0 m
+const CHUNK = 32;                    // metres; a multiple of the road texture's 16 m tile
+const EDGE = 14;                     // z where chunk 0 starts (behind the start barricade)
+const BUILD_AHEAD = 78;              // keep road built this far past the survivor
+const KEEP_BEHIND = 40;              // and this far behind
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -40,303 +51,341 @@ function facadeGeo(w, h, d, tile = 8) {
   return g;
 }
 
-let FACADE_MATS = null;
-function facadeMats() {
-  if (FACADE_MATS) return FACADE_MATS;
+let MATS = null;
+function mats() {
+  if (MATS) return MATS;
   const tints = [0x9a8f86, 0x7f8790, 0x8e7a6a, 0x6f746c, 0xa39a8a, 0x7a6e74];
-  FACADE_MATS = [];
+  const facades = [];
   for (const t of tints) {
     for (const f of TEX.facades) {
-      FACADE_MATS.push(new THREE.MeshLambertMaterial({
+      facades.push(new THREE.MeshLambertMaterial({
         color: t, map: f.map, emissiveMap: f.emissive, emissive: 0xffffff, emissiveIntensity: 0.85,
       }));
     }
   }
-  return FACADE_MATS;
+  const road = TEX.road.clone();
+  road.repeat.set(1, CHUNK / 16);
+  road.needsUpdate = true;
+  const walk = TEX.sidewalk.clone();
+  walk.repeat.set(1, CHUNK / 4);
+  walk.needsUpdate = true;
+  MATS = {
+    facades,
+    road: new THREE.MeshLambertMaterial({ map: road }),
+    walk: new THREE.MeshLambertMaterial({ map: walk }),
+    curb: lambert(0x6a6a6c),
+    under: lambert(0x16171a),
+    litter: lambert(0x24262a),
+  };
+  return MATS;
 }
 
-export function buildLevel(scene, level, spec) {
-  const rng = mulberry32(level * 9973 + 17);
-  const rand = (a, b) => a + rng() * (b - a);
-  const L = spec.length;
-  const group = new THREE.Group();
-  scene.add(group);
-  const disposables = [];
-  const own = (x) => { disposables.push(x); return x; };
-  const colliders = [];
-  const animated = [];           // things that flicker or pulse
-  const alleys = [];             // ambush spawn points
-  const zFar = -L - 26, zNear = START_Z + 18;
-  const span = zNear - zFar;
-
-  const addCollider = (x, z, hw, hd, rot) => {
-    colliders.push({ x, z, hw, hd, cos: Math.cos(rot), sin: Math.sin(rot), r: Math.hypot(hw, hd) });
+let GROUND = null;
+function groundGeos() {
+  if (GROUND) return GROUND;
+  GROUND = {
+    road: new THREE.PlaneGeometry(ROAD_HALF * 2, CHUNK).rotateX(-Math.PI / 2),
+    walk: mergeGeos([boxGeo(3, 0.16, CHUNK, -(ROAD_HALF + 1.5), 0.08, 0), boxGeo(3, 0.16, CHUNK, ROAD_HALF + 1.5, 0.08, 0)]),
+    curb: mergeGeos([boxGeo(0.18, 0.2, CHUNK, -(ROAD_HALF + 0.09), 0.1, 0), boxGeo(0.18, 0.2, CHUNK, ROAD_HALF + 0.09, 0.1, 0)]),
+    under: new THREE.PlaneGeometry(80, CHUNK).rotateX(-Math.PI / 2).translate(0, -0.01, 0),
   };
-  const blocked = (x, z, pad) => colliders.some((c) => Math.abs(c.x - x) < c.r + pad && Math.abs(c.z - z) < c.r + pad);
+  return GROUND;
+}
 
-  /* Ground ------------------------------------------------------------- */
-  const roadTex = own(TEX.road.clone());
-  roadTex.repeat.set(1, span / 16);
-  roadTex.needsUpdate = true;
-  const road = new THREE.Mesh(own(new THREE.PlaneGeometry(ROAD_HALF * 2, span).rotateX(-Math.PI / 2)), own(new THREE.MeshLambertMaterial({ map: roadTex })));
-  road.position.z = (zNear + zFar) / 2;
-  group.add(road);
-
-  const walkTex = own(TEX.sidewalk.clone());
-  walkTex.repeat.set(1, span / 3);
-  walkTex.needsUpdate = true;
-  const walkMat = own(new THREE.MeshLambertMaterial({ map: walkTex }));
-  const curbMat = lambert(0x6a6a6c);
-  for (const s of [-1, 1]) {
-    const walk = new THREE.Mesh(own(boxGeo(3, 0.16, span)), walkMat);
-    walk.position.set(s * (ROAD_HALF + 1.5), 0.08, (zNear + zFar) / 2);
-    group.add(walk);
-    const curb = new THREE.Mesh(own(boxGeo(0.18, 0.2, span)), curbMat);
-    curb.position.set(s * (ROAD_HALF + 0.09), 0.1, (zNear + zFar) / 2);
-    group.add(curb);
+export class World {
+  constructor(scene, seed, startZ) {
+    this.scene = scene;
+    this.seed = seed;
+    this.startZ = startZ;            // where this run's survivor starts
+    this.chunks = new Map();
+    this.props = [];                 // every prop on the built road
+    this.rough = [];                 // rubble footprints (slow ground)
+    this.alleys = [];
+    this.items = [];
+    this.animated = [];
+    this.navDirty = true;
+    this.onCoins = null;             // (spots) => void, set by the game
+    this.first = Math.max(0, Math.floor((EDGE - (startZ + 30)) / CHUNK));
   }
-  // Everything beyond the buildings: dark ground so alleys don't show sky.
-  const under = new THREE.Mesh(own(new THREE.PlaneGeometry(80, span).rotateX(-Math.PI / 2)), lambert(0x16171a));
-  under.position.set(0, -0.01, (zNear + zFar) / 2);
-  group.add(under);
 
-  /* Buildings ------------------------------------------------------------ */
-  const mats = facadeMats();
-  for (const s of [-1, 1]) {
-    let z = zNear;
-    while (z > zFar) {
-      const len = rand(6, 13);
-      const alley = z < -14 && z > -L + 10 && rng() < 0.16;
-      if (alley) {
-        const w = 3.2;
-        alleys.push({ x: s * (WALK_HALF + 1.6), z: z - w / 2, side: s });
-        // a back wall closes the alley off in the dark
-        const back = new THREE.Mesh(own(facadeGeo(1, 14, w + 2)), mats[Math.floor(rng() * mats.length)]);
-        back.position.set(s * (WALK_HALF + 9), 7, z - w / 2);
-        group.add(back);
-        z -= w;
-        continue;
-      }
-      const h = rand(6, 24);
-      const d = rand(7, 11);
-      const b = new THREE.Mesh(own(facadeGeo(d, h, len)), mats[Math.floor(rng() * mats.length)]);
-      b.position.set(s * (WALK_HALF + 0.6 + d / 2), h / 2, z - len / 2);
-      group.add(b);
-      // awnings and ledges break up the silhouette
-      if (rng() < 0.35) {
-        const aw = new THREE.Mesh(own(boxGeo(1.2, 0.12, len * 0.7)), lambert([0x6a2a2a, 0x2a4a5a, 0x4a5a2a][Math.floor(rng() * 3)]));
-        aw.position.set(s * (WALK_HALF + 0.05), 3, z - len / 2);
-        aw.rotation.z = s * 0.25;
-        group.add(aw);
-      }
-      z -= len;
+  update(pz, t) {
+    const last = Math.floor((EDGE - (pz - BUILD_AHEAD)) / CHUNK);
+    for (let i = this.first; i <= last; i++) if (!this.chunks.has(i)) this.build(i);
+    for (const [i, ch] of this.chunks) {
+      if (ch.z1 > pz + KEEP_BEHIND) this.drop(i);
     }
+    // Never rebuild what was torn down behind you.
+    this.first = Math.max(this.first, Math.floor((EDGE - (pz + KEEP_BEHIND)) / CHUNK));
+    this.animate(t);
   }
 
-  /* Start barricade: you can't go back the way you came ------------------- */
-  for (let x = -6; x <= 6; x += 2.4) {
-    const bar = makeBarrier();
-    bar.group.position.set(x, 0, START_Z + 1.4);
-    bar.group.rotation.y = rand(-0.08, 0.08);
-    group.add(bar.group);
-  }
-  const bus = makeCar(rng);
-  bus.group.position.set(rand(-3, 3), 0, START_Z + 4.5);
-  bus.group.rotation.y = Math.PI / 2 + rand(-0.2, 0.2);
-  bus.group.scale.set(1.2, 1.2, 1.4);
-  group.add(bus.group);
-
-  /* Lamps -------------------------------------------------------------- */
-  let side = 1;
-  for (let z = START_Z - 4; z > -L - 10; z -= 17) {
-    const lamp = makeLamp();
-    lamp.group.position.set(side * (ROAD_HALF + 0.6), 0, z);
-    lamp.group.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
-    group.add(lamp.group);
-    if (rng() < 0.22) animated.push({ kind: 'flicker', head: lamp.head, pool: lamp.pool, seed: rng() * 100 });
-    side = -side;
+  addRough(r) {
+    this.rough.push(r);
+    this.navDirty = true;
   }
 
-  /* Wrecks: cars, barriers and burning barrels ------------------------- */
-  let z = -14;
-  while (z > -L + 12) {
-    const r = rng();
-    if (r < 0.58) {
-      const car = makeCar(rng);
-      const rot = rng() < 0.3 ? rand(0.6, 1.4) * (rng() < 0.5 ? -1 : 1) : rand(-0.35, 0.35);
-      const x = rng() < 0.5 ? rand(-ROAD_HALF + 1.2, -1.2) : rand(1.2, ROAD_HALF - 1.2);
-      car.group.position.set(x, 0, z);
-      car.group.rotation.y = rot;
-      group.add(car.group);
-      addCollider(x, z, car.hw, car.hd, rot);
-      // sometimes a second wreck on the other side, leaving a gap through the middle
-      if (rng() < 0.3) {
-        const car2 = makeCar(rng);
-        const x2 = -Math.sign(x) * rand(3.8, 5);
-        const rot2 = rand(-0.3, 0.3);
-        car2.group.position.set(x2, 0, z - rand(-1.5, 1.5));
-        car2.group.rotation.y = rot2;
-        group.add(car2.group);
-        addCollider(x2, car2.group.position.z, car2.hw, car2.hd, rot2);
+  /* Things spawned mid-run (rubble, scorch marks) go with the chunk they
+     landed in, so they're cleaned up along with it. */
+  addToChunk(z, obj, own = []) {
+    const i = this.chunkAt(z);
+    const ch = this.chunks.get(i);
+    if (!ch) { for (const d of own) d.dispose(); return -1; }
+    ch.group.add(obj);
+    ch.own.push(...own);
+    return i;
+  }
+
+  chunkAt(z) { return Math.floor((EDGE - z) / CHUNK); }
+
+  dispose() {
+    for (const i of [...this.chunks.keys()]) this.drop(i);
+  }
+
+  drop(i) {
+    const ch = this.chunks.get(i);
+    this.chunks.delete(i);
+    this.scene.remove(ch.group);
+    for (const d of ch.own) d.dispose();
+    this.props = this.props.filter((p) => p.chunk !== i);
+    this.rough = this.rough.filter((r) => r.chunk !== i);
+    this.items = this.items.filter((it) => it.chunk !== i);
+    this.alleys = this.alleys.filter((a) => a.chunk !== i);
+    this.animated = this.animated.filter((a) => a.chunk !== i);
+    this.navDirty = true;
+  }
+
+  build(i) {
+    const rng = mulberry32((this.seed * 7919 + i * 104729) >>> 0);
+    const rand = (a, b) => a + rng() * (b - a);
+    const z0 = EDGE - i * CHUNK, z1 = z0 - CHUNK, zc = (z0 + z1) / 2;
+    const group = new THREE.Group();
+    const own = [];
+    const ch = { i, z0, z1, group, own };
+    this.chunks.set(i, ch);
+    this.scene.add(group);
+    const M = mats(), G = groundGeos();
+
+    /* Ground: four shared meshes per chunk. */
+    for (const [geo, mat] of [[G.road, M.road], [G.walk, M.walk], [G.curb, M.curb], [G.under, M.under]]) {
+      const m = new THREE.Mesh(geo, mat);
+      m.position.z = zc;
+      group.add(m);
+    }
+
+    /* Buildings, with the odd alley for ambushes. */
+    for (const s of [-1, 1]) {
+      let z = z0;
+      while (z > z1 + 0.5) {
+        const len = Math.min(rand(6, 13), z - z1);
+        if (rng() < 0.15 && len > 4 && z < this.startZ - 8) {
+          const w = 3.2;
+          this.alleys.push({ x: s * (WALK_HALF + 1.6), z: z - w / 2, side: s, chunk: i });
+          const back = new THREE.Mesh(facadeGeo(1, 14, w + 2), M.facades[Math.floor(rng() * M.facades.length)]);
+          own.push(back.geometry);
+          back.position.set(s * (WALK_HALF + 9), 7, z - w / 2);
+          group.add(back);
+          z -= w;
+          continue;
+        }
+        const h = rand(6, 24), d = rand(7, 11);
+        const b = new THREE.Mesh(facadeGeo(d, h, len), M.facades[Math.floor(rng() * M.facades.length)]);
+        own.push(b.geometry);
+        b.position.set(s * (WALK_HALF + 0.6 + d / 2), h / 2, z - len / 2);
+        group.add(b);
+        if (rng() < 0.3) {
+          const aw = new THREE.Mesh(boxGeo(1.2, 0.12, len * 0.7), lambert([0x6a2a2a, 0x2a4a5a, 0x4a5a2a][Math.floor(rng() * 3)]));
+          own.push(aw.geometry);
+          aw.position.set(s * (WALK_HALF + 0.05), 3, z - len / 2);
+          aw.rotation.z = s * 0.25;
+          group.add(aw);
+        }
+        z -= len;
       }
-    } else if (r < 0.85) {
-      const n = 1 + Math.floor(rng() * 2);
-      const x0 = rand(-4, 4 - n * 2.4);
-      const rot = rand(-0.25, 0.25);
-      for (let i = 0; i < n; i++) {
+    }
+
+    /* Lamps, every 16 m, alternating sides. */
+    for (let k = 0; k < 2; k++) {
+      const s = (i + k) % 2 ? 1 : -1;
+      const lamp = makeLamp();
+      lamp.group.position.set(s * (ROAD_HALF + 0.6), 0, z0 - 6 - k * 16);
+      lamp.group.rotation.y = s > 0 ? -Math.PI / 2 : Math.PI / 2;
+      group.add(lamp.group);
+      if (rng() < 0.22) this.animated.push({ kind: 'flicker', head: lamp.head, pool: lamp.pool, seed: rng() * 100, chunk: i });
+    }
+
+    /* Litter: one merged mesh for every bag and box in the chunk. */
+    const litter = [];
+    for (let k = 0; k < CHUNK / 3; k++) {
+      const s = rng() < 0.5 ? -1 : 1;
+      const lx = rng() < 0.7 ? s * rand(ROAD_HALF + 0.4, WALK_HALF) : rand(-ROAD_HALF, ROAD_HALF);
+      const sz = rand(0.25, 0.6);
+      litter.push(boxGeo(sz, sz * rand(0.4, 0.9), sz * rand(0.8, 1.4), lx, sz * 0.3, rand(z1, z0)));
+    }
+    const lm = new THREE.Mesh(mergeGeos(litter), M.litter);
+    own.push(lm.geometry);
+    group.add(lm);
+
+    /* The barricade behind the start: there's no going back. */
+    const backZ = this.startZ + 5.4;
+    if (backZ <= z0 && backZ > z1) {
+      for (let x = -6; x <= 6; x += 2.4) {
         const bar = makeBarrier();
-        const bx = x0 + i * 2.45;
-        bar.group.position.set(bx, 0, z);
-        bar.group.rotation.y = rot;
+        bar.group.position.set(x, 0, backZ);
+        bar.group.rotation.y = rand(-0.08, 0.08);
         group.add(bar.group);
-        addCollider(bx, z, bar.hw, bar.hd, rot);
       }
+      const bus = makeCar(rng);
+      bus.group.position.set(rand(-3, 3), 0, backZ + 3);
+      bus.group.rotation.y = Math.PI / 2 + rand(-0.2, 0.2);
+      bus.group.scale.set(1.2, 1.2, 1.4);
+      group.add(bus.group);
+    }
+
+    /* Props. Nothing in the first stretch after the start, and every row
+       leaves a gap of at least 2.5 m so the road is never sealed off. */
+    const clearUntil = this.startZ - 14;
+    let z = z0 - rand(2, 8);
+    while (z > z1 + 2) {
+      if (z < clearUntil) this.placeRow(rng, rand, z, i, group, own);
+      z -= rand(9, 15);
+    }
+
+    /* Coins and pickups. */
+    const spots = [];
+    for (let cz = z0 - rand(2, 10); cz > z1; cz -= rand(14, 22)) {
+      if (cz > this.startZ - 6) continue;
+      const x = rand(-5, 5), n = 4 + Math.floor(rng() * 4);
+      const curve = rng() < 0.4 ? rand(-0.5, 0.5) : 0;
+      for (let k = 0; k < n; k++) {
+        const px = THREE.MathUtils.clamp(x + curve * k, -6.5, 6.5), pz = cz - k * 1.3;
+        if (pz > z1 && !this.blocked(px, pz, 0.4)) spots.push({ x: px, z: pz });
+      }
+    }
+    if (this.onCoins && spots.length) this.onCoins(spots);
+    if (z0 < this.startZ - 30) {
+      if (rng() < 0.4) this.placeItem(rng, rand, 'health', rand(z1 + 2, z0 - 2), i, group, own);
+      if (rng() < 0.25) this.placeItem(rng, rand, 'armor', rand(z1 + 2, z0 - 2), i, group, own);
+    }
+    this.navDirty = true;
+  }
+
+  blocked(x, z, pad) {
+    return this.props.some((c) => !c.destroyed && Math.abs(c.x - x) < c.r + pad && Math.abs(c.z - z) < c.r + pad);
+  }
+
+  /* One row of trouble across the road at z. */
+  placeRow(rng, rand, z, chunk, group, own) {
+    const r = rng();
+    const add = (kind, model, x, zz, rot) => {
+      model.group.position.set(x, 0, zz);
+      model.group.rotation.y = rot;
+      group.add(model.group);
+      const def = PROPS[kind];
+      const p = {
+        kind, def, chunk, x, z: zz, rot, hw: model.hw, hd: model.hd, height: model.height,
+        cos: Math.cos(rot), sin: Math.sin(rot), r: Math.hypot(model.hw, model.hd),
+        hp: def.hp, maxHp: def.hp, blocking: true, destroyed: false,
+        group: model.group, meshes: model.meshes, flash: 0, vx: 0, vz: 0, va: 0, moving: false,
+      };
+      if (model.own) own.push(...model.own);
+      this.props.push(p);
+      return p;
+    };
+
+    if (r < 0.36) {
+      // A wreck or two, with the odd explosive barrel tucked beside it.
+      const x = rng() < 0.5 ? rand(-ROAD_HALF + 1.2, -1.4) : rand(1.4, ROAD_HALF - 1.2);
+      const rot = rng() < 0.3 ? rand(0.6, 1.4) * (rng() < 0.5 ? -1 : 1) : rand(-0.35, 0.35);
+      add('car', makeCar(rng), x, z, rot);
+      if (rng() < 0.45) add('barrel', makeExplosiveBarrel(), x + rand(-1.4, 1.4), z + (rng() < 0.5 ? -2.6 : 2.6), 0);
+      if (rng() < 0.25) add('car', makeCar(rng), -Math.sign(x) * rand(3.9, 5), z - rand(-1.5, 1.5), rand(-0.3, 0.3));
+    } else if (r < 0.6) {
+      // Barricades: a short line, or a chokepoint across most of the road.
+      const choke = rng() < 0.35;
+      const n = choke ? 4 : 1 + Math.floor(rng() * 2);
+      const gapAt = Math.floor(rng() * (n + 1));
+      let x = choke ? -ROAD_HALF + 1.2 : rand(-4, 4 - n * 2.4);
+      const rot = choke ? 0 : rand(-0.25, 0.25);
+      for (let k = 0; k < n; k++) {
+        if (choke && k === gapAt) x += 2.8;            // the way through
+        add('barricade', makeBarrier(), x, z, rot);
+        x += 2.45;
+      }
+    } else if (r < 0.75) {
+      // A cluster of explosive barrels.
+      const x = rand(-5, 5);
+      const n = 2 + Math.floor(rng() * 3);
+      for (let k = 0; k < n; k++) add('barrel', makeExplosiveBarrel(), x + rand(-1, 1), z + rand(-1, 1), 0);
+    } else if (r < 0.92) {
+      // A weak brick wall across part of the road.
+      const w = rand(3.5, 6.5);
+      const x = rng() < 0.5 ? -WALK_HALF + w / 2 : WALK_HALF - w / 2;
+      add('wall', makeWall(w), x, z, 0);
     } else {
       const fb = makeFireBarrel();
-      const x = rand(-5, 5);
-      fb.group.position.set(x, 0, z);
-      group.add(fb.group);
-      addCollider(x, z, fb.hw, fb.hd, 0);
-      animated.push({ kind: 'fire', flames: fb.flames, pool: fb.pool, seed: rng() * 100 });
-      disposables.push(fb.flames[0].material, fb.flames[0].geometry, fb.flames[1].geometry, fb.pool.material);
-    }
-    z -= rand(9, 16);
-  }
-
-  /* Litter: one merged mesh for every bag and box on the street ------- */
-  const litter = [];
-  for (let i = 0; i < L / 3; i++) {
-    const s = rng() < 0.5 ? -1 : 1;
-    const lx = rng() < 0.7 ? s * rand(ROAD_HALF + 0.4, WALK_HALF) : rand(-ROAD_HALF, ROAD_HALF);
-    const lz = rand(-L, START_Z);
-    const sz = rand(0.25, 0.6);
-    litter.push(boxGeo(sz, sz * rand(0.4, 0.9), sz * rand(0.8, 1.4), lx, sz * 0.3, lz));
-  }
-  if (litter.length) group.add(new THREE.Mesh(own(mergeGeos(litter)), lambert(0x24262a)));
-
-  /* Safe zone -------------------------------------------------------- */
-  const goalZ = -L;
-  const ring = glowDecal(0x5dff7a, 7, 0.9, { own: true, map: TEX.ring });
-  ring.position.set(0, 0.05, goalZ);
-  group.add(ring);
-  disposables.push(ring.material);
-  const beam = new THREE.Mesh(own(new THREE.CylinderGeometry(0.5, 1.4, 28, 16, 1, true).translate(0, 14, 0)), own(new THREE.MeshBasicMaterial({
-    color: 0x6dff8a, transparent: true, opacity: 0.18, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
-  })));
-  beam.position.set(0, 0, goalZ);
-  group.add(beam);
-  animated.push({ kind: 'goal', ring, beam });
-
-  for (let x = -6; x <= 6; x += 2.4) {
-    const bar = makeBarrier();
-    bar.group.position.set(x, 0, goalZ - 5);
-    group.add(bar.group);
-  }
-  const sandMat = lambert(0x8a7a5a);
-  for (const s of [-1, 1]) {
-    const bags = new THREE.Mesh(own(mergeGeos([boxGeo(2.6, 0.5, 0.8, 0, 0.25, 0), boxGeo(2.4, 0.45, 0.75, 0, 0.72, 0)])), sandMat);
-    bags.position.set(s * 4.6, 0, goalZ + 2.5);
-    group.add(bags);
-    addCollider(s * 4.6, goalZ + 2.5, 1.3, 0.4, 0);
-  }
-  const signMat = own(new THREE.MeshBasicMaterial({ map: TEX.sign, fog: false }));
-  const sign = new THREE.Mesh(own(new THREE.PlaneGeometry(5, 1.25)), signMat);
-  sign.position.set(0, 4.4, goalZ - 5.2);
-  group.add(sign);
-  const posts = new THREE.Mesh(own(mergeGeos([boxGeo(0.15, 4, 0.15, -2.3, 2, 0), boxGeo(0.15, 4, 0.15, 2.3, 2, 0)])), lambert(0x333333));
-  posts.position.set(0, 0, goalZ - 5.3);
-  group.add(posts);
-
-  /* Pickups ------------------------------------------------------------ */
-  const coinSpots = [];
-  const items = [];
-  for (let cz = -10; cz > -L + 8; cz -= rand(14, 24)) {
-    const x = rand(-5, 5);
-    const n = 4 + Math.floor(rng() * 4);
-    const curve = rng() < 0.4 ? rand(-0.5, 0.5) : 0;
-    for (let i = 0; i < n; i++) {
-      const px = THREE.MathUtils.clamp(x + curve * i, -6.5, 6.5), pz = cz - i * 1.3;
-      if (!blocked(px, pz, 0.4)) coinSpots.push({ x: px, z: pz });
+      add('fire', fb, rand(-5, 5), z, 0);
+      this.animated.push({ kind: 'fire', flames: fb.flames, pool: fb.pool, seed: rng() * 100, chunk });
+      own.push(fb.flames[0].material, fb.flames[0].geometry, fb.flames[1].geometry, fb.pool.material);
     }
   }
-  const makeItem = (kind, ix, iz) => {
-    const obj = kind === 'health' ? makeHealthPack() : makeArmorVest();
-    const decal = glowDecal(kind === 'health' ? 0x4dff6a : 0x4aa8ff, 2.2, 0.5);
-    obj.position.set(ix, 0, iz);
-    decal.position.set(ix, 0.04, iz);
-    group.add(obj, decal);
-    obj.traverse((o) => { if (o.isMesh) disposables.push(o.geometry); });
-    return { kind, obj, decal, x: ix, z: iz, taken: false };
-  };
-  const placeItem = (kind, iz) => {
+
+  placeItem(rng, rand, kind, z, chunk, group, own) {
     for (let tries = 0; tries < 8; tries++) {
-      const ix = rand(-5.5, 5.5);
-      if (blocked(ix, iz, 0.8)) continue;
-      items.push(makeItem(kind, ix, iz));
+      const x = rand(-5.5, 5.5);
+      if (this.blocked(x, z, 0.8)) continue;
+      this.items.push(this.makeItem(kind, x, z, chunk, group, own));
       return;
     }
-  };
-  for (let iz = -55; iz > -L + 15; iz -= rand(50, 75)) if (rng() < 0.75) placeItem('health', iz);
-  for (let iz = -80; iz > -L + 15; iz -= rand(80, 120)) if (rng() < 0.65) placeItem('armor', iz + rand(-10, 10));
-
-  /* Hordes: where zombies wait. Spawned as you approach. ------------------ */
-  const hordes = [];
-  for (let hz = -20; hz > -L + 12; hz -= spec.hordeSpacing * rand(0.75, 1.25)) {
-    const count = spec.hordeSize[0] + Math.floor(rng() * (spec.hordeSize[1] - spec.hordeSize[0] + 1));
-    const nearAlley = alleys.filter((a) => Math.abs(a.z - hz) < 14);
-    const alley = nearAlley.length && rng() < spec.sideAmbush ? nearAlley[Math.floor(rng() * nearAlley.length)] : null;
-    hordes.push({ z: hz, count, alley, spawned: false });
   }
-  if (spec.boss) hordes.push({ z: goalZ + 10, count: 3, alley: null, boss: true, spawned: false });
 
-  // A couple of shamblers right at the start so the first seconds aren't empty.
-  hordes.unshift({ z: -11, count: Math.min(2 + level, 4), alley: null, spawned: false, calm: true });
+  makeItem(kind, x, z, chunk, group, own) {
+    const obj = kind === 'health' ? makeHealthPack() : makeArmorVest();
+    const decal = glowDecal(kind === 'health' ? 0x4dff6a : 0x4aa8ff, 2.2, 0.5);
+    obj.position.set(x, 0, z);
+    decal.position.set(x, 0.04, z);
+    group.add(obj, decal);
+    obj.traverse((o) => { if (o.isMesh) own.push(o.geometry); });
+    return { kind, obj, decal, x, z, taken: false, chunk };
+  }
 
-  return {
-    group, colliders, alleys, hordes, coinSpots, items, goalZ, length: L, rng,
+  /* Drops a pickup where a zombie fell. */
+  dropItem(kind, x, z) {
+    const i = this.chunkAt(z);
+    const ch = this.chunks.get(i);
+    if (!ch) return;
+    this.items.push(this.makeItem(kind, x, z, i, ch.group, ch.own));
+  }
 
-    /* Drops a pickup where a zombie fell. */
-    dropItem(kind, x, z) { items.push(makeItem(kind, x, z)); },
-
-    animate(t) {
-      for (const a of animated) {
-        if (a.kind === 'fire') {
-          const f = 0.85 + Math.sin(t * 17 + a.seed) * 0.08 + Math.sin(t * 29 + a.seed * 2) * 0.07;
-          a.flames[0].scale.set(f, 1 / f, 1);
-          a.flames[1].scale.set(1 / f, f, 1);
-          a.pool.material.opacity = 0.38 + (f - 0.85) * 1.2;
-        } else if (a.kind === 'flicker') {
-          const on = Math.sin(t * 13 + a.seed) + Math.sin(t * 7.3 + a.seed * 3) > -0.6;
-          a.head.visible = on;
-          a.pool.visible = on;
-        } else if (a.kind === 'goal') {
-          const p = 0.5 + 0.5 * Math.sin(t * 3);
-          a.ring.material.opacity = 0.55 + p * 0.4;
-          a.ring.scale.setScalar(6.6 + p * 0.8);
-          a.beam.material.opacity = 0.12 + p * 0.1;
-        }
+  animate(t) {
+    for (const a of this.animated) {
+      if (a.kind === 'fire') {
+        const f = 0.85 + Math.sin(t * 17 + a.seed) * 0.08 + Math.sin(t * 29 + a.seed * 2) * 0.07;
+        a.flames[0].scale.set(f, 1 / f, 1);
+        a.flames[1].scale.set(1 / f, f, 1);
+        a.pool.material.opacity = 0.38 + (f - 0.85) * 1.2;
+      } else if (a.kind === 'flicker') {
+        const on = Math.sin(t * 13 + a.seed) + Math.sin(t * 7.3 + a.seed * 3) > -0.6;
+        a.head.visible = on;
+        a.pool.visible = on;
       }
-    },
-
-    dispose() {
-      scene.remove(group);
-      for (const d of disposables) d.dispose();
-    },
-  };
+    }
+  }
 }
 
-/* Pushes a circle out of every wreck it overlaps. Wrecks are rotated boxes,
-   so the circle is moved into each box's own frame, clamped, and moved back. */
-export function resolveColliders(colliders, p, radius) {
-  for (const c of colliders) {
+/* Pushes a circle out of every standing prop it overlaps. Props are rotated
+   boxes, so the circle is moved into each box's own frame, clamped, and moved
+   back. Returns the last prop it was pushed out of (or null). */
+export function resolveColliders(props, p, radius) {
+  let hit = null;
+  for (const c of props) {
+    if (!c.blocking || c.destroyed) continue;
     const dx = p.x - c.x, dz = p.z - c.z;
     if (Math.abs(dx) > c.r + radius || Math.abs(dz) > c.r + radius) continue;
-    // world -> local (rotate by -rot)
     const lx = dx * c.cos - dz * c.sin;
     const lz = dx * c.sin + dz * c.cos;
     const cx = Math.max(-c.hw, Math.min(c.hw, lx));
     const cz = Math.max(-c.hd, Math.min(c.hd, lz));
-    let ox = lx - cx, oz = lz - cz;
+    const ox = lx - cx, oz = lz - cz;
     const d2 = ox * ox + oz * oz;
     if (d2 >= radius * radius) continue;
     let nx, nz;
@@ -351,8 +400,34 @@ export function resolveColliders(colliders, p, radius) {
       if (px < pz) { nx = Math.sign(lx || 1) * (c.hw + radius); nz = lz; }
       else { nx = lx; nz = Math.sign(lz || 1) * (c.hd + radius); }
     }
-    // local -> world
     p.x = c.x + nx * c.cos + nz * c.sin;
     p.z = c.z - nx * c.sin + nz * c.cos;
+    hit = c;
   }
+  return hit;
+}
+
+/* The first standing, bullet-stopping prop a segment runs into: its
+   distance along the segment (Infinity if none) and the prop. A slab test
+   in each box's own frame. */
+export function rayProps(props, x, z, dx, dz, len) {
+  let best = Infinity, which = null;
+  for (const c of props) {
+    if (c.destroyed || !c.def.blocksBullets) continue;
+    const ox = x - c.x, oz = z - c.z;
+    if (Math.abs(ox) > c.r + len + 1 || Math.abs(oz) > c.r + len + 1) continue;
+    const lx = ox * c.cos - oz * c.sin, lz = ox * c.sin + oz * c.cos;
+    const ldx = dx * c.cos - dz * c.sin, ldz = dx * c.sin + dz * c.cos;
+    let t0 = 0, t1 = len, miss = false;
+    for (const [o, d, h] of [[lx, ldx, c.hw], [lz, ldz, c.hd]]) {
+      if (Math.abs(d) < 1e-9) { if (Math.abs(o) > h) { miss = true; break; } continue; }
+      let a = (-h - o) / d, b = (h - o) / d;
+      if (a > b) { const tmp = a; a = b; b = tmp; }
+      if (a > t0) t0 = a;
+      if (b < t1) t1 = b;
+      if (t0 > t1) { miss = true; break; }
+    }
+    if (!miss && t0 < best) { best = t0; which = c; }
+  }
+  return { t: best, prop: which };
 }

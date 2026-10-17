@@ -87,6 +87,7 @@ function tone({ freq, dur, type = 'sine', vol = 0.3, to = 0, delay = 0, attack =
 
 const SHOTS = {
   pistol:  { freq: 1700, dur: 0.13, thump: 140, vol: 0.55 },
+  launcher: { freq: 500, dur: 0.18, thump: 70,  vol: 0.5 },
   smg:     { freq: 2300, dur: 0.07, thump: 170, vol: 0.4 },
   shotgun: { freq: 900,  dur: 0.32, thump: 75,  vol: 0.8 },
   rifle:   { freq: 1400, dur: 0.16, thump: 110, vol: 0.55 },
@@ -177,6 +178,25 @@ export const sfx = {
   lose() {
     if (!throttle('lose', 1)) return;
     [330, 262, 196, 131].forEach((f, i) => tone({ freq: f, dur: 0.5, type: 'sawtooth', vol: 0.08, delay: i * 0.18 }));
+  },
+  crumble() {
+    if (!throttle('crumble', 0.15)) return;
+    noise({ dur: 0.5, freq: 400, type: 'lowpass', vol: 0.55, sweep: 0.4 });
+    noise({ dur: 0.25, freq: 1800, q: 2, vol: 0.15 });
+  },
+  boom() {
+    if (!throttle('boom', 0.06)) return;
+    noise({ dur: 0.9, freq: 700, type: 'lowpass', vol: 1.0, sweep: 0.15 });
+    tone({ freq: 90, to: 28, dur: 0.7, type: 'sine', vol: 0.7 });
+  },
+  thunk() {
+    if (!throttle('thunk', 0.08)) return;
+    tone({ freq: 220, to: 90, dur: 0.12, type: 'triangle', vol: 0.3 });
+    noise({ dur: 0.06, freq: 900, q: 1, vol: 0.2 });
+  },
+  milestone() {
+    if (!throttle('milestone', 0.5)) return;
+    [523, 784].forEach((f, i) => tone({ freq: f, dur: 0.3, type: 'triangle', vol: 0.16, delay: i * 0.1 }));
   },
   slam() {
     if (!throttle('slam', 0.3)) return;

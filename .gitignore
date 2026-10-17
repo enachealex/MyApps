@@ -5,3 +5,6 @@ node_modules/
 # assets/__<app>/node_modules/, and the demos are served exactly as committed.
 !demos/**/node_modules/
 .DS_Store
+# Local Android builds (tools/android/build-apk.mjs)
+.android-build/
+dist-android/

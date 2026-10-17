@@ -209,6 +209,38 @@ export function initTextures() {
     TEX.facades.push({ map, emissive });
   }
 
+  TEX.brick = canvasTex(256, 128, (g, w, h) => {
+    g.fillStyle = '#3a2a24';
+    g.fillRect(0, 0, w, h);
+    const bw = 64, bh = 24;
+    for (let row = 0; row * bh < h; row++) {
+      for (let col = -1; col * bw < w; col++) {
+        const x = col * bw + (row % 2 ? bw / 2 : 0), y = row * bh;
+        const v = 120 + Math.random() * 50;
+        g.fillStyle = `rgb(${v},${v * 0.55},${v * 0.42})`;
+        g.fillRect(x + 2, y + 2, bw - 4, bh - 4);
+        for (let k = 0; k < 6; k++) {
+          g.fillStyle = `rgba(0,0,0,${Math.random() * 0.18})`;
+          g.fillRect(x + Math.random() * bw, y + Math.random() * bh, 4, 3);
+        }
+      }
+    }
+  }, { repeat: true });
+
+  TEX.scorch = canvasTex(128, 128, (g, w, h) => {
+    const r = g.createRadialGradient(w / 2, h / 2, 4, w / 2, h / 2, w / 2);
+    r.addColorStop(0, 'rgba(255,255,255,0.95)');
+    r.addColorStop(0.5, 'rgba(255,255,255,0.6)');
+    r.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = r;
+    for (let i = 0; i < 9; i++) {
+      g.beginPath();
+      const a = Math.random() * Math.PI * 2, d = Math.random() * 18;
+      g.arc(w / 2 + Math.cos(a) * d, h / 2 + Math.sin(a) * d, 24 + Math.random() * 30, 0, Math.PI * 2);
+      g.fill();
+    }
+  });
+
   TEX.sign = canvasTex(512, 128, (g, w, h) => {
     g.fillStyle = '#0d1a10';
     g.fillRect(0, 0, w, h);
@@ -235,6 +267,10 @@ function geos() {
     eyes: mergeGeos([boxGeo(0.09, 0.06, 0.03, -0.09, 0.25, 0.205), boxGeo(0.09, 0.06, 0.03, 0.09, 0.25, 0.205)]),
     pack: boxGeo(0.46, 0.5, 0.2, 0, 1.2, -0.27),
     cap: boxGeo(0.44, 0.12, 0.5, 0, 0.46, 0.04),
+    helmet: mergeGeos([boxGeo(0.5, 0.26, 0.5, 0, 0.42, 0), boxGeo(0.44, 0.08, 0.06, 0, 0.3, 0.24)]),
+    goggles: mergeGeos([boxGeo(0.44, 0.06, 0.44, 0, 0.3, 0), boxGeo(0.12, 0.1, 0.05, -0.09, 0.3, 0.215), boxGeo(0.12, 0.1, 0.05, 0.09, 0.3, 0.215)]),
+    hood: mergeGeos([boxGeo(0.48, 0.12, 0.48, 0, 0.47, -0.02), boxGeo(0.06, 0.4, 0.46, -0.23, 0.22, -0.02), boxGeo(0.06, 0.4, 0.46, 0.23, 0.22, -0.02), boxGeo(0.48, 0.4, 0.06, 0, 0.22, -0.23)]),
+    grenade: new THREE.SphereGeometry(0.13, 10, 8),
     flat: new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
     coin: new THREE.CylinderGeometry(0.24, 0.24, 0.07, 14).rotateX(Math.PI / 2),
     tracer: boxGeo(0.06, 0.06, 1.1),
@@ -317,7 +353,7 @@ export function makeZombie(kind, rng, eyeColor) {
   const pick = (a) => a[Math.floor(rng() * a.length)];
   let skin = pick(ZSKIN), shirt = pick(ZSHIRT), pants = pick(ZPANTS), sleeves;
   if (kind === 'runner') { skin = 0xa9b49c; shirt = pick([0x6a3434, 0x4a4a4a, 0x3a3a5a]); }
-  if (kind === 'brute') { skin = 0x5f7a50; shirt = skin; pants = 0x2a2a26; }
+  if (kind === 'tank') { skin = 0x5f7a50; shirt = skin; pants = 0x2a2a26; }
   if (kind === 'boss') { skin = 0x7a5a50; shirt = 0x5a3a34; pants = 0x231c1a; }
   sleeves = kind === 'walker' && rng() < 0.5 ? shirt : skin;
   return makeHumanoid({
@@ -326,18 +362,21 @@ export function makeZombie(kind, rng, eyeColor) {
   });
 }
 
-export function makeSurvivor() {
-  // A bright jacket and a ring underfoot, so you never lose yourself in a crowd.
+/* A survivor from CHARACTERS (src/config.js): their colours, headgear and
+   build, plus a bright ring underfoot so you never lose yourself in a crowd. */
+export function makeSurvivor(look) {
   const h = makeHumanoid({
-    skin: lambert(0xd9a77c), shirt: lambert(0xd9822b), pants: lambert(0x27324a),
-    sleeves: lambert(0xd9822b), eyes: basic(0x111111),
+    skin: lambert(look.skin), shirt: lambert(look.shirt), pants: lambert(look.pants),
+    sleeves: lambert(look.shirt), eyes: basic(0x111111),
   });
   h.root.add(glowDecal(0x9be15d, 2.1, 0.4, { map: TEX.ring }));
   const g = geos();
-  const pack = new THREE.Mesh(g.pack, lambert(0x3d3226));
-  h.body.add(pack);
-  const cap = new THREE.Mesh(g.cap, lambert(0x8a3a2a));
-  h.head.add(cap);
+  h.body.add(new THREE.Mesh(g.pack, lambert(0x3d3226)));
+  const hat = { cap: g.cap, helmet: g.helmet, goggles: g.goggles, hood: g.hood }[look.hat];
+  if (hat) h.head.add(new THREE.Mesh(hat, look.hat === 'goggles' ? basic(look.hatColor) : lambert(look.hatColor)));
+  if (look.bulk) {
+    h.body.children[0].scale.set(look.bulk, 1, look.bulk);   // torso
+  }
   return h;
 }
 
@@ -349,6 +388,7 @@ const GUNS = {
   shotgun: { len: 0.82, w: 0.1,  h: 0.13, color: 0x5a3a24, barrel: 0x2a2a2a },
   rifle:   { len: 0.8,  w: 0.1,  h: 0.15, color: 0x3a4232, mag: true },
   minigun: { len: 0.86, w: 0.2,  h: 0.2,  color: 0x2e2e33, barrels: true },
+  launcher: { len: 0.72, w: 0.17, h: 0.17, color: 0x46532f, drum: true },
 };
 
 export function makeGun(id) {
@@ -357,6 +397,9 @@ export function makeGun(id) {
   if (s.mag) parts.push(boxGeo(s.w * 0.7, 0.22, 0.1, 0, -0.16, s.len * 0.5));
   const group = new THREE.Group();
   group.add(new THREE.Mesh(mergeGeos(parts), lambert(s.color)));
+  if (s.drum) {
+    group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.22, 10).rotateX(Math.PI / 2).translate(0, -0.02, 0.22), lambert(0x2a2f22)));
+  }
   if (s.barrel) group.add(new THREE.Mesh(boxGeo(0.06, 0.06, s.len * 0.55, 0, 0.07, s.len * 0.72), lambert(s.barrel)));
   if (s.barrels) {
     const b = [];
@@ -397,7 +440,7 @@ export function makeCar(rng) {
   group.add(new THREE.Mesh(g.lights, basic(0x7a1010)));
   group.add(new THREE.Mesh(g.heads, basic(rng() < 0.25 ? 0xfff0b0 : 0x4a4a40)));
   group.add(blobShadow(4.4, 0.5));
-  return { group, hw: 0.95, hd: 2.1 };
+  return { group, meshes: [], hw: 0.95, hd: 2.1, height: 1.6 };
 }
 
 let BARRIER_GEO = null;
@@ -409,9 +452,12 @@ export function makeBarrier() {
     };
   }
   const group = new THREE.Group();
-  group.add(new THREE.Mesh(BARRIER_GEO.block, lambert(0x8d8a82)));
-  group.add(new THREE.Mesh(BARRIER_GEO.stripe, lambert(0xd8582a)));
-  return { group, hw: 1.2, hd: 0.32 };
+  const meshes = [
+    keep(new THREE.Mesh(BARRIER_GEO.block, lambert(0x8d8a82))),
+    keep(new THREE.Mesh(BARRIER_GEO.stripe, lambert(0xd8582a))),
+  ];
+  group.add(...meshes);
+  return { group, meshes, hw: 1.2, hd: 0.32, height: 0.95 };
 }
 
 let LAMP_GEO = null;
@@ -450,7 +496,7 @@ export function makeFireBarrel() {
   }
   const pool = glowDecal(0xff7a2a, 6, 0.5, { own: true });
   group.add(pool);
-  return { group, flames, pool, hw: 0.36, hd: 0.36 };
+  return { group, flames, pool, meshes: [], hw: 0.36, hd: 0.36, height: 0.95 };
 }
 
 export function makeHealthPack() {
@@ -465,4 +511,70 @@ export function makeArmorVest() {
   group.add(new THREE.Mesh(mergeGeos([boxGeo(0.62, 0.56, 0.22, 0, 0.3, 0), boxGeo(0.16, 0.2, 0.2, -0.2, 0.66, 0), boxGeo(0.16, 0.2, 0.2, 0.2, 0.66, 0)]), lambert(0x2f4f7a)));
   group.add(new THREE.Mesh(boxGeo(0.64, 0.08, 0.24, 0, 0.32, 0), basic(0x7ac8ff)));
   return group;
+}
+
+/* ── Props you can wreck ─────────────────────────────────────────────────
+   Each returns { group, meshes, hw, hd, height }. `meshes` are the ones a
+   hit flashes; their original material is kept in userData.mat.          */
+const keep = (m) => { m.userData.mat = m.material; return m; };
+
+let XBARREL = null;
+export function makeExplosiveBarrel() {
+  if (!XBARREL) {
+    XBARREL = {
+      body: new THREE.CylinderGeometry(0.33, 0.33, 1.0, 12).translate(0, 0.5, 0),
+      band: new THREE.CylinderGeometry(0.336, 0.336, 0.16, 12).translate(0, 0.62, 0),
+      lid: new THREE.CylinderGeometry(0.28, 0.28, 0.04, 12).translate(0, 1.01, 0),
+    };
+  }
+  const group = new THREE.Group();
+  const meshes = [
+    keep(new THREE.Mesh(XBARREL.body, lambert(0xb3261e))),
+    keep(new THREE.Mesh(XBARREL.band, basic(0xffc21a))),
+    keep(new THREE.Mesh(XBARREL.lid, lambert(0x6a1a14))),
+  ];
+  group.add(...meshes, blobShadow(1.1, 0.45));
+  return { group, meshes, hw: 0.34, hd: 0.34, height: 1.0 };
+}
+
+export function makeWall(width) {
+  const h = 2.4, d = 0.45;
+  const g = new THREE.BoxGeometry(width, h, d);
+  const uv = g.attributes.uv;
+  const dims = [[d, h], [d, h], [width, d], [width, d], [width, h], [width, h]];
+  for (let f = 0; f < 6; f++) {
+    for (let v = 0; v < 4; v++) {
+      const i = f * 4 + v;
+      uv.setXY(i, uv.getX(i) * dims[f][0] / 2, uv.getY(i) * dims[f][1] / 1);
+    }
+  }
+  g.translate(0, h / 2, 0);
+  // Its own material, so damage can darken this wall alone.
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: TEX.brick });
+  const wall = keep(new THREE.Mesh(g, mat));
+  const cap = keep(new THREE.Mesh(boxGeo(width + 0.08, 0.12, d + 0.08, 0, h + 0.06, 0), lambert(0x6a6460)));
+  const group = new THREE.Group();
+  group.add(wall, cap);
+  return { group, meshes: [wall, cap], hw: width / 2, hd: d / 2, height: h, own: [g, mat, cap.geometry] };
+}
+
+/* A low pile of broken bits covering w x d metres. One merged mesh. */
+export function makeRubble(rng, w, d, color = 0x6d625a) {
+  const parts = [];
+  const n = Math.max(6, Math.round(w * d * 3));
+  for (let i = 0; i < n; i++) {
+    const s = 0.18 + rng() * 0.4;
+    const geo = boxGeo(s, s * (0.4 + rng() * 0.6), s * (0.6 + rng()), (rng() - 0.5) * w, s * 0.2, (rng() - 0.5) * d);
+    geo.rotateY((rng() - 0.5) * 0.6);
+    parts.push(geo);
+  }
+  const mesh = new THREE.Mesh(mergeGeos(parts), lambert(color));
+  return { mesh, own: [mesh.geometry] };
+}
+
+export function scorchDecal(size) {
+  const m = new THREE.Mesh(geos().flat, basic(0x000000, { map: TEX.scorch, transparent: true, opacity: 0.7, depthWrite: false }));
+  m.scale.set(size, 1, size);
+  m.position.y = 0.025;
+  return m;
 }

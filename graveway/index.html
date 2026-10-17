@@ -86,15 +86,41 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 .title h1 span{color:var(--blood);}
 .title p{margin:10px 0 0;color:var(--dim);font-size:15px;letter-spacing:.02em;text-shadow:0 2px 8px #000;}
 .menu-bottom{display:flex;flex-direction:column;gap:10px;width:100%;max-width:420px;margin:0 auto;}
-.level-pick{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px;border-radius:18px;
-  background:var(--panel);border:1px solid var(--line);}
-.level-pick button{width:48px;height:48px;border-radius:12px;border:0;background:rgba(255,255,255,.06);font-size:26px;cursor:pointer;}
-.level-pick button:disabled{opacity:.25;cursor:default;}
-.level-pick div{text-align:center;line-height:1;}
-.level-pick small{display:block;font-size:11px;letter-spacing:.18em;color:var(--dim);font-weight:700;}
-.level-pick b{display:block;font-family:var(--display);font-weight:400;font-size:38px;margin:2px 0;}
-.level-pick em{font-style:normal;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);}
-.level-pick em[data-kind="boss"]{color:var(--blood);}
+.menu-stats{display:flex;gap:10px;}
+.m-char,.m-best{flex:1;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:18px;background:var(--panel);border:1px solid var(--line);min-width:0;}
+.m-char small,.m-best small{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:700;}
+.m-char b{display:block;font-family:var(--display);font-weight:400;font-size:26px;line-height:1;}
+.m-best{flex-direction:column;align-items:flex-start;gap:0;}
+.m-best b{font-family:var(--display);font-weight:400;font-size:30px;line-height:1;}
+.m-best span{font-size:12px;color:var(--dim);}
+.portrait{display:block;border-radius:14px;background:radial-gradient(circle at 50% 35%, #2b3a2a, #111a14);object-fit:cover;flex:none;}
+.portrait.sm{width:44px;height:44px;border-radius:12px;}
+.portrait.lg{width:min(220px, 56vw);height:min(220px, 56vw);margin:0 auto 8px;border-radius:24px;}
+.portrait.ph{display:grid;place-items:center;font-family:var(--display);font-size:24px;color:var(--accent);}
+.portrait.lg.ph{font-size:80px;}
+/* Survivor select */
+#select{background:linear-gradient(180deg, rgba(9,13,16,.92), rgba(9,13,16,.7) 40%, rgba(9,13,16,.95));}
+.c-wrap{flex:1;display:flex;align-items:center;gap:6px;padding:0 calc(8px + var(--sr)) 0 calc(8px + var(--sl));min-height:0;}
+.c-card{flex:1;max-width:440px;margin:0 auto;max-height:100%;overflow-y:auto;text-align:left;touch-action:pan-y;}
+.c-arrow{flex:none;width:40px;height:72px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-size:30px;cursor:pointer;}
+.c-name{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.c-name h2{margin:0;font-family:var(--display);font-weight:400;font-size:40px;letter-spacing:.04em;line-height:1;}
+.perk{display:flex;flex-direction:column;gap:1px;margin-top:10px;padding:10px 12px;border-radius:12px;background:rgba(155,225,93,.07);border:1px solid rgba(155,225,93,.18);}
+.perk small{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:700;}
+.perk b{font-size:15px;}
+.perk span{font-size:13px;color:#cfd8d2;}
+.perk.gunline{flex-direction:row;align-items:center;gap:12px;background:rgba(255,255,255,.04);border-color:var(--line);}
+.perk.gunline .gun{width:64px;height:24px;fill:#c9d2cc;flex:none;}
+.perk.gunline > span{display:flex;flex-direction:column;}
+.c-foot{display:flex;flex-direction:column;gap:12px;align-items:center;padding:12px calc(16px + var(--sr)) calc(18px + var(--sb)) calc(16px + var(--sl));}
+.c-foot .btn{width:100%;max-width:420px;}
+.c-dots{display:flex;gap:8px;}
+.c-dots button{width:12px;height:12px;padding:0;border-radius:50%;border:0;background:rgba(255,255,255,.2);cursor:pointer;}
+.c-dots button[aria-pressed="true"]{background:var(--accent);width:28px;border-radius:6px;}
+.fine{margin:10px 0 0;font-size:12px;color:var(--dim);}
+.wsig{font-size:11px;color:var(--accent);font-weight:700;}
+.r-dist{font-family:var(--display);font-size:64px;line-height:1;margin-top:4px;color:var(--text);}
+#result[data-best="true"] .sub{color:var(--gold);font-weight:800;letter-spacing:.06em;text-transform:uppercase;}
 .hint{margin:4px 0 0;text-align:center;font-size:13px;color:var(--dim);}
 
 /* ── Armory ──────────────────────────────────────────────────────────── */
@@ -140,15 +166,18 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 #hud{position:fixed;inset:0;z-index:3;pointer-events:none;}
 .h-top{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:10px;
   padding:calc(10px + var(--st)) calc(12px + var(--sr)) 0 calc(12px + var(--sl));}
-.h-badge{font-family:var(--display);font-size:20px;letter-spacing:.06em;padding:6px 10px;border-radius:10px;background:var(--panel);border:1px solid var(--line);}
-.h-prog{flex:1;height:10px;border-radius:99px;background:rgba(0,0,0,.45);border:1px solid var(--line);position:relative;}
+.h-run{flex:1;display:flex;align-items:center;gap:10px;min-width:0;}
+#h-dist{font-family:var(--display);font-weight:400;font-size:30px;line-height:1;padding:6px 10px;border-radius:10px;
+  background:var(--panel);border:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.h-stage{flex:1;min-width:0;}
+#h-stage{display:block;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);
+  text-shadow:0 1px 4px #000;margin-bottom:4px;}
+.h-prog{height:8px;border-radius:99px;background:rgba(0,0,0,.45);border:1px solid var(--line);position:relative;overflow:hidden;}
 .h-prog::before{content:"";position:absolute;inset:0;width:calc(var(--p, 0) * 100%);border-radius:inherit;
   background:linear-gradient(90deg, #4b7d2b, var(--accent));}
-.h-prog::after{content:"";position:absolute;right:-6px;top:50%;width:14px;height:14px;margin-top:-7px;border-radius:50%;
-  background:var(--accent);box-shadow:0 0 12px var(--accent);}
 #h-coins{font-weight:800;font-variant-numeric:tabular-nums;padding:6px 10px;border-radius:10px;background:var(--panel);border:1px solid var(--line);}
 #h-pause{pointer-events:auto;}
-#h-kills{position:absolute;left:calc(12px + var(--sl));top:calc(58px + var(--st));font-size:12px;font-weight:700;color:var(--dim);
+#h-kills{position:absolute;left:calc(12px + var(--sl));top:calc(60px + var(--st));font-size:12px;font-weight:700;color:var(--dim);
   text-shadow:0 1px 4px #000;letter-spacing:.04em;}
 #h-boss{position:absolute;left:50%;top:calc(62px + var(--st));transform:translateX(-50%);width:min(320px, 70vw);text-align:center;}
 #h-boss small{display:block;font-family:var(--display);letter-spacing:.14em;font-size:15px;color:#ff9a8a;text-shadow:0 2px 6px #000;}
@@ -166,9 +195,18 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 #h-armor::after{background:linear-gradient(90deg, #22609a, var(--armor));}
 .bar svg{width:16px;height:16px;flex:none;}
 .weap{display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
-#h-swap{pointer-events:auto;display:flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border-radius:12px;
-  border:1px solid var(--line);background:var(--panel);font-size:13px;font-weight:700;cursor:pointer;}
-#h-swap svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+/* Weapon bar: tap a gun to switch to it */
+.h-wbar{pointer-events:auto;display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
+.h-wbar button{position:relative;width:64px;height:40px;padding:0;border-radius:12px;border:1px solid var(--line);background:var(--panel);
+  cursor:pointer;display:grid;place-items:center;overflow:hidden;}
+.h-wbar .gun{width:46px;height:18px;fill:#9aa6a0;}
+.h-wbar i{position:absolute;left:0;bottom:0;height:3px;width:calc(var(--a, 1) * 100%);background:rgba(255,255,255,.35);}
+.h-wbar span{position:absolute;left:5px;top:2px;font-size:9px;font-weight:800;color:var(--dim);}
+.h-wbar button[aria-pressed="true"]{border-color:var(--accent);background:rgba(30,46,22,.92);}
+.h-wbar button[aria-pressed="true"] .gun{fill:var(--accent);}
+.h-wbar button[aria-pressed="true"] i{background:var(--accent);}
+.h-face{margin-bottom:2px;}
+.h-face .portrait{width:52px;height:52px;border:2px solid rgba(155,225,93,.5);}
 #h-weapon{pointer-events:auto;position:relative;overflow:hidden;min-width:132px;padding:10px 14px;border-radius:16px;text-align:right;
   border:1px solid var(--line);background:var(--panel);cursor:pointer;}
 #h-weapon::before{content:"";position:absolute;left:0;bottom:0;height:3px;width:calc(var(--r, 0) * 100%);background:var(--accent);}
@@ -258,7 +296,6 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 #nogl p{max-width:34ch;color:var(--dim);}
 
 @media (min-width:700px) and (min-height:500px){
-  .h-badge{font-size:22px;}
   .vitals{width:240px;}
 }
 @media (prefers-reduced-motion:reduce){
@@ -282,17 +319,35 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
   </div>
   <div class="title">
     <h1>GRAVE<span>WAY</span></h1>
-    <p>Walk the dead road. Reach the safe zone.</p>
+    <p>Walk the dead road. Get as far as you can.</p>
   </div>
   <div class="menu-bottom">
-    <div class="level-pick">
-      <button id="lv-prev" type="button" aria-label="Previous level">&lsaquo;</button>
-      <div><small>LEVEL</small><b id="lv-num">1</b><em id="lv-tag"></em></div>
-      <button id="lv-next" type="button" aria-label="Next level">&rsaquo;</button>
+    <div class="menu-stats">
+      <div class="m-char" id="m-char"></div>
+      <div class="m-best"><small>Best run</small><b id="m-best">—</b><span id="m-runs"></span></div>
     </div>
-    <button class="btn primary big" id="m-play" type="button">Start</button>
+    <button class="btn primary big" id="m-play" type="button">Play</button>
     <button class="btn" id="m-armory" type="button">Armory</button>
     <p class="hint">Drag anywhere to move. Aiming and shooting are automatic.</p>
+  </div>
+</section>
+
+<!-- Pick a survivor before each run -->
+<section id="select" class="screen" hidden>
+  <div class="a-head">
+    <button class="icon-btn" id="c-back" type="button" aria-label="Back">
+      <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <h2>Survivor</h2>
+  </div>
+  <div class="c-wrap">
+    <button class="c-arrow" id="c-prev" type="button" aria-label="Previous survivor">&lsaquo;</button>
+    <div class="panel c-card" id="c-card"></div>
+    <button class="c-arrow" id="c-next" type="button" aria-label="Next survivor">&rsaquo;</button>
+  </div>
+  <div class="c-foot">
+    <div class="c-dots" id="c-dots"></div>
+    <button class="btn primary big" id="c-go" type="button">Run</button>
   </div>
 </section>
 
@@ -315,8 +370,10 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 <!-- In-game HUD -->
 <div id="hud" hidden>
   <div class="h-top">
-    <span class="h-badge" id="h-level">LV 1</span>
-    <div class="h-prog" id="h-prog" role="progressbar" aria-label="Distance to the safe zone"></div>
+    <div class="h-run">
+      <b id="h-dist">0 m</b>
+      <div class="h-stage"><span id="h-stage">Stage 0</span><div class="h-prog" id="h-prog" role="progressbar" aria-label="Progress to the next stage"></div></div>
+    </div>
     <span id="h-coins"></span>
     <button class="icon-btn" id="h-pause" type="button" aria-label="Pause">
       <svg viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg>
@@ -327,6 +384,7 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
   <div id="h-boss" hidden><small>BOSS</small><i></i></div>
   <div class="h-bottom">
     <div class="vitals">
+      <div class="h-face" id="h-face"></div>
       <div class="bar" id="h-armor-row" hidden>
         <svg viewBox="0 0 24 24" fill="#5db4ff"><path d="M12 2l8 3v6c0 5-3.5 9.7-8 11-4.5-1.3-8-6-8-11V5z"/></svg>
         <i id="h-armor"></i><b id="h-armor-n">0</b>
@@ -337,9 +395,7 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
       </div>
     </div>
     <div class="weap">
-      <button id="h-swap" type="button" hidden>
-        <svg viewBox="0 0 24 24"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg><span id="h-swap-n"></span>
-      </button>
+      <div class="h-wbar" id="h-wbar" aria-label="Weapons"></div>
       <button id="h-weapon" type="button" aria-label="Reload">
         <span id="h-wname">Pistol</span>
         <span id="h-ammo">12</span><span id="h-mag">/ 12</span>
@@ -371,16 +427,17 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
   </div>
 </div>
 
-<!-- End of level -->
+<!-- End of a run -->
 <div id="result" class="modal" hidden>
   <div class="card">
     <h2 id="r-title"></h2>
+    <div class="r-dist" id="r-dist"></div>
     <p class="sub" id="r-sub"></p>
     <div id="r-stats"></div>
     <div id="r-wallet"></div>
-    <p id="r-tip" hidden></p>
+    <p id="r-tip"></p>
     <div class="stack">
-      <button class="btn primary big" id="r-next" type="button"></button>
+      <button class="btn primary big" id="r-next" type="button">Run again</button>
       <div class="row-btns">
         <button class="btn" id="r-armory" type="button">Armory</button>
         <button class="btn" id="r-menu" type="button">Menu</button>
@@ -407,8 +464,8 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
     <div class="stack tight">
       <div class="row-btns">
         <button class="btn small" id="t-coins" type="button">+1,000 coins</button>
-        <button class="btn small" id="t-levels" type="button">Unlock levels</button>
       </div>
+      <button class="toggle" id="t-start" type="button" role="switch">Start runs at <b></b></button>
       <button class="toggle" id="t-god" type="button" role="switch">Invincible <b></b></button>
       <button class="toggle" id="t-fps" type="button" role="switch">Show frame rate <b></b></button>
     </div>

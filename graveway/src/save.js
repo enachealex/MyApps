@@ -2,18 +2,19 @@
    throw (private browsing, blocked site data), so every access is guarded and
    the game still runs — it just forgets between visits. */
 
-const KEY = 'graveway.save.v1';
+// v2: endless runs replaced levels. A v1 save is simply ignored.
+const KEY = 'graveway.save.v2';
 
 const defaults = () => ({
   coins: 0,
-  unlocked: 1,          // highest level you may start
-  level: 1,             // level picked on the menu
+  best: 0,              // furthest run, metres
+  runs: 0,
   kills: 0,
-  owned: ['pistol'],
-  equipped: 'pistol',   // the gun you start each level holding
+  character: 'rook',    // survivor picked last time
+  owned: ['pistol'],    // guns bought in the Armory
   wup: {},              // weapon upgrades, e.g. { smg: { damage: 2 } }
   pup: {},              // survivor upgrades, e.g. { maxHp: 1 }
-  settings: { sound: true, haptics: true, quality: 'high', god: false, fps: false },
+  settings: { sound: true, haptics: true, quality: 'high', god: false, fps: false, startAt: 0 },
 });
 
 function merge(base, stored) {

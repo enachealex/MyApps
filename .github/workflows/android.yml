@@ -4,6 +4,10 @@ name: Build Android APK
 # -> "Run workflow". No computer, no Android SDK, nothing installed locally.
 # GitHub's Ubuntu runners already ship the Android SDK and Gradle.
 #
+# The build itself is tools/android/build-apk.mjs, the same script you can
+# run on your own computer (see graveway/ANDROID.md), so a cloud build and a
+# local one come out the same.
+#
 # Each app can keep an android.json next to its index.html. Every key is
 # optional:
 #   appId        Android package name        default com.thejumpvault.<folder>
@@ -52,161 +56,6 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Check the app folder exists
-        run: |
-          set -e
-          APP="${{ github.event.inputs.app_folder }}"
-          if [ ! -f "$APP/index.html" ]; then
-            echo "::error::No index.html in '$APP/'. Check the folder name you entered."
-            exit 1
-          fi
-          echo "Building from $APP/"
-          ls -la "$APP"
-
-      - name: Read the app's Android settings
-        id: cfg
-        env:
-          APP: ${{ github.event.inputs.app_folder }}
-        run: |
-          node - <<'JS'
-          const fs = require('fs');
-          const app = process.env.APP;
-          const file = app + '/android.json';
-          const raw = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
-          const slug = app.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const cfg = {
-            appId: raw.appId || 'com.thejumpvault.' + slug,
-            appName: raw.appName || app,
-            background: raw.background || '#000000',
-            orientation: raw.orientation || '',
-            fullscreen: !!raw.fullscreen,
-            permissions: raw.permissions || [],
-            plugins: raw.plugins || [],
-            prerelease: !!raw.prerelease,
-            slug,
-          };
-          console.log(cfg);
-          fs.writeFileSync(process.env.RUNNER_TEMP + '/app.json', JSON.stringify(cfg));
-          const out = {
-            app_id: cfg.appId, app_name: cfg.appName, bg: cfg.background, slug,
-            prerelease: String(cfg.prerelease), plugins: cfg.plugins.join(' '),
-          };
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(out).map(([k, v]) => k + '=' + v).join('\n') + '\n');
-          JS
-
-      - name: Stage the web assets
-        run: |
-          set -e
-          mkdir -p www
-          cp -r "${{ github.event.inputs.app_folder }}"/. www/
-          # Build settings and docs aren't part of the app itself.
-          rm -f www/android.json www/README.md
-          ls -la www
-          # @capacitor/assets reads assets/ from the repo root, but each app
-          # keeps its own icon and splash alongside its index.html.
-          if [ -d "${{ github.event.inputs.app_folder }}/assets" ]; then
-            cp -r "${{ github.event.inputs.app_folder }}/assets" assets
-            ls -la assets
-          fi
-
-      - name: Install Capacitor
-        run: |
-          set -e
-          npm init -y >/dev/null
-          npm install --no-fund --no-audit @capacitor/core@^7 @capacitor/android@^7 ${{ steps.cfg.outputs.plugins }}
-          npm install --no-fund --no-audit -D @capacitor/cli@^7 @capacitor/assets@^3
-
-      - name: Write Capacitor config
-        run: |
-          node - <<'JS'
-          const fs = require('fs');
-          const cfg = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/app.json', 'utf8'));
-          const cap = {
-            appId: cfg.appId,
-            appName: cfg.appName,
-            webDir: 'www',
-            android: { backgroundColor: cfg.background },
-            server: { androidScheme: 'https' },
-          };
-          fs.writeFileSync('capacitor.config.json', JSON.stringify(cap, null, 2));
-          JS
-          cat capacitor.config.json
-
-      - name: Create the Android project
-        run: npx cap add android
-
-      - name: Apply orientation, permissions and full-screen
-        run: |
-          set -e
-          node - <<'JS'
-          const fs = require('fs');
-          const cfg = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/app.json', 'utf8'));
-          const f = 'android/app/src/main/AndroidManifest.xml';
-          let x = fs.readFileSync(f, 'utf8');
-          if (cfg.orientation) {
-            if (!x.includes('android:name=".MainActivity"')) throw new Error('MainActivity not found in the manifest');
-            x = x.replace('android:name=".MainActivity"',
-              'android:name=".MainActivity"\n            android:screenOrientation="' + cfg.orientation + '"');
-          }
-          for (const p of cfg.permissions) {
-            const tag = '<uses-permission android:name="android.permission.' + p + '" />';
-            if (!x.includes(tag)) x = x.replace('</manifest>', '    ' + tag + '\n</manifest>');
-          }
-          fs.writeFileSync(f, x);
-          JS
-          cat android/app/src/main/AndroidManifest.xml
-
-          # Full-screen: hide the status and navigation bars whenever the app
-          # has focus; a swipe from the edge brings them back for a moment.
-          if [ "$(node -p "require(process.env.RUNNER_TEMP + '/app.json').fullscreen")" = "true" ]; then
-            MAIN=$(find android/app/src/main/java -name MainActivity.java | head -1)
-            PKG=$(grep -m1 '^package ' "$MAIN")
-            cat > "$MAIN" <<JAVA
-          $PKG
-
-          import androidx.core.view.WindowCompat;
-          import androidx.core.view.WindowInsetsCompat;
-          import androidx.core.view.WindowInsetsControllerCompat;
-          import com.getcapacitor.BridgeActivity;
-
-          public class MainActivity extends BridgeActivity {
-              @Override
-              public void onWindowFocusChanged(boolean hasFocus) {
-                  super.onWindowFocusChanged(hasFocus);
-                  if (!hasFocus) return;
-                  WindowInsetsControllerCompat bars =
-                      WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-                  bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-                  bars.hide(WindowInsetsCompat.Type.systemBars());
-              }
-          }
-          JAVA
-            cat "$MAIN"
-          fi
-
-      - name: Generate launcher icons and splash screens
-        run: |
-          if [ -f assets/icon.png ]; then
-            npx @capacitor/assets generate --android \
-              --iconBackgroundColor '${{ steps.cfg.outputs.bg }}' \
-              --splashBackgroundColor '${{ steps.cfg.outputs.bg }}'
-          else
-            echo "No assets/icon.png — Capacitor's default icon will be used."
-          fi
-
-      # versionCode has to go up for Android to treat a new APK as an update,
-      # so it follows the run number.
-      - name: Set the version
-        run: |
-          set -e
-          sed -i "s/versionName \".*\"/versionName \"${{ github.event.inputs.version_name }}\"/" \
-            android/app/build.gradle
-          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
-          grep -E "versionName|versionCode" android/app/build.gradle
-
-      - name: Copy web assets into the Android project
-        run: npx cap sync android
-
       # Debug builds are signed with a key Gradle makes on first use. Every
       # runner starts empty, so without this each APK would carry a new key and
       # Android would refuse to install it over the last one. Caches expire
@@ -231,25 +80,16 @@ jobs:
           fi
 
       - name: Build the APK
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
-
-      - name: Rename the output
         id: out
-        run: |
-          set -e
-          SRC=android/app/build/outputs/apk/debug/app-debug.apk
-          DEST="${{ steps.cfg.outputs.slug }}-${{ github.event.inputs.version_name }}.apk"
-          cp "$SRC" "$DEST"
-          echo "apk=$DEST" >> "$GITHUB_OUTPUT"
-          ls -lh "$DEST"
+        env:
+          APP: ${{ github.event.inputs.app_folder }}
+          VERSION: ${{ github.event.inputs.version_name }}
+        run: node tools/android/build-apk.mjs "$APP" --version "$VERSION"
 
       # The artifact is a .zip, which is awkward to open on a phone.
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.cfg.outputs.slug }}-apk
+          name: ${{ steps.out.outputs.slug }}-apk
           path: ${{ steps.out.outputs.apk }}
           retention-days: 30
 
@@ -258,19 +98,20 @@ jobs:
       - name: Publish a Release with the APK attached
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.cfg.outputs.slug }}-v${{ github.event.inputs.version_name }}-${{ github.run_number }}
+          tag_name: ${{ steps.out.outputs.slug }}-v${{ github.event.inputs.version_name }}-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          name: ${{ steps.cfg.outputs.app_name }} ${{ github.event.inputs.version_name }} (build ${{ github.run_number }})
-          prerelease: ${{ steps.cfg.outputs.prerelease }}
+          name: ${{ steps.out.outputs.app_name }} ${{ github.event.inputs.version_name }} (build ${{ github.run_number }})
+          prerelease: ${{ steps.out.outputs.prerelease }}
           body: |
-            Debug build of ${{ steps.cfg.outputs.app_name }}, built from `${{ github.event.inputs.app_folder }}/` at ${{ github.sha }} on `${{ github.ref_name }}`.
+            Debug build of ${{ steps.out.outputs.app_name }}, built from `${{ github.event.inputs.app_folder }}/` at ${{ github.sha }} on `${{ github.ref_name }}`.
 
             Tap the `.apk` below on your Android phone to install. You'll be asked
             to allow installs from this source the first time.
 
             If Android says the app can't be installed over the old one, that
-            build was signed with a different key: uninstall the old one first
-            (this clears its saved progress).
+            build was signed with a different key (for example one you built on
+            your own computer): uninstall the old one first. That clears its
+            saved progress and playtest notes, so copy the notes out first.
 
             Unsigned debug build — fine for testing and sideloading, not for the
             Play Store.

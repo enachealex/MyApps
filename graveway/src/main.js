@@ -31,6 +31,8 @@ try {
 const input = new Input(document.getElementById('touch'), document.getElementById('joy'), document.getElementById('joy-knob'));
 ui.attach(game, input);
 game.showMenu();
+// Survivor portraits are rendered from their 3D models once the menu is up.
+setTimeout(() => ui.setPortraits(game.renderPortraits()), 300);
 
 // Sound may only start after the first tap or key press.
 window.addEventListener('pointerdown', unlockAudio, { capture: true });

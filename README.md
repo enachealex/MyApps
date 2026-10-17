@@ -58,5 +58,11 @@ from **Actions → Build Android APK → Run workflow** and give it a folder nam
 (default `puttcount`). It picks up `<folder>/assets/icon.png` and
 `splash.png` for launcher icons if they exist.
 
+The build itself is [`tools/android/build-apk.mjs`](tools/android/build-apk.mjs),
+which you can also run on your own computer to build an APK and
+`adb install` it onto a phone over USB. Each app's `android.json` sets its
+package name, label, colours, orientation and so on. See
+[`graveway/ANDROID.md`](graveway/ANDROID.md) for the setup checklist.
+
 [`.github/workflows/android-apk.yml`](.github/workflows/android-apk.yml) does
 the same for OnCall, which needs a Vite build first.
