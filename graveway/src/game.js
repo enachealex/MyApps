@@ -22,7 +22,7 @@ import { Director } from './director.js';
 import { Weapon } from './weapons.js';
 import { VFX } from './vfx.js';
 import {
-  initTextures, sharedGeo, makeSurvivor, makeZombie, makeGun, FLASH_MAT, TEX, scorchDecal, lambert,
+  initTextures, sharedGeo, makeSurvivor, makeZombie, makeGun, FLASH_MAT, TEX, scorchDecal, lambert, GUN_MOUNT,
 } from './models.js';
 
 const FOG = 0x0d1418;
@@ -150,7 +150,6 @@ export class Game {
       m.guns = {};
       for (const w of WEAPONS) {
         const g = makeGun(w.model);
-        g.group.position.set(-0.2, 1.4, 0.32);
         g.group.visible = false;
         m.body.add(g.group);
         m.guns[w.id] = g;
@@ -503,12 +502,14 @@ export class Game {
     const emptied = w.consume(rapid ? POWERUPS.rapid.fireRateMult : 1, rapid);
     const gun = this.surv.guns[w.id];
     const sin = Math.sin(p.yaw), cos = Math.cos(p.yaw);
-    const reach = 0.32 + gun.len;
-    const mx = p.x + sin * reach - 0.2 * cos;
-    const mz = p.z + cos * reach + 0.2 * sin;
+    // The muzzle: GUN_MOUNT plus the gun's length, turned to face the aim.
+    const reach = GUN_MOUNT.z + gun.len, gx = GUN_MOUNT.x;
+    const mx = p.x + sin * reach + gx * cos;
+    const mz = p.z + cos * reach - gx * sin;
+    const my = GUN_MOUNT.y + 0.05;
     if (w.explosive) {
       const tx = target.x + (this.rng() - 0.5) * 2 * w.spread * 4, tz = target.z + (this.rng() - 0.5) * 2 * w.spread * 4;
-      this.lob(mx, 1.45, mz, tx, tz, damage, s.blast);
+      this.lob(mx, my, mz, tx, tz, damage, s.blast);
     } else {
       for (let i = 0; i < s.pellets; i++) {
         if (this.bullets.length >= MAX_BULLETS) break;
@@ -522,12 +523,12 @@ export class Game {
         });
       }
     }
-    this.muzzleLight.position.set(mx, 1.5, mz);
+    this.muzzleLight.position.set(mx, my + 0.1, mz);
     this.muzzleLight.intensity = 28;
-    this.muzzleFlash.position.set(mx, 1.4, mz);
+    this.muzzleFlash.position.set(mx, my, mz);
     this.muzzleFlash.visible = true;
     this.muzzleFlash.rotation.set(-Math.PI / 2, 0, this.rng() * TAU);
-    this.muzzleFlash.scale.setScalar(s.pellets > 1 || w.explosive ? 1.5 : 0.8 + this.rng() * 0.4);
+    this.muzzleFlash.scale.setScalar(s.pellets > 1 || w.explosive ? 1.8 : 1.1 + this.rng() * 0.5);
     this.flashT = 0.045;
     p.kick = 1;
     this.shake = Math.max(this.shake, s.shake);
@@ -605,13 +606,14 @@ export class Game {
     m.root.rotation.y = p.yaw;
     const id = this.weapon.id;
     for (const k in m.guns) m.guns[k].group.visible = k === id;
-    m.guns[id].group.position.z = 0.32 - p.kick * 0.09;
+    m.guns[id].group.position.z = GUN_MOUNT.z - p.kick * 0.12;
     const sw = Math.sin(p.walk) * 0.7 * Math.min(p.moving * 1.5, 1);
     m.legL.rotation.x = sw;
     m.legR.rotation.x = -sw;
     if (this.state !== 'dying') m.body.position.y = Math.abs(Math.cos(p.walk)) * 0.06 * p.moving;
     const reloading = this.weapon.reloading;
-    const aim = -Math.PI / 2 + p.kick * 0.18 + (reloading ? 0.6 : 0);
+    // Arms angled a little down, so the hands meet the gun.
+    const aim = -Math.PI / 2 + 0.12 + p.kick * 0.18 + (reloading ? 0.6 : 0);
     m.armR.rotation.set(aim, 0, 0.3);
     m.armL.rotation.set(aim + (reloading ? Math.sin(this.time * 18) * 0.3 : 0), 0, -0.62);
   }
@@ -1361,11 +1363,11 @@ export class Game {
     for (const c of CHARACTERS) {
       const m = makeSurvivor(c.look);
       const gun = makeGun(WEAPONS.find((w) => w.id === c.startingWeapon)?.model || 'pistol');
-      gun.group.position.set(-0.2, 1.4, 0.32);
+      gun.group.scale.multiplyScalar(0.7);   // full size hides the chest face-on
       m.body.add(gun.group);
       m.armR.rotation.set(-1.3, 0, 0.3);
       m.armL.rotation.set(-1.2, 0, -0.62);
-      m.root.rotation.y = 0.35;
+      m.root.rotation.y = 0.7;               // three-quarters, so the gun shows side-on
       scene.add(m.root);
       r.setClearColor(0x000000, 0);
       r.render(scene, cam);

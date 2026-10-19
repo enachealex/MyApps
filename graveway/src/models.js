@@ -409,6 +409,8 @@ function geos() {
   G = {
     leg: boxGeo(0.24, 0.82, 0.26, 0, -0.41, 0),
     arm: boxGeo(0.19, 0.72, 0.2, 0, -0.34, 0),
+    hand: boxGeo(0.16, 0.16, 0.18, 0, -0.76, 0.01),
+    armHand: mergeGeos([boxGeo(0.19, 0.72, 0.2, 0, -0.34, 0), boxGeo(0.16, 0.16, 0.18, 0, -0.76, 0.01)]),
     torso: boxGeo(0.62, 0.72, 0.36),
     head: boxGeo(0.4, 0.42, 0.4, 0, 0.21, 0),
     eyes: mergeGeos([boxGeo(0.09, 0.06, 0.03, -0.09, 0.25, 0.205), boxGeo(0.09, 0.06, 0.03, 0.09, 0.25, 0.205)]),
@@ -481,10 +483,11 @@ export function makeHumanoid({ skin, shirt, pants, sleeves = skin, eyes = null, 
     mk(g.torso, shirt, body, 0, 1.18, 0),
     mk(g.leg, pants, legL),
     mk(g.leg, pants, legR),
-    mk(g.arm, sleeves, armL),
-    mk(g.arm, sleeves, armR),
     mk(g.head, skin, head),
   ];
+  // Bare arms take their hands in the same mesh; sleeves need a second one.
+  if (sleeves === skin) meshes.push(mk(g.armHand, skin, armL), mk(g.armHand, skin, armR));
+  else meshes.push(mk(g.arm, sleeves, armL), mk(g.arm, sleeves, armR), mk(g.hand, skin, armL), mk(g.hand, skin, armR));
   if (eyes) mk(g.eyes, eyes, head);
 
   if (shadow) root.add(blobShadow(shadow));
@@ -522,41 +525,55 @@ export function makeSurvivor(look) {
   const hat = { cap: g.cap, helmet: g.helmet, goggles: g.goggles, hood: g.hood }[look.hat];
   if (hat) h.head.add(new THREE.Mesh(hat, look.hat === 'goggles' ? basic(look.hatColor) : lambert(look.hatColor)));
   if (look.bulk) {
-    h.body.children[0].scale.set(look.bulk, 1, look.bulk);   // torso
+    h.meshes[0].scale.set(look.bulk, 1, look.bulk);   // torso
   }
   return h;
 }
 
 /* ── Guns ────────────────────────────────────────────────────────────────
-   Barrel points along +z. `len` is where the muzzle is.                  */
+   Barrel points along +z with the grip at the origin; `len` is where the
+   muzzle is. They're drawn bigger than life (GUN_SCALE) so they read from
+   the overhead camera, in mid-tone metal with a light top rail and a
+   little glow so they don't vanish on a dark street. GUN_MOUNT is where
+   the grip sits on the survivor: at the right shoulder, where the camera
+   behind can see it past the head. */
+export const GUN_SCALE = 1.7;
+export const GUN_MOUNT = { x: -0.3, y: 1.42, z: 0.36 };
+// Widths are chunkier than real: from above, width is most of what you see.
 const GUNS = {
-  pistol:  { len: 0.34, w: 0.09, h: 0.14, color: 0x2a2a2e },
-  smg:     { len: 0.5,  w: 0.1,  h: 0.16, color: 0x34363c, mag: true },
-  shotgun: { len: 0.82, w: 0.1,  h: 0.13, color: 0x5a3a24, barrel: 0x2a2a2a },
-  rifle:   { len: 0.8,  w: 0.1,  h: 0.15, color: 0x3a4232, mag: true },
-  minigun: { len: 0.86, w: 0.2,  h: 0.2,  color: 0x2e2e33, barrels: true },
-  launcher: { len: 0.72, w: 0.17, h: 0.17, color: 0x46532f, drum: true },
+  pistol:  { len: 0.4,  w: 0.15, h: 0.16, color: 0x5a5e68 },
+  smg:     { len: 0.5,  w: 0.15, h: 0.16, color: 0x52565f, mag: true },
+  shotgun: { len: 0.82, w: 0.14, h: 0.13, color: 0x8a5a36, barrel: 0x4e525a },
+  rifle:   { len: 0.8,  w: 0.14, h: 0.15, color: 0x5c6a48, mag: true },
+  minigun: { len: 0.86, w: 0.26, h: 0.2,  color: 0x52565f, barrels: true },
+  launcher: { len: 0.72, w: 0.22, h: 0.17, color: 0x6a7a40, drum: true },
 };
 
+const gunMat = (color, glow = 0.22) => lambert(color, { emissive: color, emissiveIntensity: glow });
 export function makeGun(id) {
   const s = GUNS[id] || GUNS.pistol;
   const parts = [boxGeo(s.w, s.h, s.len, 0, 0, s.len / 2), boxGeo(s.w * 0.8, 0.18, 0.1, 0, -0.12, 0.08)];
   if (s.mag) parts.push(boxGeo(s.w * 0.7, 0.22, 0.1, 0, -0.16, s.len * 0.5));
   const group = new THREE.Group();
-  group.add(new THREE.Mesh(mergeGeos(parts), lambert(s.color)));
+  group.add(new THREE.Mesh(mergeGeos(parts), gunMat(s.color)));
+  // The light strip along the top is what you see from above.
+  group.add(new THREE.Mesh(boxGeo(s.w * 0.4, 0.03, s.len * 0.85, 0, s.h / 2 + 0.015, s.len * 0.48), gunMat(0x8c929c, 0.12)));
   if (s.drum) {
-    group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.22, 10).rotateX(Math.PI / 2).translate(0, -0.02, 0.22), lambert(0x2a2f22)));
+    group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.22, 10).rotateX(Math.PI / 2).translate(0, -0.02, 0.22), gunMat(0x3e4630)));
   }
-  if (s.barrel) group.add(new THREE.Mesh(boxGeo(0.06, 0.06, s.len * 0.55, 0, 0.07, s.len * 0.72), lambert(s.barrel)));
+  if (s.barrel) group.add(new THREE.Mesh(boxGeo(0.06, 0.06, s.len * 0.55, 0, 0.07, s.len * 0.72), gunMat(s.barrel)));
   if (s.barrels) {
     const b = [];
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2;
       b.push(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 6).rotateX(Math.PI / 2).translate(Math.cos(a) * 0.06, Math.sin(a) * 0.06, s.len + 0.12));
     }
-    group.add(new THREE.Mesh(mergeGeos(b), lambert(0x55555c)));
+    group.add(new THREE.Mesh(mergeGeos(b), gunMat(0x6a6e76, 0.12)));
   }
-  return { group, len: s.barrels ? s.len + 0.37 : s.len };
+  group.scale.setScalar(GUN_SCALE);
+  group.position.set(GUN_MOUNT.x, GUN_MOUNT.y, GUN_MOUNT.z);
+  // len: grip to muzzle, in the survivor's units (after scaling)
+  return { group, len: (s.barrels ? s.len + 0.37 : s.len) * GUN_SCALE };
 }
 
 /* ── Props ───────────────────────────────────────────────────────────── */
