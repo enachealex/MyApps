@@ -96,7 +96,8 @@ After that, `--install` works the same as over USB.
   case the page opens with an empty form. **Copy all** still works for
   pasting straight into a chat.
 - **Settings → Playtest tools**: free coins, start runs at 200, 500 or
-  1000 m, invincibility, and a frame-rate readout.
+  1000 m, invincibility, a frame-rate readout, and **Lots of power-ups**
+  (two on every stretch of road, from the start) for trying them out.
 - **Debug the game's WebView from a computer**: with the phone plugged in,
   open `chrome://inspect` in desktop Chrome and pick Graveway. You get the
   console, the DOM, and `graveway.game` / `graveway.save`.

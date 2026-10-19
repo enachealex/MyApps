@@ -60,6 +60,10 @@ export const WEAPONS = [
     recoil: { per: 0.002, max: 0.05, recover: 0.2 } },
 ];
 
+/* How many guns you take into a run, counting your survivor's own (which
+   always comes). The rest are the ones equipped in the Armory. */
+export const LOADOUT_SLOTS = 4;
+
 /* Each weapon can be upgraded a few times per stat. `step` is the gain per
    level (0.15 = +15%). Cost = baseCost x weapon tier factor x growth^level. */
 export const WEAPON_UPGRADES = {
@@ -111,9 +115,36 @@ export const PLAYER_UPGRADES = {
   magnet: { label: 'Coin magnet', max: 5, step: 1,    baseCost: 70,  unit: ' m' },
 };
 
-/* Armor soaks up this share of every hit until it runs out. */
-export const ARMOR_ABSORB = 0.7;
+/* Armor soaks up this share of every hit until it runs out; health only
+   starts going down once it's gone. (Below 1, some of every hit gets
+   through, so you can go down with armor left.) */
+export const ARMOR_ABSORB = 1;
 export const PICKUPS = { health: 35, armor: 50, maxArmor: 100 };
+
+/* ── Power-ups ─────────────────────────────────────────────────────────────
+   Glowing badges on the road, and sometimes left by tanks (bosses always
+   leave one). Walk over one and it goes off at once. The timed ones show a
+   countdown on the HUD; another of the same tops the timer up, to at most
+   twice its duration.
+     tag        the few words shown when you pick it up
+     weight     how often it turns up compared with the others
+     duration   seconds, for the timed ones
+   Frag Barrage throws `grenades` at the thickest crowds within `range`; a
+   Shockwave hits everything within `radius` of you. Neither blast can hurt
+   you (though a barrel or car one sets off still can). */
+export const POWERUPS = {
+  frag:   { name: 'Frag Barrage', tag: 'Grenades out', color: 0x9be15d, weight: 3,
+            grenades: 4, range: 18, damage: 150, blast: { radius: 3.6, impulse: 12 } },
+  rapid:  { name: 'Rapid Fire', tag: 'No reloads', color: 0xffb02e, weight: 2, duration: 10, fireRateMult: 2 },
+  double: { name: 'Double Damage', tag: '2× damage', color: 0xff5a4a, weight: 2, duration: 10, damageMult: 2 },
+  shock:  { name: 'Shockwave', tag: 'Get back!', color: 0x7ac8ff, weight: 2, radius: 7, damage: 180, impulse: 24 },
+  vacuum: { name: 'Coin Vacuum', tag: 'Every coin, to you', color: 0xffc928, weight: 1.5, duration: 8, radius: 32 },
+};
+export const POWERUP_DROPS = {
+  perChunk: 0.5,      // chance of one on each 32 m of road
+  from: 60,           // metres up the road before the first
+  tank: 0.25,         // chance a tank leaves one
+};
 
 /* ── Zombies ───────────────────────────────────────────────────────────────
    speed is a [min, max] range in metres per second; each zombie rolls one.
@@ -200,6 +231,14 @@ export const RUBBLE_SLOW_PLAYER = 0.75; // and for you
 /* ── Derived numbers (no tuning below) ───────────────────────────────── */
 export const weaponDef = (id) => WEAPONS.find((w) => w.id === id) || WEAPONS[0];
 export const characterDef = (id) => CHARACTERS.find((c) => c.id === id) || CHARACTERS[0];
+
+/* A power-up id, picked by weight; r is a random number in [0, 1). */
+export function pickPowerup(r) {
+  const ids = Object.keys(POWERUPS);
+  let w = r * ids.reduce((sum, id) => sum + POWERUPS[id].weight, 0);
+  for (const id of ids) { w -= POWERUPS[id].weight; if (w < 0) return id; }
+  return ids[0];
+}
 
 export function weaponStats(def, ups = {}, perk = {}) {
   const lv = (k) => ups[k] || 0;

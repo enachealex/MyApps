@@ -301,11 +301,23 @@ export class VFX {
     }
   }
 
-  ring(x, z, size, life) {
+  ring(x, z, size, life, color = 0xffc890) {
     const r = this.rings.find((q) => q.t >= q.life) || this.rings[0];
     r.t = 0; r.life = life; r.size = size;
+    r.mesh.material.color.setHex(color);
     r.mesh.position.x = x; r.mesh.position.z = z;
     r.mesh.visible = true;
+  }
+
+  /* The Shockwave power-up: a flash, two rings and dust rolling out along
+     the ground. No fire. */
+  shockwave(x, z, radius, color) {
+    const c = rgb(color);
+    this.glow.add({ x, y: 1, z, vx: 0, vy: 0, vz: 0, life: 0.18, s0: 2, s1: radius * 1.6, c0: c, a: 0.7, fadeIn: 0.01, fadePow: 1 });
+    this.ring(x, z, radius * 2.4, 0.45, color);
+    this.ring(x, z, radius * 1.4, 0.3, 0xffffff);
+    this.dust(x, z, radius * 1.4, this.n(20), DUST, 1.4);
+    this.sparks(x, 0.8, z, this.n(24), 12, 0.5);
   }
 
   /* ── Emitters: things that keep burning or smoking ────────────────────── */

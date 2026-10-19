@@ -4,10 +4,11 @@
 
 import {
   WEAPONS, WEAPON_UPGRADES, PLAYER_UPGRADES, CHARACTERS, weaponStats, playerStats,
-  weaponUpgradeCost, playerUpgradeCost, characterDef, weaponDef, FEEDBACK_REPO,
+  weaponUpgradeCost, playerUpgradeCost, characterDef, weaponDef, FEEDBACK_REPO, LOADOUT_SLOTS, POWERUPS,
 } from './config.js';
-import { save, persist, resetSave, weaponUps, notes, persistNotes } from './save.js';
+import { save, persist, resetSave, weaponUps, notes, persistNotes, loadout, runWeapons } from './save.js';
 import { sfx, setSoundEnabled } from './audio.js';
+import { powerIconURL } from './models.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -47,7 +48,7 @@ export class UI {
     this.hooks = {
       hud: (h) => this.updateHud(h),
       banner: (t, sub, ms) => this.banner(t, sub, ms),
-      toast: (t, kind) => this.toast(t, kind),
+      toast: (t, kind, color) => this.toast(t, kind, color),
       hurt: () => this.flashHurt(),
       finish: (r) => this.showResult(r),
     };
@@ -72,13 +73,15 @@ export class UI {
       if (b) { this.pick = Number(b.dataset.i); sfx.click(); this.renderSelect(); }
     });
     this.swipe($('c-card'), (dir) => this.cycle(dir));
+    $('c-card').addEventListener('click', (e) => {
+      if (e.target.closest('[data-act="loadout"]')) { sfx.click(); this.openArmory('select'); }
+    });
 
     on('a-back', () => this.closeArmory());
     on('tab-weapons', () => { this.armoryTab = 'weapons'; this.renderArmory(); });
     on('tab-survivor', () => { this.armoryTab = 'survivor'; this.renderArmory(); });
     $('a-body').addEventListener('click', (e) => this.armoryClick(e));
 
-    on('h-pause', () => this.pause());
     on('p-resume', () => this.resume());
     on('p-restart', () => this.play());
     on('p-quit', () => this.toMenu());
@@ -104,6 +107,7 @@ export class UI {
     });
     on('t-god', () => { save.settings.god = !save.settings.god; this.renderSettings(); persist(); });
     on('t-fps', () => { save.settings.fps = !save.settings.fps; this.renderSettings(); persist(); });
+    on('t-powers', () => { save.settings.powers = !save.settings.powers; this.renderSettings(); persist(); });
 
     on('p-note', () => this.openNote());
     on('r-note', () => this.openNote());
@@ -134,15 +138,19 @@ export class UI {
       this.renderMenu();
     });
 
-    // HUD buttons sit above the joystick surface; keep their presses from
-    // starting a joystick underneath.
-    for (const id of ['h-pause', 'h-weapon', 'h-wbar']) {
-      $(id).addEventListener('pointerdown', (e) => e.stopPropagation());
-    }
-    $('h-weapon').addEventListener('click', (e) => { e.currentTarget.blur(); this.game.reload(); });
-    $('h-wbar').addEventListener('click', (e) => {
+    // HUD buttons act the moment a finger lands on them, not on release:
+    // a phone sends no tap (click) for a second finger while the first is
+    // steering. Stopping the event keeps it from starting a joystick too.
+    const press = (id, fn) => $(id).addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fn(e);
+    });
+    press('h-pause', () => { sfx.click(); this.pause(); });
+    press('h-weapon', () => this.game.reload());
+    press('h-wbar', (e) => {
       const b = e.target.closest('[data-w]');
-      if (b) { b.blur(); this.game.selectWeapon(Number(b.dataset.w)); }
+      if (b) this.game.selectWeapon(Number(b.dataset.w));
     });
 
     input.onKey = (code, e) => {
@@ -273,6 +281,7 @@ export class UI {
     const st = playerStats(c, save.pup);
     const w = weaponDef(c.startingWeapon);
     const owned = save.owned.includes(w.id) || w.price === 0;
+    const more = runWeapons(c).slice(1).map((id) => weaponDef(id).name);
     const bar = (label, v, max, text) =>
       `<div class="stat"><span>${label}</span><i style="--v:${Math.min(1, v / max)}"></i><b>${text}</b></div>`;
     $('c-card').innerHTML = `
@@ -283,7 +292,10 @@ export class UI {
       ${bar('Speed', c.moveSpeed, maxSp, `${st.speed.toFixed(1)} m/s`)}
       <div class="perk"><small>Perk</small><b>${esc(c.perk.name)}</b><span>${esc(c.perk.text)}</span></div>
       <div class="perk gunline">${gunIcon(w.id)}<span><small>Brings</small><b>${esc(w.name)}</b>
-        <span>${owned ? 'Plus every gun you own' : 'Theirs for the run, even before you buy it'}</span></span></div>`;
+        <span>${owned ? 'Their own gun' : 'Theirs for the run, even before you buy it'}</span></span></div>
+      <div class="perk gunline loadline"><span><small>Also carrying</small>
+        <b>${more.length ? esc(more.join(', ')) : 'Nothing else'}</b></span>
+        <button class="btn small" type="button" data-act="loadout">Loadout</button></div>`;
     $('c-dots').innerHTML = CHARACTERS.map((x, i) =>
       `<button type="button" data-i="${i}" aria-label="${esc(x.name)}" aria-pressed="${i === this.pick}"></button>`).join('');
     $('c-go').textContent = `Run as ${c.name}`;
@@ -352,8 +364,8 @@ export class UI {
     }
     const w = ws[h.wi];
     set('weapon', w.name, (v) => { $('h-wname').textContent = v; });
-    set('ammo', w.reloading ? 'reload' : `${w.ammo}/${w.stats.ammoCapacity}`, () => {
-      $('h-ammo').textContent = w.reloading ? '···' : w.ammo;
+    set('ammo', h.free ? 'free' : w.reloading ? 'reload' : `${w.ammo}/${w.stats.ammoCapacity}`, () => {
+      $('h-ammo').textContent = h.free ? '∞' : w.reloading ? '···' : w.ammo;
       $('h-mag').textContent = `/ ${w.stats.ammoCapacity}`;
       $('h-weapon').classList.toggle('empty', !w.reloading && w.ammo === 0);
     });
@@ -367,6 +379,22 @@ export class UI {
       $('h-boss').style.setProperty('--v', Math.max(0, v) / 100);
     });
     set('low', h.low, (v) => { $('vignette').classList.toggle('low', v); });
+
+    // Timed power-ups: a chip each, counting down.
+    set('buffs', h.buffs.map((b) => b.id).join(','), () => {
+      $('h-buffs').innerHTML = h.buffs.map((b) => {
+        const def = POWERUPS[b.id];
+        const col = '#' + def.color.toString(16).padStart(6, '0');
+        return `<span class="buff" style="--c:${col}" aria-label="${esc(def.name)}"><img src="${powerIconURL(b.id)}" alt=""><b></b><i></i></span>`;
+      }).join('');
+      for (const k of Object.keys(c)) if (k.startsWith('bf')) delete c[k];
+    });
+    const chips = $('h-buffs').children;
+    h.buffs.forEach((b, i) => {
+      if (!chips[i]) return;
+      set('bf' + i, Math.ceil(b.left), (v) => { chips[i].querySelector('b').textContent = v; });
+      set('bv' + i, Math.round(b.left / b.max * 40), (v) => chips[i].style.setProperty('--v', v / 40));
+    });
     const dbg = [h.god ? 'INVINCIBLE' : '', h.fps !== null ? `${h.fps} fps · ${h.zombies} up` : ''].filter(Boolean).join(' · ');
     set('dbg', dbg, (v) => { $('h-debug').textContent = v; $('h-debug').hidden = !v; });
   }
@@ -396,10 +424,11 @@ export class UI {
     $('banner').hidden = true;
   }
 
-  toast(text, kind) {
+  toast(text, kind, color) {
     const t = $('toast');
     t.textContent = text;
     t.dataset.kind = kind || '';
+    t.style.color = color ? '#' + color.toString(16).padStart(6, '0') : '';
     t.hidden = false;
     t.classList.remove('show');
     void t.offsetWidth;
@@ -439,12 +468,14 @@ export class UI {
     const tips = [
       'Keep moving: stragglers keep coming even when you stand still.',
       'Red barrels go up with a crowd round them. Your aim knows that.',
-      'Armor soaks most of a hit. Grab the blue vests.',
+      'Armor takes every hit until it\'s gone. Grab the blue vests.',
       'Runners have red eyes. Deal with them first.',
       'Tanks smash straight through barricades. Don\'t hide behind one.',
       'Rubble slows everything that crosses it, including you.',
       'Coins you pick up are yours to keep, even if you fall.',
       'Each survivor brings their own gun. Juno\'s launcher flattens walls.',
+      'Glowing badges on the road are power-ups. Walk over one to use it.',
+      'Pick which guns you carry under Armory → Weapons. Your survivor\'s own always comes.',
     ];
     return tips[Math.floor(Math.random() * tips.length)];
   }
@@ -467,13 +498,17 @@ export class UI {
   }
 
   /* ── Armory ──────────────────────────────────────────────────────────── */
-  openArmory() {
+  /* from: 'select' when opened from survivor select, which Back returns to. */
+  openArmory(from = 'menu') {
+    this.armoryFrom = from;
+    if (from === 'select') this.armoryTab = 'weapons';
     $('result').hidden = true;
     this.renderArmory();
     this.show('armory');
   }
 
   closeArmory() {
+    if (this.armoryFrom === 'select') { this.renderSelect(); this.show('select'); return; }
     this.renderMenu();
     this.show('menu');
   }
@@ -495,11 +530,14 @@ export class UI {
       maxes.mag = Math.max(maxes.mag, s.ammoCapacity);
     }
     const isOwned = (w) => w.price === 0 || save.owned.includes(w.id);
+    const eq = loadout();
+    const surv = characterDef(save.character);
     const cards = WEAPONS.map((w) => {
       const owned = isOwned(w);
+      const on = owned && eq.includes(w.id);
       const sig = CHARACTERS.find((c) => c.startingWeapon === w.id && w.price > 0);
-      const tag = owned ? 'Owned' : coin(w.price);
-      return `<button class="wcard${owned ? ' owned' : ''}${w.id === this.selWeapon ? ' sel' : ''}"
+      const tag = !owned ? coin(w.price) : on ? 'Equipped' : 'Owned';
+      return `<button class="wcard${owned ? ' owned' : ''}${on ? ' eq' : ''}${w.id === this.selWeapon ? ' sel' : ''}"
         data-act="sel" data-id="${w.id}" aria-pressed="${w.id === this.selWeapon}">
         ${gunIcon(w.id)}
         <span class="wn">${esc(w.name)}</span><span class="wt">${tag}</span>${sig ? `<span class="wsig">${esc(sig.name)}'s gun</span>` : ''}</button>`;
@@ -516,9 +554,11 @@ export class UI {
     if (w.recoil) fine.push(`recoil up to ${deg(s.spread + w.recoil.max)}°`);
     if (w.blast) fine.push(`${w.blast.radius} m blast`);
     if (w.pierce) fine.push(`pierces ${w.pierce}`);
-    let html = `<div class="wgrid">${cards}</div>
+    const on = owned && eq.includes(w.id);
+    const own = surv.startingWeapon === w.id;
+    let html = `${this.loadoutHtml(surv, eq)}<div class="wgrid">${cards}</div>
       <div class="panel wdetail">
-        <div class="wd-head"><h3>${esc(w.name)}</h3>${owned ? '<span class="pill">In your loadout</span>' : ''}</div>
+        <div class="wd-head"><h3>${esc(w.name)}</h3>${on ? '<span class="pill">Equipped</span>' : own ? `<span class="pill">${esc(surv.name)}'s own</span>` : ''}</div>
         <p class="blurb">${esc(w.blurb)}</p>
         ${bar(w.projectile === 'grenade' ? 'Blast' : 'Damage', s.damage * s.pellets, maxes.dmg, s.pellets > 1 ? `${Math.round(s.damage)}×${s.pellets}` : Math.round(s.damage))}
         ${bar('Fire rate', s.fireRate, maxes.rate, `${s.fireRate.toFixed(1)}/s`)}
@@ -530,6 +570,12 @@ export class UI {
       html += `<button class="btn primary wide" data-act="buy" data-id="${w.id}" ${can ? '' : 'aria-disabled="true"'}>
         Unlock for ${coin(w.price)}</button>`;
       if (!can) html += `<p class="need">${fmt(w.price - save.coins)} more coins needed</p>`;
+    } else {
+      const full = !on && eq.length >= LOADOUT_SLOTS - 1;
+      html += `<button class="btn ${on ? '' : 'primary '}wide" data-act="equip" data-id="${w.id}" ${full ? 'aria-disabled="true"' : ''}>
+        ${on ? 'Unequip' : 'Equip'}</button>`;
+      if (own) html += `<p class="need">${esc(surv.name)} always brings this one. Equip it to carry it as anyone else.</p>`;
+      else if (full) html += '<p class="need">Loadout full. Unequip a gun to make room.</p>';
     }
     html += '<h4>Upgrades</h4>';
     for (const [k, u] of Object.entries(WEAPON_UPGRADES)) {
@@ -538,6 +584,22 @@ export class UI {
         `+${Math.round(u.step * 100)}% each`);
     }
     return html + '</div>';
+  }
+
+  /* The slots along the top of the Weapons tab: the survivor's own gun,
+     then one per equipped gun, then the empty ones. */
+  loadoutHtml(surv, eq) {
+    const slot = (id, label, cls = '') =>
+      `<button type="button" class="lo-slot${cls}" data-act="sel" data-id="${id}" aria-label="${esc(weaponDef(id).name)}">${gunIcon(id)}<span>${label}</span></button>`;
+    const extras = WEAPONS.filter((w) => eq.includes(w.id) && save.owned.includes(w.id));
+    let slots = slot(surv.startingWeapon, `${esc(surv.name)}'s`, ' own');
+    for (const w of extras) {
+      const dup = w.id === surv.startingWeapon;     // carried anyway: this slot adds nothing for them
+      slots += slot(w.id, dup ? 'Theirs anyway' : esc(w.name), dup ? ' dup' : '');
+    }
+    for (let i = extras.length; i < LOADOUT_SLOTS - 1; i++) slots += '<span class="lo-slot empty"><span>Empty</span></span>';
+    return `<div class="loadout"><small>Loadout · ${extras.length}/${LOADOUT_SLOTS - 1} slots + ${esc(surv.name)}'s own gun</small>
+      <div class="lo-slots" style="--n:${LOADOUT_SLOTS}">${slots}</div></div>`;
   }
 
   survivorHtml() {
@@ -572,8 +634,24 @@ export class UI {
       const w = WEAPONS.find((x) => x.id === b.dataset.id);
       if (save.coins < w.price) { sfx.denied(); this.nudge(b); return; }
       save.coins -= w.price;
+      const eq = loadout();
       save.owned.push(w.id);
+      // Straight into your loadout: a free slot, or in place of the
+      // cheapest gun equipped.
+      if (eq.length >= LOADOUT_SLOTS - 1) {
+        const out = eq.reduce((a, b) => (weaponDef(b).price < weaponDef(a).price ? b : a));
+        eq.splice(eq.indexOf(out), 1);
+        this.toast(`Equipped in place of the ${weaponDef(out).name}`);
+      }
+      eq.push(w.id);
       sfx.buy();
+    } else if (act === 'equip') {
+      const eq = loadout();
+      const i = eq.indexOf(b.dataset.id);
+      if (i >= 0) eq.splice(i, 1);
+      else if (eq.length >= LOADOUT_SLOTS - 1) { sfx.denied(); this.nudge(b); return; }
+      else eq.push(b.dataset.id);
+      sfx.click();
     } else if (act === 'up') {
       const [kind, a, c] = b.dataset.key.split(':');
       let cost;
@@ -625,11 +703,12 @@ export class UI {
 
   loadoutText() {
     const ups = (id) => Object.values(weaponUps(id)).reduce((a, b) => a + b, 0);
+    const eq = loadout();
     const guns = WEAPONS.filter((w) => w.price === 0 || save.owned.includes(w.id)).map((w) => {
       const n = ups(w.id);
-      return w.name + (n ? ` +${n}` : '');
+      return w.name + (n ? ` +${n}` : '') + (eq.includes(w.id) ? '*' : '');
     });
-    return `${save.coins} coins · best ${save.best} m · guns: ${guns.join(', ')}`;
+    return `${save.coins} coins · best ${save.best} m · guns (*equipped): ${guns.join(', ')}`;
   }
 
   openNote() {
@@ -775,6 +854,7 @@ export class UI {
     sw('t-start', !!s.startAt, `${s.startAt || 0} m`);
     sw('t-god', s.god, s.god ? 'On' : 'Off');
     sw('t-fps', s.fps, s.fps ? 'On' : 'Off');
+    sw('t-powers', s.powers, s.powers ? 'On' : 'Off');
     $('s-notes-n').textContent = notes.length;
     $('s-version').textContent = `Graveway · ${this.build || 'Web'}`;
     $('s-reset').textContent = this.resetArmed ? 'Tap again to erase everything' : 'Reset progress';

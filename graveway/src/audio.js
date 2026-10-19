@@ -144,6 +144,20 @@ export const sfx = {
     if (!throttle('pickup', 0.1)) return;
     [523, 659, 784, 1047].forEach((f, i) => tone({ freq: f, dur: 0.14, type: 'triangle', vol: 0.18, delay: i * 0.06 }));
   },
+  powerup() {
+    if (!throttle('powerup', 0.15)) return;
+    tone({ freq: 392, to: 784, dur: 0.22, type: 'sawtooth', vol: 0.07 });
+    [784, 988, 1175, 1568].forEach((f, i) => tone({ freq: f, dur: 0.16, type: 'square', vol: 0.05, delay: 0.08 + i * 0.05 }));
+  },
+  shock() {
+    if (!throttle('shock', 0.2)) return;
+    noise({ dur: 0.7, freq: 320, type: 'lowpass', vol: 0.9, sweep: 0.2 });
+    tone({ freq: 180, to: 40, dur: 0.5, type: 'sine', vol: 0.6 });
+  },
+  toss() {
+    if (!throttle('toss', 0.05)) return;
+    noise({ dur: 0.14, freq: 900, q: 1.2, vol: 0.2, sweep: 2.5 });
+  },
   hurt() {
     if (!throttle('hurt', 0.12)) return;
     noise({ dur: 0.2, freq: 220, type: 'lowpass', vol: 0.6 });

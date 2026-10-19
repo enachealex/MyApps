@@ -11,9 +11,9 @@
 import * as THREE from '../vendor/three.module.min.js';
 import {
   WEAPONS, ZOMBIES, PICKUPS, ARMOR_ABSORB, DIRECTOR, CHARACTERS, RUBBLE_SLOW, RUBBLE_SLOW_PLAYER,
-  playerStats, stageScaling, characterDef,
+  POWERUPS, POWERUP_DROPS, playerStats, stageScaling, characterDef, pickPowerup,
 } from './config.js';
-import { save, weaponUps } from './save.js';
+import { save, weaponUps, runWeapons } from './save.js';
 import { sfx, vibrate } from './audio.js';
 import { World, resolveColliders, rayProps, mulberry32, WALK_HALF, START_PZ } from './world.js';
 import { NavGrid } from './nav.js';
@@ -114,6 +114,7 @@ export class Game {
     this.grenades = [];
     this.parts = [];
     this.pending = [];              // delayed explosions (barrel chain reactions)
+    this.throws = [];               // Frag Barrage grenades waiting their turn
     this.state = 'menu';
     this.time = 0;
     this.shake = 0;
@@ -179,6 +180,7 @@ export class Game {
     this.grenades.length = 0;
     this.parts.length = 0;
     this.pending.length = 0;
+    this.throws.length = 0;
     this.propSys.reset();
     this.vfx.clear();
     this.run = null;
@@ -201,13 +203,13 @@ export class Game {
   makePlayer() {
     const c = this.character;
     const stats = playerStats(c, save.pup);
-    // Your survivor's own gun first, then everything bought in the Armory.
-    const ids = [c.startingWeapon, ...WEAPONS.map((w) => w.id).filter((id) => id !== c.startingWeapon && save.owned.includes(id))];
-    const weapons = ids.map((id) => new Weapon(id, weaponUps(id), c.perk));
+    // Your survivor's own gun first, then the ones equipped in the Armory.
+    const weapons = runWeapons(c).map((id) => new Weapon(id, weaponUps(id), c.perk));
     return {
       x: 0, z: START_PZ, yaw: Math.PI, hp: stats.maxHp, maxHp: stats.maxHp, armor: Math.min(PICKUPS.maxArmor, stats.startArmor), stats,
       weapons, wi: 0, swapT: 0, kick: 0, walk: 0, moving: 0, firing: false,
       target: null, hurtT: 0, deadT: 0, furthest: START_PZ, reported: false,
+      buffs: {}, buffMax: {},       // timed power-ups: seconds left, and what the timer started at
     };
   }
 
@@ -220,6 +222,7 @@ export class Game {
     this.rng = mulberry32(this.seed);
     this.world = new World(this.scene, this.seed, startZ);
     this.world.onCoins = (spots) => { for (const s of spots) this.addCoin(s.x, 0.55, s.z, 0, 0, 0, true); };
+    this.world.lotsOfPowerups = !!save.settings.powers;
     this.player = this.makePlayer();
     this.player.z = this.player.furthest = startZ;
     this.run = { kills: 0, coins: 0, bonus: 0, time: 0, boss: null, startAt, startZ };
@@ -342,6 +345,7 @@ export class Game {
       if (w.navDirty) { this.nav.dirty = true; w.navDirty = false; }
       if (this.state !== 'menu') this.nav.update(dt, p.x, p.z, w.props, w.rough);
       this.updatePending(dt);
+      this.updateThrows(dt);
       this.updateZombies(dt);
       this.updateBullets(dt);
       this.updateGrenades(dt);
@@ -354,7 +358,8 @@ export class Game {
     this.updateCamera(dt);
     this.syncSurvivor(dt);
     this.updateFx(dt);
-    if (this.state === 'playing') this.hooks.hud(this.hudState());
+    // While dying too, so the bars show the hit that finished you.
+    if (this.state === 'playing' || this.state === 'dying') this.hooks.hud(this.hudState());
   }
 
   render() {
@@ -404,6 +409,7 @@ export class Game {
     else if (len > 0.05) desired = Math.atan2(mv.x, mv.z);
     p.yaw = lerpAngle(p.yaw, desired, damp(target ? 22 : 12, dt));
 
+    for (const k in p.buffs) p.buffs[k] = Math.max(0, p.buffs[k] - dt);
     p.kick = Math.max(0, p.kick - dt * 9);
     if (p.swapT > 0) p.swapT -= dt;
     p.firing = false;
@@ -486,27 +492,23 @@ export class Game {
       : { x: best.x, z: best.z, prop: null, zombie: best };
   }
 
+  buffOn(id) { return this.player.buffs[id] > 0; }
+
   fire(target) {
     const p = this.player;
     const w = this.weapon;
     const s = w.stats;
-    const emptied = w.consume();
+    const rapid = this.buffOn('rapid');
+    const damage = s.damage * (this.buffOn('double') ? POWERUPS.double.damageMult : 1);
+    const emptied = w.consume(rapid ? POWERUPS.rapid.fireRateMult : 1, rapid);
     const gun = this.surv.guns[w.id];
     const sin = Math.sin(p.yaw), cos = Math.cos(p.yaw);
     const reach = 0.32 + gun.len;
     const mx = p.x + sin * reach - 0.2 * cos;
     const mz = p.z + cos * reach + 0.2 * sin;
     if (w.explosive) {
-      // Lob: fixed horizontal speed, vertical speed solved to land on target.
       const tx = target.x + (this.rng() - 0.5) * 2 * w.spread * 4, tz = target.z + (this.rng() - 0.5) * 2 * w.spread * 4;
-      const dx = tx - mx, dz = tz - mz, d = Math.hypot(dx, dz);
-      const speed = 15, t = Math.max(d / speed, 0.15);
-      if (this.grenades.length < MAX_GRENADES) {
-        this.grenades.push({
-          x: mx, y: 1.45, z: mz, sx: mx, sz: mz, vx: dx / t, vy: (0 - 1.45 + 0.5 * GRAVITY * t * t) / t, vz: dz / t,
-          life: t + 0.6, damage: s.damage, blast: s.blast, spin: 0,
-        });
-      }
+      this.lob(mx, 1.45, mz, tx, tz, damage, s.blast);
     } else {
       for (let i = 0; i < s.pellets; i++) {
         if (this.bullets.length >= MAX_BULLETS) break;
@@ -516,7 +518,7 @@ export class Game {
           // From the survivor's centre, not the muzzle: pressed against a wall,
           // the muzzle is already past it.
           x: p.x, z: p.z, dx: Math.sin(a), dz: Math.cos(a), speed, life: s.range / speed + 0.05,
-          damage: s.damage, pierce: s.pierce, knock: s.knockback, hits: null,
+          damage, pierce: s.pierce, knock: s.knockback, hits: null,
         });
       }
     }
@@ -531,6 +533,19 @@ export class Game {
     this.shake = Math.max(this.shake, s.shake);
     sfx.shot(w.def.model);
     if (emptied) this.reload();
+  }
+
+  /* A grenade from (x, y, z) that lands on (tx, tz): fixed horizontal speed,
+     vertical speed solved to come down on the spot. A safe one (thrown by
+     a power-up) can't hurt you. */
+  lob(x, y, z, tx, tz, damage, blast, { speed = 15, safe = false } = {}) {
+    if (this.grenades.length >= MAX_GRENADES) return;
+    const dx = tx - x, dz = tz - z, d = Math.hypot(dx, dz);
+    const t = Math.max(d / speed, 0.15);
+    this.grenades.push({
+      x, y, z, sx: x, sz: z, vx: dx / t, vy: (0 - y + 0.5 * GRAVITY * t * t) / t, vz: dz / t,
+      life: t + 0.6, damage, blast, spin: 0, safe,
+    });
   }
 
   reload() {
@@ -847,7 +862,14 @@ export class Game {
       this.hooks.banner('Boss down!', `+${z.t.coins} coins on the ground`);
       sfx.slam();
     }
-    if ((z.kind === 'tank' && this.rng() < 0.3) || z.kind === 'boss') this.world.dropItem(z.kind === 'boss' ? 'armor' : 'health', z.x, z.z);
+    if (z.kind === 'boss') {
+      this.world.dropItem('armor', z.x - 0.8, z.z);
+      this.world.dropItem('power', z.x + 0.8, z.z, pickPowerup(this.rng()));
+    } else if (z.kind === 'tank') {
+      const r = this.rng();
+      if (r < 0.3) this.world.dropItem('health', z.x, z.z);
+      else if (r < 0.3 + POWERUP_DROPS.tank) this.world.dropItem('power', z.x, z.z, pickPowerup(this.rng()));
+    }
   }
 
   /* ── Bullets, grenades, explosions ───────────────────────────────────── */
@@ -936,7 +958,7 @@ export class Game {
       }
       if (boom) {
         gs.splice(i, 1);
-        this.explode(g.x, g.z, { radius: g.blast.radius, damage: g.damage, impulse: g.blast.impulse }, { mine: true, scorch: true });
+        this.explode(g.x, g.z, { radius: g.blast.radius, damage: g.damage, impulse: g.blast.impulse }, { mine: true, scorch: true, safe: g.safe });
       }
     }
   }
@@ -956,7 +978,7 @@ export class Game {
 
   /* A blast: damage falling off with distance to zombies, the survivor and
      props; a shove for everything that can move; fire, smoke and a flash. */
-  explode(x, z, { radius, damage, impulse }, { mine = false, scorch = false, vehicle = false } = {}) {
+  explode(x, z, { radius, damage, impulse }, { mine = false, scorch = false, vehicle = false, safe = false } = {}) {
     if (!this.world) return;
     const falloff = (d, r) => Math.max(0.25, Math.pow(1 - Math.min(d / r, 1), 0.7));
     for (const zb of this.zombies) {
@@ -969,7 +991,7 @@ export class Game {
       this.damageZombie(zb, damage * f, dx / u, dz / u, impulse * 0.5, (4 + impulse * 0.35) * f / zb.scale);
     }
     const p = this.player;
-    if (this.state === 'playing') {
+    if (this.state === 'playing' && !safe) {
       const d = Math.hypot(p.x - x, p.z - z);
       // Your own grenades sting less than a barrel going off beside you.
       if (d < radius) this.hurtPlayer(damage * falloff(d, radius) * (mine ? 0.4 : 0.6), x, z, { blast: true });
@@ -1006,7 +1028,8 @@ export class Game {
     const p = this.player;
     const cs = this.coins;
     const playing = this.state === 'playing';
-    const mag = p.stats.magnet;
+    const vacuum = this.buffOn('vacuum');
+    const mag = vacuum ? POWERUPS.vacuum.radius : p.stats.magnet;
     for (let i = cs.length - 1; i >= 0; i--) {
       const c = cs[i];
       c.age += dt;
@@ -1022,9 +1045,10 @@ export class Game {
       const d = Math.hypot(dx, dz);
       if (!c.pull && d < mag && c.age > 0.35) c.pull = true;
       if (c.pull) {
-        const s = 9 + (mag - Math.min(d, mag)) * 4;
-        c.x += (dx / (d || 1)) * s * dt;
-        c.z += (dz / (d || 1)) * s * dt;
+        const s = vacuum ? 16 + d * 1.5 : 9 + (mag - Math.min(d, mag)) * 4;
+        const step = Math.min(s * dt, d);       // never past you
+        c.x += (dx / (d || 1)) * step;
+        c.z += (dz / (d || 1)) * step;
         c.y += (1.1 - c.y) * damp(8, dt);
       }
       if (d < 0.7) {
@@ -1041,6 +1065,7 @@ export class Game {
       if (it.taken) continue;
       it.obj.rotation.y += dt * 1.6;
       it.obj.position.y = 0.15 + Math.sin(this.time * 3 + it.x) * 0.1;
+      if (it.kind === 'power') it.decal.scale.setScalar(2.4 + Math.sin(this.time * 5 + it.z) * 0.3);
       if (this.state !== 'playing') continue;
       if (Math.hypot(p.x - it.x, p.z - it.z) < 1.1) {
         if (it.kind === 'health' && p.hp >= p.maxHp) continue;
@@ -1048,6 +1073,11 @@ export class Game {
         it.taken = true;
         it.obj.visible = false;
         it.decal.visible = false;
+        if (it.kind === 'power') {
+          this.powerUp(it.power);
+          this.burst(it.x, 1, it.z, 16, POWERUPS[it.power].color, { speed: 3, up: 5, gravity: 4, life: 0.9 });
+          continue;
+        }
         if (it.kind === 'health') {
           p.hp = Math.min(p.maxHp, p.hp + PICKUPS.health);
           this.hooks.toast(`+${PICKUPS.health} health`, 'heal');
@@ -1059,6 +1089,82 @@ export class Game {
         this.burst(it.x, 0.6, it.z, 12, it.kind === 'health' ? 0x6dff8a : 0x7ac8ff, { speed: 2, up: 4, gravity: 4, life: 0.8 });
       }
     }
+  }
+
+  /* ── Power-ups ──────────────────────────────────────────────────────────
+     Used the moment they're picked up (see POWERUPS in config.js).        */
+  powerUp(id) {
+    const def = POWERUPS[id];
+    const p = this.player;
+    this.hooks.toast(`${def.name} · ${def.tag}`, 'power', def.color);
+    sfx.powerup();
+    vibrate(30, save.settings.haptics);
+    this.vfx.ring(p.x, p.z, 5, 0.4, def.color);
+    if (def.duration) {
+      p.buffs[id] = Math.min((p.buffs[id] || 0) + def.duration, def.duration * 2);
+      p.buffMax[id] = Math.max(p.buffs[id], def.duration);
+      // Rapid Fire starts every gun full, with no reload in the way.
+      if (id === 'rapid') for (const w of p.weapons) { w.cancelReload(); w.ammo = w.stats.ammoCapacity; }
+    } else if (id === 'frag') this.fragBarrage(def);
+    else if (id === 'shock') this.shockwave(def);
+  }
+
+  /* Grenades lobbed one after another at the thickest crowds in range,
+     each at a different crowd. Spares go up the road ahead. */
+  fragBarrage(def) {
+    const p = this.player;
+    const near = this.zombies.filter((z) => !z.dead && Math.hypot(z.x - p.x, z.z - p.z) < def.range);
+    const r = def.blast.radius;
+    const aims = [];
+    for (let k = 0; k < def.grenades; k++) {
+      let best = null, bestN = 0;
+      for (const z of near) {
+        if (Math.hypot(z.x - p.x, z.z - p.z) < 3) continue;
+        if (aims.some((a) => a.zombie && Math.hypot(a.zombie.x - z.x, a.zombie.z - z.z) < r)) continue;
+        let n = 0;
+        for (const o of near) if (Math.hypot(o.x - z.x, o.z - z.z) < r) n++;
+        if (n > bestN) { bestN = n; best = z; }
+      }
+      aims.push(best
+        ? { zombie: best, x: best.x, z: best.z }
+        : { zombie: null, x: p.x + (this.rng() - 0.5) * 9, z: p.z - 7 - this.rng() * 6 });
+    }
+    const damage = def.damage * (this.buffOn('double') ? POWERUPS.double.damageMult : 1);
+    aims.forEach((a, i) => this.throws.push({ t: i * 0.14, aim: a, damage, blast: def.blast }));
+  }
+
+  updateThrows(dt) {
+    for (let i = this.throws.length - 1; i >= 0; i--) {
+      const th = this.throws[i];
+      th.t -= dt;
+      if (th.t > 0) continue;
+      this.throws.splice(i, 1);
+      if (this.state !== 'playing') continue;
+      const p = this.player, a = th.aim;
+      // Aim where the zombie is now, if it's still up.
+      const tx = a.zombie && !a.zombie.dead ? a.zombie.x : a.x;
+      const tz = a.zombie && !a.zombie.dead ? a.zombie.z : a.z;
+      this.lob(p.x, 1.7, p.z, tx, tz, th.damage, th.blast, { speed: 11, safe: true });
+      sfx.toss();
+    }
+  }
+
+  /* Everything round you is hit and thrown back. Props are only shoved. */
+  shockwave(def) {
+    const p = this.player;
+    for (const z of this.zombies) {
+      if (z.dead) continue;
+      const dx = z.x - p.x, dz = z.z - p.z, d = Math.hypot(dx, dz);
+      if (d > def.radius + z.radius) continue;
+      const u = d || 1, f = Math.max(0.35, 1 - d / def.radius);
+      this.damageZombie(z, def.damage * f, dx / u, dz / u, def.impulse * f, 5 * f / z.scale);
+    }
+    this.propSys.impulse(p.x, p.z, def.radius, def.impulse * 0.6);
+    this.world.navDirty = true;
+    this.vfx.shockwave(p.x, p.z, def.radius, def.color);
+    this.shake = Math.max(this.shake, 0.5);
+    sfx.shock();
+    vibrate(60, save.settings.haptics);
   }
 
   /* ── Particles, camera, effects ─────────────────────────────────────── */
@@ -1141,7 +1247,8 @@ export class Game {
     this.coinMesh.count = cs.length;
     this.coinMesh.instanceMatrix.needsUpdate = true;
 
-    // Tracers
+    // Tracers, red-hot under Double Damage
+    this.bulletMesh.material.color.setHex(this.buffOn('double') ? 0xff7a5a : 0xffe2a0);
     const bs = this.bullets;
     for (let i = 0; i < bs.length; i++) {
       const b = bs[i];
@@ -1217,6 +1324,8 @@ export class Game {
       hp: p.hp, maxHp: p.maxHp, armor: p.armor, maxArmor: PICKUPS.maxArmor,
       weapons: p.weapons, wi: p.wi,
       kills: r.kills, boss, low: p.hp / p.maxHp < 0.3,
+      free: this.buffOn('rapid'),
+      buffs: Object.keys(p.buffs).filter((k) => p.buffs[k] > 0).map((k) => ({ id: k, left: p.buffs[k], max: p.buffMax[k] })),
       fps: save.settings.fps ? Math.round(this.fps) : null, god: save.settings.god,
       zombies: this.alive(),
     };

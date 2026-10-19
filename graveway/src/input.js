@@ -1,6 +1,10 @@
 /* Movement input. On a phone you press anywhere on the play area and drag:
    a joystick appears under your thumb. On a computer, WASD or the arrow keys
-   do the same. Aiming and firing are automatic. */
+   do the same. Aiming and firing are automatic.
+
+   Any number of fingers can be down. The first one on the play area steers;
+   if it lifts while another is still down, that one takes over the stick
+   where it is, so swapping thumbs never stops you. */
 
 const RADIUS = 56;      // px from the joystick centre to full speed
 const DEADZONE = 0.12;
@@ -10,7 +14,8 @@ export class Input {
     this.surface = surface;
     this.base = base;
     this.knob = knob;
-    this.pointer = null;          // { id, ox, oy }
+    this.pointer = null;          // the steering finger: { id, ox, oy }
+    this.fingers = new Map();     // every finger down on the play area: id -> { x, y }
     this.stick = { x: 0, y: 0 };
     this.keys = new Set();
     this.enabled = false;
@@ -30,16 +35,23 @@ export class Input {
   }
 
   down(e) {
-    if (!this.enabled || this.pointer) return;
+    if (!this.enabled) return;
     e.preventDefault();
-    this.pointer = { id: e.pointerId, ox: e.clientX, oy: e.clientY };
+    this.fingers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!this.pointer) this.grab(e.pointerId, e.clientX, e.clientY);
+  }
+
+  grab(id, x, y) {
+    this.pointer = { id, ox: x, oy: y };
     this.stick.x = this.stick.y = 0;
-    this.base.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+    this.base.style.transform = `translate(${x}px, ${y}px)`;
     this.knob.style.transform = 'translate(0px, 0px)';
     this.base.classList.add('on');
   }
 
   moveTo(e) {
+    const f = this.fingers.get(e.pointerId);
+    if (f) { f.x = e.clientX; f.y = e.clientY; }
     const p = this.pointer;
     if (!p || e.pointerId !== p.id) return;
     let dx = e.clientX - p.ox;
@@ -67,11 +79,20 @@ export class Input {
   }
 
   up(e) {
-    if (this.pointer && e.pointerId === this.pointer.id) this.release();
+    this.fingers.delete(e.pointerId);
+    if (!this.pointer || e.pointerId !== this.pointer.id) return;
+    this.pointer = null;
+    this.stick.x = this.stick.y = 0;
+    this.base.classList.remove('on');
+    // Hand the stick to the finger that went down most recently.
+    let next = null;
+    for (const [id, f] of this.fingers) next = { id, f };
+    if (next) this.grab(next.id, next.f.x, next.f.y);
   }
 
   release() {
     this.pointer = null;
+    this.fingers.clear();
     this.stick.x = this.stick.y = 0;
     this.base.classList.remove('on');
   }

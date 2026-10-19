@@ -49,12 +49,13 @@ export class Weapon {
     return this.reloadT <= 0 && this.ammo > 0 && this.cooldown <= 0;
   }
 
-  /* Spends one shot. Returns true when that emptied the magazine. */
-  consume() {
+  /* Spends one shot. Returns true when that emptied the magazine.
+     rateMult speeds up the next shot and free keeps the round (Rapid Fire). */
+  consume(rateMult = 1, free = false) {
     // Any time left over from this frame carries into the next shot (tick
     // floors it at -0.05 s), so fire rate doesn't round up to whole frames.
-    this.cooldown += 1 / this.stats.fireRate;
-    this.ammo--;
+    this.cooldown += 1 / (this.stats.fireRate * rateMult);
+    if (!free) this.ammo--;
     const rc = this.def.recoil;
     if (rc) this.bloom = Math.min(this.bloom + rc.per, rc.max);
     return this.ammo <= 0;

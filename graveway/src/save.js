@@ -1,3 +1,5 @@
+import { WEAPONS, LOADOUT_SLOTS } from './config.js';
+
 /* Progress lives in localStorage on this device. Storage can be missing or
    throw (private browsing, blocked site data), so every access is guarded and
    the game still runs — it just forgets between visits. */
@@ -12,9 +14,10 @@ const defaults = () => ({
   kills: 0,
   character: 'rook',    // survivor picked last time
   owned: ['pistol'],    // guns bought in the Armory
+  loadout: null,        // guns equipped to carry, besides the survivor's own; null until first chosen
   wup: {},              // weapon upgrades, e.g. { smg: { damage: 2 } }
   pup: {},              // survivor upgrades, e.g. { maxHp: 1 }
-  settings: { sound: true, haptics: true, quality: 'high', god: false, fps: false, startAt: 0 },
+  settings: { sound: true, haptics: true, quality: 'high', god: false, fps: false, startAt: 0, powers: false },
 });
 
 function merge(base, stored) {
@@ -52,6 +55,24 @@ export function resetSave() {
 }
 
 export const weaponUps = (id) => save.wup[id] || (save.wup[id] = {});
+
+/* The guns equipped in the Armory: up to LOADOUT_SLOTS - 1, carried besides
+   the survivor's own. Until you first choose, it's your priciest guns. */
+export function loadout() {
+  if (!Array.isArray(save.loadout)) {
+    const owned = WEAPONS.filter((w) => save.owned.includes(w.id)).sort((a, b) => b.price - a.price);
+    save.loadout = owned.slice(0, LOADOUT_SLOTS - 1).map((w) => w.id);
+  }
+  return save.loadout;
+}
+
+/* What a survivor carries into a run: their own gun first, then the
+   equipped ones in Armory order. */
+export function runWeapons(character) {
+  const eq = loadout();
+  const own = character.startingWeapon;
+  return [own, ...WEAPONS.map((w) => w.id).filter((id) => id !== own && eq.includes(id) && save.owned.includes(id))];
+}
 
 /* Playtest notes are kept apart from progress, so "Reset progress" doesn't
    throw away feedback. (Uninstalling the app still clears both.) */

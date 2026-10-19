@@ -10,10 +10,10 @@
    is raised and the navigation grid rebuilds. */
 
 import * as THREE from '../vendor/three.module.min.js';
-import { PROPS, SET_PIECES } from './config.js';
+import { PROPS, SET_PIECES, POWERUPS, POWERUP_DROPS, pickPowerup } from './config.js';
 import {
   TEX, lambert, boxGeo, mergeGeos, glowDecal, makeCar, makeBarrier, makeLamp, makeFireBarrel,
-  makeHealthPack, makeArmorVest, makeExplosiveBarrel, makeWall, makeTanker, makeCondemned,
+  makeHealthPack, makeArmorVest, makeExplosiveBarrel, makeWall, makeTanker, makeCondemned, makePowerup,
 } from './models.js';
 
 export const ROAD_HALF = 6;          // asphalt from -6 to 6
@@ -106,6 +106,7 @@ export class World {
     this.animated = [];
     this.navDirty = true;
     this.onCoins = null;             // (spots) => void, set by the game
+    this.lotsOfPowerups = false;     // playtest tool: two power-ups on every chunk
     this.first = Math.max(0, Math.floor((EDGE - (startZ + 30)) / CHUNK));
   }
 
@@ -285,6 +286,11 @@ export class World {
       if (rng() < 0.4) this.placeItem(rng, rand, 'health', rand(z1 + 2, z0 - 2), i, group, own);
       if (rng() < 0.25) this.placeItem(rng, rand, 'armor', rand(z1 + 2, z0 - 2), i, group, own);
     }
+    const lots = this.lotsOfPowerups;
+    if (z0 < this.startZ - (lots ? 10 : POWERUP_DROPS.from)) {
+      const n = lots ? 2 : rng() < POWERUP_DROPS.perChunk ? 1 : 0;
+      for (let k = 0; k < n; k++) this.placeItem(rng, rand, 'power', rand(z1 + 2, z0 - 2), i, group, own, pickPowerup(rng()));
+    }
     this.navDirty = true;
   }
 
@@ -374,31 +380,38 @@ export class World {
     }
   }
 
-  placeItem(rng, rand, kind, z, chunk, group, own) {
+  placeItem(rng, rand, kind, z, chunk, group, own, power) {
     for (let tries = 0; tries < 8; tries++) {
       const x = rand(-5.5, 5.5);
       if (this.blocked(x, z, 0.8)) continue;
-      this.items.push(this.makeItem(kind, x, z, chunk, group, own));
+      this.items.push(this.makeItem(kind, x, z, chunk, group, own, power));
       return;
     }
   }
 
-  makeItem(kind, x, z, chunk, group, own) {
-    const obj = kind === 'health' ? makeHealthPack() : makeArmorVest();
-    const decal = glowDecal(kind === 'health' ? 0x4dff6a : 0x4aa8ff, 2.2, 0.5);
+  /* kind is 'health', 'armor' or 'power'; power is the POWERUPS id. */
+  makeItem(kind, x, z, chunk, group, own, power = null) {
+    let obj, decal;
+    if (kind === 'power') {
+      obj = makePowerup(power);
+      decal = glowDecal(POWERUPS[power].color, 2.4, 0.55, { map: TEX.ring });
+    } else {
+      obj = kind === 'health' ? makeHealthPack() : makeArmorVest();
+      decal = glowDecal(kind === 'health' ? 0x4dff6a : 0x4aa8ff, 2.2, 0.5);
+      obj.traverse((o) => { if (o.isMesh) own.push(o.geometry); });
+    }
     obj.position.set(x, 0, z);
     decal.position.set(x, 0.04, z);
     group.add(obj, decal);
-    obj.traverse((o) => { if (o.isMesh) own.push(o.geometry); });
-    return { kind, obj, decal, x, z, taken: false, chunk };
+    return { kind, power, obj, decal, x, z, taken: false, chunk };
   }
 
   /* Drops a pickup where a zombie fell. */
-  dropItem(kind, x, z) {
+  dropItem(kind, x, z, power = null) {
     const i = this.chunkAt(z);
     const ch = this.chunks.get(i);
     if (!ch) return;
-    this.items.push(this.makeItem(kind, x, z, i, ch.group, ch.own));
+    this.items.push(this.makeItem(kind, x, z, i, ch.group, ch.own, power));
   }
 
   animate(t) {

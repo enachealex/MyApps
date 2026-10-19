@@ -76,5 +76,5 @@ if (!native && 'serviceWorker' in navigator && (location.protocol === 'https:' |
 }
 
 // Handy from the browser console while tuning: graveway.game.player.hp = 999
-window.graveway = { game, ui, save };
+window.graveway = { game, ui, save, input };
 document.documentElement.dataset.ready = '1';

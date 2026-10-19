@@ -4,6 +4,7 @@
    phone, the number of separate meshes drawn each frame is what costs most. */
 
 import * as THREE from '../vendor/three.module.min.js';
+import { POWERUPS } from './config.js';
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 export function boxGeo(w, h, d, x = 0, y = 0, z = 0) {
@@ -87,7 +88,75 @@ function canvasTex(w, h, paint, { repeat = false, srgb = true } = {}) {
 /* ── Textures ────────────────────────────────────────────────────────── */
 export const TEX = {};
 
+const css = (hex) => '#' + hex.toString(16).padStart(6, '0');
+
+/* A power-up's badge: a dark disc ringed in its colour with a symbol in the
+   middle. Drawn on a 128 px grid, scaled to `size`. Used for the badges on
+   the road and the timers on the HUD. */
+function paintPower(g, id, size) {
+  const col = css(POWERUPS[id].color);
+  g.save();
+  g.scale(size / 128, size / 128);
+  g.fillStyle = 'rgba(12,16,18,0.9)';
+  g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = col; g.lineWidth = 8;
+  g.beginPath(); g.arc(64, 64, 54, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = col; g.strokeStyle = col; g.lineCap = 'round'; g.lineJoin = 'round';
+  if (id === 'frag') {
+    // a grenade: body, cap, lever and pin
+    g.beginPath(); g.arc(62, 74, 24, 0, Math.PI * 2); g.fill();
+    g.fillRect(52, 40, 20, 12);
+    g.lineWidth = 6;
+    g.beginPath(); g.moveTo(70, 44); g.quadraticCurveTo(90, 46, 88, 70); g.stroke();
+    g.lineWidth = 4;
+    g.beginPath(); g.arc(46, 42, 7, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = 'rgba(12,16,18,0.6)'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(38, 74); g.lineTo(86, 74); g.moveTo(62, 50); g.lineTo(62, 98); g.stroke();
+  } else if (id === 'rapid') {
+    // a lightning bolt
+    g.beginPath();
+    g.moveTo(72, 22); g.lineTo(40, 70); g.lineTo(60, 70); g.lineTo(52, 106); g.lineTo(88, 54); g.lineTo(67, 54); g.lineTo(80, 22);
+    g.closePath(); g.fill();
+  } else if (id === 'double') {
+    g.font = '900 60px system-ui, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('2×', 64, 68);
+  } else if (id === 'shock') {
+    // a burst with rings round it
+    g.beginPath(); g.arc(64, 64, 10, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 7;
+    g.beginPath(); g.arc(64, 64, 24, 0, Math.PI * 2); g.stroke();
+    g.lineWidth = 5;
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 2 + Math.PI / 4;
+      g.beginPath(); g.arc(64, 64, 38, a - 0.5, a + 0.5); g.stroke();
+    }
+  } else if (id === 'vacuum') {
+    // a horseshoe magnet with pale tips
+    g.lineWidth = 16; g.lineCap = 'butt';
+    g.beginPath(); g.moveTo(42, 34); g.lineTo(42, 62); g.arc(64, 62, 22, Math.PI, 0, true); g.lineTo(86, 34); g.stroke();
+    g.fillStyle = '#eef2f0';
+    g.fillRect(34, 28, 16, 12); g.fillRect(78, 28, 16, 12);
+  }
+  g.restore();
+}
+
+const powerURLs = {};
+/* A power-up badge as an image URL, for the HUD. */
+export function powerIconURL(id) {
+  if (!powerURLs[id]) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    paintPower(c.getContext('2d'), id, 64);
+    powerURLs[id] = c.toDataURL();
+  }
+  return powerURLs[id];
+}
+
 export function initTextures() {
+  TEX.power = {};
+  for (const id of Object.keys(POWERUPS)) TEX.power[id] = canvasTex(128, 128, (g, w) => paintPower(g, id, w));
+
   TEX.glow = canvasTex(128, 128, (g, w, h) => {
     const r = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
     r.addColorStop(0, 'rgba(255,255,255,1)');
@@ -663,6 +732,28 @@ export function makeHealthPack() {
   const group = new THREE.Group();
   group.add(new THREE.Mesh(boxGeo(0.62, 0.38, 0.46, 0, 0.19, 0), lambert(0xf2f2ee)));
   group.add(new THREE.Mesh(mergeGeos([boxGeo(0.14, 0.02, 0.36, 0, 0.39, 0), boxGeo(0.4, 0.02, 0.12, 0, 0.39, 0)]), basic(0xe02a2a)));
+  return group;
+}
+
+/* A power-up on the road: its badge floating in a soft halo of its colour.
+   Sprites always face the camera, so it reads from any angle. */
+const POWER_MATS = {};
+export function makePowerup(id) {
+  if (!POWER_MATS[id]) {
+    POWER_MATS[id] = {
+      icon: new THREE.SpriteMaterial({ map: TEX.power[id], transparent: true, depthWrite: false }),
+      halo: new THREE.SpriteMaterial({
+        map: TEX.glow, color: POWERUPS[id].color, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending,
+      }),
+    };
+  }
+  const group = new THREE.Group();
+  const halo = new THREE.Sprite(POWER_MATS[id].halo);
+  halo.scale.setScalar(2.5);
+  const icon = new THREE.Sprite(POWER_MATS[id].icon);
+  icon.scale.setScalar(1.35);
+  halo.position.y = icon.position.y = 1.05;
+  group.add(halo, icon);
   return group;
 }
 

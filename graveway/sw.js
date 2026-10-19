@@ -5,7 +5,7 @@
    would be faster, but after an update it could hand out a new page with
    old scripts, which breaks. Bump CACHE when the file list changes. */
 
-const CACHE = 'graveway-v3';
+const CACHE = 'graveway-v4';
 const FILES = [
   './',
   'manifest.webmanifest',

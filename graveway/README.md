@@ -14,12 +14,27 @@ over) whatever you leave behind.
 ## How it plays
 
 - **Move:** press anywhere and drag, and a joystick appears under your thumb.
-  On a computer, use WASD or the arrow keys.
+  On a computer, use WASD or the arrow keys. The gun and pause buttons work
+  while you steer, and if you swap thumbs the new one takes over the stick.
 - **Shoot:** automatic. The aim picks the nearest zombie in range, prefers
   ones with a clear line of fire, and goes for an explosive barrel when a
   crowd is standing round it.
-- **Weapons:** tap a gun on the weapon bar (or press 1–6) to switch, and tap
+- **Weapons:** tap a gun on the weapon bar (or press 1–4) to switch, and tap
   the ammo card (or R) to reload early.
+- **Loadout:** you carry your survivor's own gun plus up to three more.
+  Choose them under **Armory → Weapons** (Equip / Unequip), or from the
+  **Loadout** button on survivor select. A gun you buy goes straight in.
+- **Power-ups:** glowing badges on the road, sometimes left by tanks and
+  always by a boss. Walk over one and it goes off at once:
+  - **Frag Barrage** throws four grenades at the thickest crowds near you.
+  - **Rapid Fire** doubles your fire rate with no reloads for 10 s.
+  - **Double Damage** doubles every shot for 10 s.
+  - **Shockwave** knocks everything around you flat.
+  - **Coin Vacuum** pulls in every coin within 32 m for 8 s.
+
+  Their blasts can't hurt you (a barrel they set off still can). Timed ones
+  count down at the bottom left.
+- **Armor** takes every hit until it's gone, then your health does.
 - **Survivors:** chosen before each run. Each has their own health, speed,
   perk and signature gun.
 - **Distance is the score.** Each 100 m stage pays a coin bonus. A boss shows
@@ -31,7 +46,7 @@ over) whatever you leave behind.
 
 | Pillar | Where | What it does |
 | --- | --- | --- |
-| **A. Weapons** | `config.js` `WEAPONS`, `weapons.js` | Each gun is a definition: `fireRate`, `damage`, `spread`, `ammoCapacity`, `reloadTime`, `model`, `projectile`, plus optional `recoil` and `blast`. A `Weapon` wraps one per run with ammo, reloads and recoil bloom. The six guns are Pistol, SMG, Shotgun, Assault Rifle (recoil), Grenade Launcher (explosive) and Minigun. |
+| **A. Weapons** | `config.js` `WEAPONS`, `weapons.js` | Each gun is a definition: `fireRate`, `damage`, `spread`, `ammoCapacity`, `reloadTime`, `model`, `projectile`, plus optional `recoil` and `blast`. A `Weapon` wraps one per run with ammo, reloads and recoil bloom. The six guns are Pistol, SMG, Shotgun, Assault Rifle (recoil), Grenade Launcher (explosive) and Minigun. `LOADOUT_SLOTS` sets how many you carry. |
 | **B. Survivors** | `config.js` `CHARACTERS` | `name`, `role`, portrait (rendered from the 3D model), `baseHealth`, `moveSpeed`, `perk`, `startingWeapon`, `look`. The roster is Rook (faster reloads, pistol), Bram (starts with armor, shotgun), Juno (explosion resistant, launcher) and Wren (fast, extra coins, SMG). |
 | **C. Director** | `config.js` `DIRECTOR`, `director.js` | Tracks distance. Stage = metres ÷ 100. Zombie health = base × (1 + 0.15 × stage), with damage and speed scaling too. Horde spacing, horde size, straggler rate and the cap on zombies up at once all tighten per stage. Runners join at stage 1, tanks at stage 3, the boss at stage 5. |
 | **D. Destruction + pathfinding** | `config.js` `PROPS` / `SET_PIECES`, `props.js`, `nav.js`, `vfx.js` | Everything on the street stops bullets (props and building fronts) and can be wrecked. Cars and the rare fuel tanker smoke, catch fire, explode, get thrown and tumble, and land as burning wrecks. Barrels chain. Lamp posts and brick walls topple and crush what they land on. Condemned buildings creak, then collapse across the road into a rubble field with slabs. Blasts throw zombies and shove props. A navigation grid with a flow field (the stand-in for a NavMesh) rebuilds after every change, so zombies path round the wreckage, wade through rubble, and smash barricades when there's no way round. |
@@ -43,13 +58,13 @@ Almost everything about how the game *feels* is one number in
 
 | File | What's in it |
 | --- | --- |
-| `src/config.js` | Every tunable: guns, survivors, upgrades, zombies, the director, props |
-| `src/game.js` | The run: player, auto-aim, firing, zombies, bullets, grenades, explosions, camera, HUD state |
+| `src/config.js` | Every tunable: guns, loadout slots, survivors, upgrades, power-ups, zombies, the director, props |
+| `src/game.js` | The run: player, auto-aim, firing, zombies, bullets, grenades, explosions, power-ups, camera, HUD state |
 | `src/director.js` | Who spawns, where and when, from the distance travelled |
 | `src/nav.js` | The navigation grid and flow field |
 | `src/props.js` | Damage, destruction, toppling, collapses, flying wrecks, debris, rubble |
 | `src/vfx.js` | Fireballs, smoke, dust, sparks, embers and shock rings (camera-facing sprites) |
-| `src/world.js` | Streams the endless street in 32 m chunks and places props, pickups and alleys |
+| `src/world.js` | Streams the endless street in 32 m chunks and places props, pickups, power-ups and alleys |
 | `src/weapons.js` | The `Weapon` class |
 | `src/models.js` | Every model, built from boxes, plus canvas-painted textures |
 | `src/ui.js` | Menu, survivor select, Armory, HUD, results, notes, settings |
