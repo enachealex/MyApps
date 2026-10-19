@@ -5,7 +5,7 @@
    would be faster, but after an update it could hand out a new page with
    old scripts, which breaks. Bump CACHE when the file list changes. */
 
-const CACHE = 'graveway-v4';
+const CACHE = 'graveway-v5';
 const FILES = [
   './',
   'manifest.webmanifest',
@@ -27,6 +27,7 @@ const FILES = [
   'src/director.js',
   'src/weapons.js',
   'src/vfx.js',
+  'src/updater.js',
 ];
 
 self.addEventListener('install', (event) => {

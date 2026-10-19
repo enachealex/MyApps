@@ -297,6 +297,10 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 #s-reset{color:#ff8a8a;}
 #s-reset.armed{background:rgba(255,77,77,.16);border-color:rgba(255,77,77,.5);}
 .credits{margin:16px 0 0;font-size:12px;color:var(--dim);}
+/* Live updates */
+.upd-ready{border-color:rgba(255,201,40,.55);background:rgba(255,201,40,.12);color:var(--gold);}
+.upd-note{margin:10px 0 0;text-align:left;}
+.upd-revert{margin-top:8px;width:100%;color:var(--dim);font-weight:600;}
 
 /* ── Playtest bits ───────────────────────────────────────────────────── */
 #m-settings{position:relative;}
@@ -359,6 +363,7 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
       <div class="m-char" id="m-char"></div>
       <div class="m-best"><small>Best run</small><b id="m-best">—</b><span id="m-runs"></span></div>
     </div>
+    <button class="btn upd-ready" id="m-update" type="button" hidden></button>
     <button class="btn primary big" id="m-play" type="button">Play</button>
     <button class="btn" id="m-armory" type="button">Armory</button>
     <p class="hint">Drag anywhere to move. Aiming and shooting are automatic.</p>
@@ -493,7 +498,10 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
       <button class="toggle" id="s-haptics" type="button" role="switch">Vibration <b></b></button>
       <button class="toggle" id="s-quality" type="button" role="switch">Graphics <b></b></button>
       <button class="toggle" id="s-notes" type="button">Playtest notes <b id="s-notes-n">0</b></button>
+      <button class="toggle" id="s-update" type="button" hidden>Updates <b id="s-update-v"></b></button>
     </div>
+    <p class="fine upd-note" id="s-update-note" hidden></p>
+    <button class="btn small upd-revert" id="s-revert" type="button" hidden>Go back to the version the app came with</button>
     <h3 class="s-head">Playtest tools</h3>
     <div class="stack tight">
       <div class="row-btns">
@@ -561,6 +569,23 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
   </div>
 </div>
 
+<script>
+/* Live-update watchdog (see src/updater.js). If these are freshly downloaded
+   game files and the game hasn't started within 12 s, go back to the files
+   inside the app instead of sitting on a blank screen. That copy notices the
+   failed build and, after a second failure, skips it. A plain script, so it
+   runs even when the game's own code can't load. */
+(function () {
+  try {
+    var s = JSON.parse(localStorage.getItem('graveway.update.v1') || '{}');
+    var cap = window.Capacitor;
+    if (!s.trying || !cap || !cap.nativePromise) return;
+    setTimeout(function () {
+      if (!document.documentElement.dataset.ready) cap.nativePromise('WebView', 'setServerAssetPath', { path: 'public' });
+    }, 12000);
+  } catch (e) { /* storage unavailable: nothing to watch */ }
+})();
+</script>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

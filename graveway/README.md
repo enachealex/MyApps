@@ -9,7 +9,8 @@ over) whatever you leave behind.
   (installable, works offline).
 - **Put it on your phone as an app:** see [ANDROID.md](ANDROID.md). It
   covers a cloud build that needs no setup, and a local build that installs
-  over USB with `adb install -r`.
+  over USB with `adb install -r`. From 0.7 the app updates itself on
+  startup from new cloud builds, with no reinstall.
 
 ## How it plays
 
@@ -71,6 +72,7 @@ Almost everything about how the game *feels* is one number in
 | `src/audio.js` | Synthesised sound effects (there are no audio files) |
 | `src/input.js` | Floating joystick and keyboard |
 | `src/save.js` | Progress and playtest notes in localStorage |
+| `src/updater.js` | The Android app's self-update from GitHub Releases |
 | `sw.js` | Offline support. Add new files to its list and bump `CACHE` |
 | `android.json` | Android app settings read by `tools/android/build-apk.mjs` |
 

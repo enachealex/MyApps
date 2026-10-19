@@ -4,7 +4,13 @@
   "background": "#0d1418",
   "orientation": "portrait",
   "fullscreen": true,
-  "permissions": ["VIBRATE"],
-  "plugins": ["@capacitor/app@^7"],
-  "prerelease": true
+  "permissions": [
+    "VIBRATE"
+  ],
+  "plugins": [
+    "@capacitor/app@^7",
+    "@capacitor/filesystem@^7"
+  ],
+  "prerelease": true,
+  "liveUpdates": true
 }

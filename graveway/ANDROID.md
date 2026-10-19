@@ -17,6 +17,29 @@ Later cloud builds install over earlier ones and keep your progress. They're
 signed with the same cached key, as long as one ran in the past week from
 the same branch.
 
+### Updates without reinstalling (0.7 and later)
+
+From 0.7 on, the app updates itself. Each time it starts, it asks GitHub
+whether there's a newer cloud build. If there is, it downloads the new game
+files (about 340 KB) and restarts into them. Your progress and notes stay.
+This happens right away if you're on the main menu, otherwise the next time
+you go back to it. **Settings → Updates** shows which build you're on and
+lets you check by hand.
+
+A new APK is only needed when the native side of the app changes
+(Capacitor, its plugins, or permissions in `android.json`). The app knows,
+and the main menu offers a **New app version** button that opens the
+download.
+
+If a new build can't start, the app returns to the version inside the APK
+after 12 seconds. It tries the new build once more, and if it fails again
+it skips it. **Settings → Go back to the version the app came with** does
+the same by hand. Installing any APK also starts fresh from the files
+inside it.
+
+Builds from your own computer (Option B) are build 0. They never replace
+themselves, so a cloud build won't overwrite something you're testing.
+
 ## Option B: build on your computer and install over USB
 
 ### One-time setup

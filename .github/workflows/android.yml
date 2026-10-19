@@ -20,6 +20,10 @@ name: Build Android APK
 #   prerelease   true publishes the APK as a pre-release. The landing page's
 #                plain download button reads the repo's *latest* release, so
 #                anything but Putt Count should set this to stay out of its way.
+#   liveUpdates  true lets the installed app update its own web files from
+#                these releases on startup, with no reinstall. The release
+#                then also carries <folder>-web-<hash>.json.gz. See the top
+#                of tools/android/build-apk.mjs.
 
 on:
   workflow_dispatch:
@@ -115,6 +119,10 @@ jobs:
 
             Unsigned debug build — fine for testing and sideloading, not for the
             Play Store.
-          files: ${{ steps.out.outputs.apk }}
+
+            ${{ steps.out.outputs.web && 'Already have a build that updates itself? It picks this one up the next time it starts, as long as nothing native changed. No download needed.' || '' }}
+          files: |
+            ${{ steps.out.outputs.apk }}
+            ${{ steps.out.outputs.web }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

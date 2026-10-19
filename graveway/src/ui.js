@@ -41,6 +41,7 @@ export class UI {
     this.clearArmed = false;
     this.build = '';
     this.onExit = null;           // set by main.js inside the Android app
+    this.updater = null;          // src/updater.js, set by main.js
     this.portraits = {};          // character id -> image URL, from Game.renderPortraits
     this.pick = Math.max(0, CHARACTERS.findIndex((c) => c.id === save.character));
 
@@ -99,6 +100,17 @@ export class UI {
       this.renderSettings(); persist();
     });
     on('s-notes', () => this.openNotes());
+    on('s-update', () => {
+      const u = this.updater;
+      if (u.ready) this.applyUpdate();
+      else u.check({ manual: true }).then((ready) => { if (ready) this.applyUpdate(); else if (!u.newApp) this.toast(u.status); });
+    });
+    on('s-revert', () => { this.toast('Going back…'); this.updater.revert(); });
+    on('m-update', () => {
+      const u = this.updater;
+      if (u.ready) this.applyUpdate();
+      else if (u.newApp) this.openExternal(u.newApp.page);
+    });
     on('t-coins', () => { save.coins += 1000; persist(); this.renderMenu(); this.toast('+1,000 coins'); });
     on('t-start', () => {
       const i = START_AT.indexOf(save.settings.startAt || 0);
@@ -253,6 +265,46 @@ export class UI {
     this.game.showMenu();
     this.renderMenu();
     this.show('menu');
+    // Between runs is a fine moment to switch to a downloaded update.
+    if (this.updater?.ready) this.applyUpdate();
+  }
+
+  /* ── Live updates (Android app) ──────────────────────────────────────── */
+  attachUpdater(u) {
+    this.updater = u;
+    u.onChange = () => this.renderUpdate();
+  }
+
+  /* A new build finished downloading. On the main menu with nothing open,
+     switch straight away; otherwise the menu offers it, and leaving a run
+     for the menu switches. */
+  updateReady() {
+    this.renderUpdate();
+    const idle = this.current === 'menu' && this.game.state === 'menu'
+      && $('settings').hidden && $('notes').hidden && $('note').hidden;
+    if (idle) this.applyUpdate();
+  }
+
+  applyUpdate() {
+    const r = this.updater.ready;
+    if (!r) return;
+    this.toast(`Updating to ${r.version} (build ${r.build})…`);
+    setTimeout(() => this.updater.apply(), 700);
+  }
+
+  renderUpdate() {
+    const u = this.updater;
+    const on = !!u?.enabled;
+    $('s-update').hidden = $('s-update-note').hidden = !on;
+    $('s-revert').hidden = !(on && u.live);
+    const m = $('m-update');
+    m.hidden = !on || !(u.ready || u.newApp);
+    if (!on) return;
+    $('s-update-v').textContent = u.ready ? 'Restart to update' : u.busy ? u.status : 'Check now';
+    $('s-update-note').textContent = `Game files: ${u.label}.` + (u.newApp
+      ? ` ${u.newApp.version} changes the app itself, so it needs installing from GitHub once (tap the button on the menu).`
+      : u.status && !u.busy && !u.ready ? ` ${u.status}.` : '');
+    m.textContent = u.ready ? `Update ready: ${u.ready.version} · tap to restart` : u.newApp ? `New app version ${u.newApp.version} · tap to get it` : '';
   }
 
   /* ── Survivor selection ──────────────────────────────────────────────── */
@@ -838,6 +890,7 @@ export class UI {
   openSettings() {
     this.resetArmed = false;
     this.renderSettings();
+    this.renderUpdate();
     $('settings').hidden = false;
   }
 

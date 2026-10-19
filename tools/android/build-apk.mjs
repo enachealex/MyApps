@@ -19,6 +19,15 @@
         dist-android/<folder>-<version>.apk.
      4. With --install, runs `adb install -r` on it (and --launch opens it).
 
+   Live updates: with "liveUpdates": true in android.json, the app can
+   update its own web files from GitHub Releases without a reinstall. The
+   build then also writes dist-android/<folder>-web-<native>.json.gz (every
+   web file, gzipped JSON) for the workflow to attach to the release, and a
+   build.json into the app saying which build it is. <native> is a short
+   hash of the native side (Capacitor version, plugins, permissions): an
+   installed app only takes web updates built for the same native side, and
+   anything else needs a new APK. The in-app half is graveway/src/updater.js.
+
    Options:
      --version 0.1      versionName shown in Android settings (default 0.1)
      --code N           versionCode; defaults to minutes since 2024, so every
@@ -27,15 +36,22 @@
      --launch           open the app after installing
      --clean            throw away .android-build/<folder> and start fresh
      --no-gradle        stop before Gradle (checks the setup without an SDK)
+     --web-only         just make the live-update package, then stop
+     --build N          build number for live updates. The workflow uses
+                        its run number; local builds default to 0, which
+                        never updates itself, so a cloud build won't
+                        replace something you're testing over USB
 
    Needs: Node 20+, JDK 21, and the Android SDK (ANDROID_HOME set, or
    Android Studio's default location). See graveway/ANDROID.md.            */
 
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WIN = process.platform === 'win32';
@@ -48,13 +64,14 @@ const opt = (name, def) => {
   const i = argv.indexOf(`--${name}`);
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : def;
 };
-const app = argv.find((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && ['version', 'code'].includes(argv[i - 1].slice(2))));
+const app = argv.find((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && ['version', 'code', 'build'].includes(argv[i - 1].slice(2))));
 if (!app) {
   console.error('Usage: node tools/android/build-apk.mjs <app-folder> [--install] [--launch] [--version 0.1] [--clean]');
   process.exit(1);
 }
 const version = opt('version', '0.1');
 const code = Number(opt('code', Math.floor((Date.now() - Date.UTC(2024, 0, 1)) / 60000)));
+const buildNo = Number(opt('build', process.env.GITHUB_RUN_NUMBER || 0)) || 0;
 
 const appDir = path.join(ROOT, app);
 if (!fs.existsSync(path.join(appDir, 'index.html'))) fail(`No index.html in ${app}/. Check the folder name.`);
@@ -72,8 +89,11 @@ const cfg = {
   permissions: rawCfg.permissions || [],
   plugins: rawCfg.plugins || [],
   prerelease: !!rawCfg.prerelease,
+  liveUpdates: !!rawCfg.liveUpdates,
 };
-step(`${cfg.appName} (${cfg.appId}) ${version}, versionCode ${code}`);
+// Live updates write the downloaded files with the Filesystem plugin.
+if (cfg.liveUpdates && !cfg.plugins.some((p) => p.startsWith('@capacitor/filesystem'))) cfg.plugins.push('@capacitor/filesystem@^7');
+step(`${cfg.appName} (${cfg.appId}) ${version}, versionCode ${code}${cfg.liveUpdates ? `, build ${buildNo}` : ''}`);
 
 /* ── Project ───────────────────────────────────────────────────────────── */
 const work = path.join(ROOT, '.android-build', slug);
@@ -85,11 +105,46 @@ const www = path.join(work, 'www');
 fs.rmSync(www, { recursive: true, force: true });
 fs.cpSync(appDir, www, { recursive: true });
 for (const f of ['android.json', 'README.md', 'ANDROID.md']) fs.rmSync(path.join(www, f), { force: true });
+// assets/ only holds the launcher icon and splash sources (used below), not app files.
+fs.rmSync(path.join(www, 'assets'), { recursive: true, force: true });
 fs.rmSync(path.join(work, 'assets'), { recursive: true, force: true });
 if (fs.existsSync(path.join(appDir, 'assets'))) fs.cpSync(path.join(appDir, 'assets'), path.join(work, 'assets'), { recursive: true });
 
 const deps = ['@capacitor/core@^7', '@capacitor/android@^7', ...cfg.plugins];
 const devDeps = ['@capacitor/cli@^7', '@capacitor/assets@^3'];
+
+/* ── Live-update package ───────────────────────────────────────────────── */
+let webPkg = '';
+if (cfg.liveUpdates) {
+  const native = crypto.createHash('sha1')
+    .update(JSON.stringify({ deps: [...deps].sort(), permissions: [...cfg.permissions].sort() }))
+    .digest('hex').slice(0, 8);
+  const info = { app: slug, version, build: buildNo, native, sha: process.env.GITHUB_SHA || '' };
+  fs.writeFileSync(path.join(www, 'build.json'), JSON.stringify(info, null, 2) + '\n');
+  // Text files go in as text (they compress well), anything else as base64.
+  const TEXT = /\.(html|js|mjs|css|json|webmanifest|svg|txt|md)$/i;
+  const files = [];
+  const walk = (dir, rel) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const p = path.join(dir, e.name), r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(p, r);
+      else if (TEXT.test(e.name)) files.push([r, 't', fs.readFileSync(p, 'utf8')]);
+      else files.push([r, 'b', fs.readFileSync(p).toString('base64')]);
+    }
+  };
+  walk(www, '');
+  fs.mkdirSync(path.join(ROOT, 'dist-android'), { recursive: true });
+  webPkg = path.join(ROOT, 'dist-android', `${slug}-web-${native}.json.gz`);
+  fs.writeFileSync(webPkg, zlib.gzipSync(JSON.stringify({ ...info, files }), { level: 9 }));
+  const kb = Math.round(fs.statSync(webPkg).size / 1024);
+  step(`Live-update package: ${path.relative(ROOT, webPkg)} (${files.length} files, ${kb} KB)`);
+  if (flag('web-only')) {
+    if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `web=${path.relative(ROOT, webPkg)}\n`);
+    process.exit(0);
+  }
+} else if (flag('web-only')) {
+  fail(`${app}/android.json doesn't turn on liveUpdates, so there's no web package to make.`);
+}
 const stamp = path.join(work, '.deps');
 const want = JSON.stringify([deps, devDeps]);
 if (!fs.existsSync(stamp) || fs.readFileSync(stamp, 'utf8') !== want) {
@@ -199,7 +254,7 @@ step(`APK ready: ${path.relative(ROOT, apk)} (${mb} MB)`);
 if (process.env.GITHUB_OUTPUT) {
   fs.appendFileSync(process.env.GITHUB_OUTPUT, [
     `apk=${path.relative(ROOT, apk)}`, `app_name=${cfg.appName}`, `app_id=${cfg.appId}`,
-    `slug=${slug}`, `prerelease=${cfg.prerelease}`,
+    `slug=${slug}`, `prerelease=${cfg.prerelease}`, `web=${webPkg ? path.relative(ROOT, webPkg) : ''}`,
   ].join('\n') + '\n');
 }
 
