@@ -1,0 +1,18 @@
+# Unity makes these on its own; they never go in git.
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+*.csproj
+*.sln
+*.slnx
+.vs/
+.idea/
+.vscode/
+*.apk
+*.aab
