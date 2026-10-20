@@ -1,6 +1,6 @@
-/* Fog of war: the survivor can't see through tall things. Cars, walls,
-   tankers, slabs, condemned buildings and building fronts block the view;
-   low things (barrels, barricades) and lamp posts don't.
+/* Fog of war: the survivor can't see through things taller than a person.
+   Walls, fuel tankers, condemned buildings and building fronts block the
+   view; cars, slabs, barrels, barricades and lamp posts don't.
 
    Two halves:
      canSee()      is a zombie in view? Game hides the ones that aren't and
@@ -14,7 +14,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { rayProps } from './world.js';
 
-export const SIGHT_HEIGHT = 1.5;      // props at least this tall block the view
+export const SIGHT_HEIGHT = 2;        // props at least this tall block the view (a car is 1.6)
 const REACH = 36;                     // blockers further than this cast no shadow
 const FAR = 44;                       // how far a shadow reaches
 const MAX_QUADS = 48;

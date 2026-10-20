@@ -31,8 +31,9 @@ over) whatever you leave behind.
   for the shotgun; incendiary, cluster and concussion grenades; a
   suppressor so gunfire doesn't bring zombies running; a laser sight; a
   weapon light. Fitted parts show on the gun.
-- **Fog of war:** you can't see through tall things (cars, walls, tankers,
-  slabs, collapsed buildings, building corners at alleys). Zombies behind
+- **Fog of war:** you can't see through anything taller than a person
+  (walls, fuel tankers, condemned buildings, building corners at alleys).
+  Cars, slabs and barrels are low enough to see over. Zombies behind
   them are hidden, and the auto-aim won't shoot at what you can't see.
   The ground behind each one is in shadow.
 - **Loadout:** you carry your survivor's own gun plus up to three more.

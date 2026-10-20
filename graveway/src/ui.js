@@ -569,7 +569,7 @@ export class UI {
       'Coins you pick up are yours to keep, even if you fall.',
       'Each survivor brings their own gun. Juno\'s launcher flattens walls.',
       'Glowing badges on the road are power-ups. Walk over one to use it.',
-      'Zombies can hide behind cars and walls. Step out to get a clear look.',
+      'Zombies can hide behind walls and tankers. Step out to get a clear look.',
       'A suppressor keeps gunfire from waking the zombies further up the road.',
       'Every part trades something. Check the green and red under each one.',
       'Pick which guns you carry under Armory → Weapons. Your survivor\'s own always comes.',
