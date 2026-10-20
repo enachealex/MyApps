@@ -309,6 +309,16 @@ export class VFX {
     r.mesh.visible = true;
   }
 
+  /* One lick of flame, for something burning (a zombie set alight). */
+  flame(x, y, z, size = 0.5) {
+    const R = Math.random;
+    this.glow.add({
+      x, y, z, vx: (R() - 0.5) * 0.4, vy: 1.5 + R(), vz: (R() - 0.5) * 0.4,
+      drag: 1.2, lift: 2, life: 0.35 + R() * 0.3, s0: size * (0.8 + R() * 0.5), s1: size * 0.25,
+      c0: R() < 0.3 ? HOT : FIRE, c1: DEEP, colorSpeed: 1.4, a: 0.8, fadeIn: 0.05,
+    });
+  }
+
   /* The Shockwave power-up: a flash, two rings and dust rolling out along
      the ground. No fire. */
   shockwave(x, z, radius, color) {

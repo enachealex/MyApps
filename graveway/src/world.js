@@ -468,11 +468,12 @@ export function resolveColliders(props, p, radius) {
 
 /* The first standing, bullet-stopping prop a segment runs into: its
    distance along the segment (Infinity if none) and the prop. A slab test
-   in each box's own frame. */
-export function rayProps(props, x, z, dx, dz, len) {
+   in each box's own frame. `test` picks other props instead (fog.js uses
+   it for the ones that block the view). */
+export function rayProps(props, x, z, dx, dz, len, test = null) {
   let best = Infinity, which = null;
   for (const c of props) {
-    if (c.destroyed || !c.def.blocksBullets) continue;
+    if (test ? !test(c) : c.destroyed || !c.def.blocksBullets) continue;
     const ox = x - c.x, oz = z - c.z;
     if (Math.abs(ox) > c.r + len + 1 || Math.abs(oz) > c.r + len + 1) continue;
     const lx = ox * c.cos - oz * c.sin, lz = ox * c.sin + oz * c.cos;

@@ -31,51 +31,169 @@ export const UPDATE_REPO = 'enachealex/MyApps';
    recoil        sustained fire widens spread: +per each shot, up to +max,
                  recovering at `recover` radians per second
    blast         grenades only: radius (m) and impulse (shove strength)
-   shake         camera kick per shot                                       */
+   shake         camera kick per shot
+   slots         which parts it takes (see PARTS below)                     */
+const ALL_SLOTS = ['barrel', 'muzzle', 'mag', 'sight', 'stock', 'trigger', 'grip', 'rail', 'ammo'];
 export const WEAPONS = [
   { id: 'pistol', name: 'Pistol', model: 'pistol', projectile: 'bullet',
     blurb: 'Steady and forgiving. Never empty for long.',
     price: 0, damage: 22, fireRate: 3.2, spread: 0.03, ammoCapacity: 12, reloadTime: 1.0,
-    range: 17, pellets: 1, pierce: 0, knockback: 1.2, shake: 0.04 },
+    range: 17, pellets: 1, pierce: 0, knockback: 1.2, shake: 0.04,
+    recoil: { per: 0.008, max: 0.03, recover: 0.4 },
+    slots: ALL_SLOTS.filter((s) => s !== 'stock') },
   { id: 'smg', name: 'SMG', model: 'smg', projectile: 'bullet',
     blurb: 'Sprays lead. Melts walkers, struggles with tanks.',
     price: 350, damage: 13, fireRate: 11, spread: 0.08, ammoCapacity: 32, reloadTime: 1.5,
     range: 15, pellets: 1, pierce: 0, knockback: 0.6, shake: 0.03,
-    recoil: { per: 0.006, max: 0.06, recover: 0.3 } },
+    recoil: { per: 0.006, max: 0.06, recover: 0.3 }, slots: ALL_SLOTS },
   { id: 'shotgun', name: 'Shotgun', model: 'shotgun', projectile: 'bullet',
     blurb: 'Seven pellets and a big shove. Short range.',
     price: 750, damage: 16, fireRate: 1.3, spread: 0.30, ammoCapacity: 6, reloadTime: 2.0,
-    range: 11, pellets: 7, pierce: 0, knockback: 3.0, shake: 0.16 },
+    range: 11, pellets: 7, pierce: 0, knockback: 3.0, shake: 0.16,
+    recoil: { per: 0.03, max: 0.05, recover: 0.5 }, slots: ALL_SLOTS },
   { id: 'rifle', name: 'Assault Rifle', model: 'rifle', projectile: 'bullet',
     blurb: 'Fast and far-reaching, and it punches through a second zombie. Kicks the longer you hold it.',
     price: 1500, damage: 24, fireRate: 9, spread: 0.02, ammoCapacity: 30, reloadTime: 1.7,
     range: 21, pellets: 1, pierce: 1, knockback: 1.2, shake: 0.06,
-    recoil: { per: 0.014, max: 0.16, recover: 0.35 } },
+    recoil: { per: 0.014, max: 0.16, recover: 0.35 }, slots: ALL_SLOTS },
   { id: 'launcher', name: 'Grenade Launcher', model: 'launcher', projectile: 'grenade',
     blurb: 'Lobs grenades that blow apart crowds, barrels, barricades and walls.',
     price: 2200, damage: 120, fireRate: 1.0, spread: 0.02, ammoCapacity: 4, reloadTime: 2.4,
     range: 19, minRange: 4, pellets: 1, pierce: 0, knockback: 0, shake: 0.14,
-    blast: { radius: 3.4, impulse: 10 } },
+    blast: { radius: 3.4, impulse: 10 }, recoil: { per: 0.01, max: 0.02, recover: 0.3 },
+    slots: ALL_SLOTS.filter((s) => s !== 'muzzle') },
   { id: 'minigun', name: 'Minigun', model: 'minigun', projectile: 'bullet',
     blurb: 'A wall of bullets. Long, loud reloads.',
     price: 3200, damage: 17, fireRate: 20, spread: 0.10, ammoCapacity: 160, reloadTime: 3.2,
     range: 18, pellets: 1, pierce: 0, knockback: 0.8, shake: 0.03,
-    recoil: { per: 0.002, max: 0.05, recover: 0.2 } },
+    recoil: { per: 0.002, max: 0.05, recover: 0.2 },
+    slots: ALL_SLOTS.filter((s) => s !== 'muzzle' && s !== 'stock') },
 ];
 
 /* How many guns you take into a run, counting your survivor's own (which
    always comes). The rest are the ones equipped in the Armory. */
 export const LOADOUT_SLOTS = 4;
 
-/* Each weapon can be upgraded a few times per stat. `step` is the gain per
-   level (0.15 = +15%). Cost = baseCost x weapon tier factor x growth^level. */
-export const WEAPON_UPGRADES = {
-  damage:       { label: 'Damage',    max: 5, step: 0.15, baseCost: 80 },
-  fireRate:     { label: 'Fire rate', max: 5, step: 0.10, baseCost: 90 },
-  ammoCapacity: { label: 'Magazine',  max: 5, step: 0.20, baseCost: 60 },
+/* ── Gun parts ─────────────────────────────────────────────────────────────
+   Guns are upgraded by swapping parts, one per slot, bought separately for
+   each gun in the Armory. The first part listed for a slot that fits a gun
+   is what it comes with (price 0). Most parts trade one thing for another.
+
+   mods (multipliers unless noted; 1.2 = +20%, 0.8 = -20%)
+     damage, fireRate, range, ammoCapacity, reloadTime, knockback
+     spread       the aim cone: lower is more accurate
+     recoil       how much each shot throws the aim off
+     stability    how quickly the aim settles, and how far it can wander
+     pierce       added: extra zombies a bullet goes through
+     pellets      set: projectiles per shot (slugs fire 1)
+     blast        grenades: multiplies blast radius; impulse multiplies shove
+   fx (special effects)
+     fire         sets what it hits alight: dps (as a share of the hit's
+                  damage, per second) for `time` seconds
+     big          damage multiplier against tanks and bosses
+     small        damage multiplier against walkers and runners
+     props        damage multiplier against cars, walls and barricades
+     quiet        firing doesn't bring zombies running
+     cluster      a grenade throws out this many bomblets
+     laser, light a laser line to the target / a stronger flashlight
+   fits / not     which guns a part goes on, by id (default: any with the
+                  slot)                                                      */
+export const PART_SLOTS = {
+  barrel:  'Barrel',
+  muzzle:  'Muzzle',
+  mag:     'Magazine',
+  sight:   'Sight',
+  stock:   'Stock',
+  trigger: 'Trigger',
+  grip:    'Grip',
+  rail:    'Handguard',
+  ammo:    'Ammo',
 };
+const BULLETS = ['pistol', 'smg', 'rifle', 'minigun'];
+export const PARTS = {
+  barrel: [
+    { id: 'factory', name: 'Factory barrel', price: 0 },
+    { id: 'long', name: 'Long barrel', price: 250, blurb: 'Reaches further and groups tighter. A little slower.',
+      mods: { range: 1.2, spread: 0.85, fireRate: 0.95 } },
+    { id: 'short', name: 'Short barrel', price: 200, blurb: 'Quick and handy, but it sprays.',
+      mods: { fireRate: 1.1, reloadTime: 0.9, range: 0.85, spread: 1.15 } },
+    { id: 'heavy', name: 'Heavy barrel', price: 400, blurb: 'Hits harder and holds steady. Slower to fire and reload.',
+      mods: { damage: 1.2, stability: 1.3, fireRate: 0.9, reloadTime: 1.1 } },
+  ],
+  muzzle: [
+    { id: 'none', name: 'Bare muzzle', price: 0 },
+    { id: 'comp', name: 'Compensator', price: 200, blurb: 'Vents gas upward to fight the kick.', mods: { recoil: 0.7 }, not: ['shotgun'] },
+    { id: 'brake', name: 'Muzzle brake', price: 300, blurb: 'Kills most of the kick, at some cost to accuracy.', mods: { recoil: 0.55, spread: 1.1 } },
+    { id: 'suppressor', name: 'Suppressor', price: 350, blurb: 'Gunfire no longer brings zombies running. Slightly less punch.',
+      mods: { recoil: 0.85, damage: 0.92 }, fx: { quiet: true } },
+    { id: 'choke', name: 'Full choke', price: 250, blurb: 'Keeps the shot together for longer.', mods: { spread: 0.65, range: 1.15 }, fits: ['shotgun'] },
+  ],
+  mag: [
+    { id: 'factory', name: 'Standard magazine', price: 0 },
+    { id: 'extended', name: 'Extended magazine', price: 250, blurb: 'Half as many rounds again. Slower to change.',
+      mods: { ammoCapacity: 1.5, reloadTime: 1.15 } },
+    { id: 'drum', name: 'Drum magazine', price: 450, blurb: 'More than twice the rounds. Heavy and slow to change.',
+      mods: { ammoCapacity: 2.2, reloadTime: 1.4, stability: 0.9 }, not: ['launcher'] },
+    { id: 'quick', name: 'Speed magazine', price: 300, blurb: 'Pull tab and flared well: very quick reloads, a few rounds fewer.',
+      mods: { reloadTime: 0.6, ammoCapacity: 0.85 } },
+  ],
+  sight: [
+    { id: 'iron', name: 'Iron sights', price: 0 },
+    { id: 'reddot', name: 'Red dot', price: 200, blurb: 'Quicker, tighter aim.', mods: { spread: 0.85 } },
+    { id: 'holo', name: 'Holographic', price: 300, blurb: 'Tighter aim that holds under fire.', mods: { spread: 0.8, stability: 1.1 } },
+    { id: 'scope', name: 'Scope', price: 450, blurb: 'Reaches much further and very accurate, but slower between shots.',
+      mods: { range: 1.35, spread: 0.7, fireRate: 0.9 } },
+  ],
+  stock: [
+    { id: 'factory', name: 'Standard stock', price: 0 },
+    { id: 'light', name: 'Skeleton stock', price: 200, blurb: 'Light: quicker reloads, a bit less steady.', mods: { reloadTime: 0.85, stability: 0.9 } },
+    { id: 'heavy', name: 'Padded stock', price: 300, blurb: 'Soaks up the kick. Slower to reload.', mods: { recoil: 0.75, stability: 1.25, reloadTime: 1.1 } },
+    { id: 'precision', name: 'Precision stock', price: 350, blurb: 'Locks the gun in for accurate, steady fire.', mods: { spread: 0.85, stability: 1.15, fireRate: 0.95 } },
+  ],
+  trigger: [
+    { id: 'factory', name: 'Factory trigger', price: 0 },
+    { id: 'hair', name: 'Hair trigger', price: 300, blurb: 'Fires faster. A little wilder.', mods: { fireRate: 1.15, spread: 1.08 } },
+    { id: 'match', name: 'Match trigger', price: 300, blurb: 'Clean break: more accurate, slightly harder hits.', mods: { spread: 0.85, damage: 1.05 } },
+  ],
+  grip: [
+    { id: 'factory', name: 'Factory grip', price: 0 },
+    { id: 'rubber', name: 'Rubber grip', price: 150, blurb: 'Takes the sting out of each shot.', mods: { recoil: 0.85 } },
+    { id: 'stippled', name: 'Stippled grip', price: 250, blurb: 'Never slips: steadier, and quicker to reload.', mods: { stability: 1.2, reloadTime: 0.95 } },
+    { id: 'ergo', name: 'Ergonomic grip', price: 250, blurb: 'Comfortable in a long fight: a little faster, a little less kick.', mods: { fireRate: 1.05, recoil: 0.92 } },
+  ],
+  rail: [
+    { id: 'none', name: 'Nothing fitted', price: 0 },
+    { id: 'foregrip', name: 'Vertical foregrip', price: 250, blurb: 'A second hand holds it down.', mods: { recoil: 0.75, stability: 1.15 }, not: ['pistol'] },
+    { id: 'angled', name: 'Angled foregrip', price: 300, blurb: 'Very steady, and quicker to bring back on target.', mods: { stability: 1.35, reloadTime: 0.95 }, not: ['pistol'] },
+    { id: 'laser', name: 'Laser sight', price: 300, blurb: 'Tighter aim, and you can see what it\'s on.', mods: { spread: 0.8 }, fx: { laser: true } },
+    { id: 'light', name: 'Weapon light', price: 200, blurb: 'A brighter, wider, longer flashlight.', mods: { range: 1.1 }, fx: { light: true } },
+  ],
+  ammo: [
+    { id: 'fmj', name: 'Full metal jacket', price: 0, fits: BULLETS },
+    { id: 'buck', name: 'Buckshot', price: 0, fits: ['shotgun'] },
+    { id: 'he', name: 'HE grenades', price: 0, fits: ['launcher'] },
+    { id: 'hollow', name: 'Hollow points', price: 300, fits: BULLETS, blurb: 'Tear through walkers and runners. Weaker on tanks, never go through.',
+      mods: { knockback: 1.2 }, fx: { small: 1.3, big: 0.8, noPierce: true } },
+    { id: 'ap', name: 'Armor-piercing', price: 400, fits: BULLETS, blurb: 'Go through one more zombie, hit tanks and bosses harder, and chew through cover.',
+      mods: { pierce: 1 }, fx: { big: 1.5, props: 2 } },
+    { id: 'incendiary', name: 'Incendiary', price: 450, fits: BULLETS, blurb: 'Set zombies alight. Slightly less punch.',
+      mods: { damage: 0.9 }, fx: { fire: { dps: 0.35, time: 3 } } },
+    { id: 'slug', name: 'Slugs', price: 300, fits: ['shotgun'], blurb: 'One heavy, accurate ball that goes through a zombie and reaches further.',
+      mods: { pellets: 1, damage: 5.5, spread: 0.25, pierce: 1, range: 1.3, knockback: 1.3 }, fx: { props: 2 } },
+    { id: 'dragon', name: 'Dragon\'s breath', price: 450, fits: ['shotgun'], blurb: 'A cone of fire. Shorter reach.',
+      mods: { damage: 0.85, range: 0.85 }, fx: { fire: { dps: 0.5, time: 3 } } },
+    { id: 'flechette', name: 'Flechettes', price: 350, fits: ['shotgun'], blurb: 'Darts that pass through the first zombie.',
+      mods: { damage: 0.85, spread: 0.9, pierce: 1 } },
+    { id: 'incendiary-g', name: 'Incendiary grenades', price: 450, fits: ['launcher'], blurb: 'Everything caught in the blast burns.',
+      mods: { damage: 0.8 }, fx: { fire: { dps: 0.12, time: 4 } } },
+    { id: 'cluster', name: 'Cluster grenades', price: 550, fits: ['launcher'], blurb: 'Each one throws out three more small blasts.',
+      mods: { damage: 0.75 }, fx: { cluster: 3 } },
+    { id: 'concussion', name: 'Concussion grenades', price: 300, fits: ['launcher'], blurb: 'A much wider blast that throws zombies about, for less damage.',
+      mods: { damage: 0.6, blast: 1.35, impulse: 2 } },
+  ],
+};
+export const PART_TIER_COST = 0.35;     // each later gun's parts cost 35% more
 export const UPGRADE_COST_GROWTH = 1.65;
-export const WEAPON_TIER_COST = 0.45;   // each later weapon's upgrades cost 45% more
 
 /* ── Survivors ─────────────────────────────────────────────────────────────
    Picked before every run. baseHealth and moveSpeed (m/s) are the starting
@@ -160,6 +278,9 @@ export const ZOMBIES = {
   boss:   { hp: 1400, speed: [1.6, 1.6], damage: 35, attackRate: 0.6, reach: 2.2, radius: 1.15, scale: 2.4,  coins: 100, aggro: 30, eyes: 0xff2020, smashes: true },
 };
 
+/* Gunfire wakes idle zombies this many metres away (a suppressor stops it). */
+export const GUNFIRE_NOISE = 22;
+
 /* ── The Game Director ─────────────────────────────────────────────────────
    A run is one endless road. Every `stageLength` metres is a new stage
    (stage 0 is the first 100 m; the HUD counts from 1), and everything about
@@ -243,15 +364,43 @@ export function pickPowerup(r) {
   return ids[0];
 }
 
-export function weaponStats(def, ups = {}, perk = {}) {
-  const lv = (k) => ups[k] || 0;
-  return {
-    ...def,
-    damage:       def.damage * (1 + WEAPON_UPGRADES.damage.step * lv('damage')),
-    fireRate:     def.fireRate * (1 + WEAPON_UPGRADES.fireRate.step * lv('fireRate')),
-    ammoCapacity: Math.round(def.ammoCapacity * (1 + WEAPON_UPGRADES.ammoCapacity.step * lv('ammoCapacity'))),
-    reloadTime:   def.reloadTime * (perk.reloadMult || 1),
-  };
+/* The parts that go in one slot of one gun; the first is what it comes with. */
+export function partsFor(def, slot) {
+  if (!def.slots.includes(slot)) return [];
+  return PARTS[slot].filter((p) => (!p.fits || p.fits.includes(def.id)) && !(p.not && p.not.includes(def.id)));
+}
+
+/* The part fitted in a slot: `fitted` maps slot -> part id. */
+export function fittedPart(def, slot, fitted = {}) {
+  const list = partsFor(def, slot);
+  return list.find((p) => p.id === fitted[slot]) || list[0];
+}
+
+export function partCost(def, part) {
+  const tier = WEAPONS.indexOf(def);
+  return Math.round(part.price * (1 + Math.max(0, tier) * PART_TIER_COST) / 5) * 5;
+}
+
+/* A gun's numbers with its parts fitted and the survivor's perk applied.
+   fx collects the parts' special effects. */
+export function weaponStats(def, fitted = {}, perk = {}) {
+  const s = { ...def, recoil: { ...def.recoil }, blast: def.blast ? { ...def.blast } : null, fx: {} };
+  for (const slot of def.slots) {
+    const part = fittedPart(def, slot, fitted);
+    const m = part.mods || {};
+    for (const k of ['damage', 'fireRate', 'range', 'ammoCapacity', 'reloadTime', 'spread', 'knockback']) if (m[k]) s[k] *= m[k];
+    if (m.recoil) s.recoil.per *= m.recoil;
+    if (m.stability) { s.recoil.max /= m.stability; s.recoil.recover *= m.stability; }
+    if (m.pierce) s.pierce += m.pierce;
+    if (m.pellets) s.pellets = m.pellets;
+    if (s.blast && m.blast) s.blast.radius *= m.blast;
+    if (s.blast && m.impulse) s.blast.impulse *= m.impulse;
+    Object.assign(s.fx, part.fx);
+  }
+  if (s.fx.noPierce) s.pierce = 0;
+  s.ammoCapacity = Math.max(1, Math.round(s.ammoCapacity));
+  s.reloadTime *= perk.reloadMult || 1;
+  return s;
 }
 
 export function playerStats(character, ups = {}) {
@@ -276,12 +425,6 @@ export function stageScaling(stage) {
     damageMult: 1 + d.damagePerStage * stage,
     speedMult: Math.min(1 + d.speedPerStage * stage, d.maxSpeedMult),
   };
-}
-
-export function weaponUpgradeCost(weaponIndex, stat, level) {
-  const u = WEAPON_UPGRADES[stat];
-  const raw = u.baseCost * (1 + weaponIndex * WEAPON_TIER_COST) * Math.pow(UPGRADE_COST_GROWTH, level);
-  return Math.round(raw / 5) * 5;
 }
 
 export function playerUpgradeCost(stat, level) {

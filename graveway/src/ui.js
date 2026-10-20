@@ -3,10 +3,11 @@
    the hooks below. */
 
 import {
-  WEAPONS, WEAPON_UPGRADES, PLAYER_UPGRADES, CHARACTERS, weaponStats, playerStats,
-  weaponUpgradeCost, playerUpgradeCost, characterDef, weaponDef, FEEDBACK_REPO, LOADOUT_SLOTS, POWERUPS,
+  WEAPONS, PLAYER_UPGRADES, CHARACTERS, weaponStats, playerStats, PART_SLOTS, partsFor, fittedPart, partCost,
+  playerUpgradeCost, characterDef, weaponDef, FEEDBACK_REPO, LOADOUT_SLOTS, POWERUPS,
 } from './config.js';
-import { save, persist, resetSave, weaponUps, notes, persistNotes, loadout, runWeapons } from './save.js';
+import { save, persist, resetSave, gunParts, fittedParts, notes, persistNotes, loadout, runWeapons } from './save.js';
+import { gunPicture } from './preview.js';
 import { sfx, setSoundEnabled } from './audio.js';
 import { powerIconURL } from './models.js';
 
@@ -30,11 +31,45 @@ const GUN_SVG = {
 };
 const gunIcon = (id) => `<svg class="gun" viewBox="0 0 64 24" aria-hidden="true"><path d="${GUN_SVG[id] || GUN_SVG.pistol}"/></svg>`;
 
+/* What a part does, as short labelled changes: [text, good?, special?].
+   Specials are the effects that aren't a number (fire, quiet...). */
+function partEffects(part) {
+  const m = part.mods || {}, fx = part.fx || {}, out = [];
+  const pct = (v) => `${Math.round(Math.abs(v - 1) * 100)}%`;
+  const more = (label, v) => { if (v && v !== 1) out.push([`${label} ${v > 1 ? '+' : '−'}${pct(v)}`, v > 1]); };
+  const less = (label, v, up, down) => { if (v && v !== 1) out.push([`${label} ${pct(v)} ${v < 1 ? up : down}`, v < 1]); };
+  if (m.pellets) out.push([m.pellets === 1 ? 'One heavy slug' : `${m.pellets} pellets`, true]);
+  more('Damage', m.damage);
+  more('Fire rate', m.fireRate);
+  if (m.spread && m.spread !== 1) out.push([`Accuracy ${m.spread < 1 ? '+' : '−'}${pct(m.spread)}`, m.spread < 1]);
+  less('Recoil', m.recoil, 'less', 'more');
+  more('Stability', m.stability);
+  more('Range', m.range);
+  more('Magazine', m.ammoCapacity);
+  less('Reload', m.reloadTime, 'faster', 'slower');
+  more('Knockback', m.knockback);
+  more('Blast', m.blast);
+  if (m.impulse) out.push([`Throws ${m.impulse}× harder`, true]);
+  if (m.pierce) out.push([`Through ${m.pierce} more zombie${m.pierce > 1 ? 's' : ''}`, true]);
+  if (fx.noPierce) out.push(['Never goes through', false]);
+  if (fx.fire) out.push(['Sets zombies alight', true, true]);
+  if (fx.small) out.push([`${fx.small > 1 ? '+' : '−'}${pct(fx.small)} vs walkers & runners`, fx.small > 1]);
+  if (fx.big) out.push([`${fx.big > 1 ? '+' : '−'}${pct(fx.big)} vs tanks & bosses`, fx.big > 1]);
+  if (fx.props) out.push([`${fx.props}× damage to cover`, true]);
+  if (fx.quiet) out.push(['Quiet: zombies don\'t hear it', true, true]);
+  if (fx.cluster) out.push([`${fx.cluster} bomblets`, true, true]);
+  if (fx.laser) out.push(['Laser line', true, true]);
+  if (fx.light) out.push(['Bigger flashlight', true, true]);
+  return out;
+}
+
 export class UI {
   constructor() {
     this.hud = {};
     this.armoryTab = 'weapons';
     this.selWeapon = 'pistol';
+    this.openSlot = null;         // the part slot open in the Armory
+    this.partsDirty = false;      // parts changed: portraits and the menu survivor need redoing
     this.bannerTimer = 0;
     this.toastTimer = 0;
     this.resetArmed = false;
@@ -196,6 +231,13 @@ export class UI {
     setSoundEnabled(save.settings.sound);
     this.renderMenu();
     this.show('menu');
+    if (save.refunded > 0) {
+      // Once: the old per-stat gun upgrades were paid back when parts came in.
+      const back = save.refunded;
+      setTimeout(() => this.banner('Guns take parts now', `Your old upgrades were refunded: +${fmt(back)} coins`, 4500), 600);
+      save.refunded = 0;
+      persist();
+    }
   }
 
   /* Horizontal swipes on an element call fn(+1 / -1). */
@@ -527,6 +569,9 @@ export class UI {
       'Coins you pick up are yours to keep, even if you fall.',
       'Each survivor brings their own gun. Juno\'s launcher flattens walls.',
       'Glowing badges on the road are power-ups. Walk over one to use it.',
+      'Zombies can hide behind cars and walls. Step out to get a clear look.',
+      'A suppressor keeps gunfire from waking the zombies further up the road.',
+      'Every part trades something. Check the green and red under each one.',
       'Pick which guns you carry under Armory → Weapons. Your survivor\'s own always comes.',
     ];
     return tips[Math.floor(Math.random() * tips.length)];
@@ -535,13 +580,15 @@ export class UI {
   cheapestUpgrade() {
     let best = null;
     const consider = (cost, label) => { if (!best || cost < best.cost) best = { cost, label }; };
-    WEAPONS.forEach((w, i) => {
-      if (w.price && !save.owned.includes(w.id)) { consider(w.price, `the ${w.name}`); return; }
-      for (const k of Object.keys(WEAPON_UPGRADES)) {
-        const lv = weaponUps(w.id)[k] || 0;
-        if (lv < WEAPON_UPGRADES[k].max) consider(weaponUpgradeCost(i, k, lv), `a ${w.name} ${WEAPON_UPGRADES[k].label.toLowerCase()} upgrade`);
+    for (const w of WEAPONS) {
+      if (w.price && !save.owned.includes(w.id)) { consider(w.price, `the ${w.name}`); continue; }
+      const g = gunParts(w.id);
+      for (const slot of w.slots) {
+        for (const part of partsFor(w, slot)) {
+          if (part.price && !g.owned.includes(`${slot}:${part.id}`)) consider(partCost(w, part), `a ${part.name.toLowerCase()} for the ${w.name}`);
+        }
       }
-    });
+    }
     for (const k of Object.keys(PLAYER_UPGRADES)) {
       const lv = save.pup[k] || 0;
       if (lv < PLAYER_UPGRADES[k].max) consider(playerUpgradeCost(k, lv), `more ${PLAYER_UPGRADES[k].label.toLowerCase()}`);
@@ -553,6 +600,7 @@ export class UI {
   /* from: 'select' when opened from survivor select, which Back returns to. */
   openArmory(from = 'menu') {
     this.armoryFrom = from;
+    this.openSlot = null;
     if (from === 'select') this.armoryTab = 'weapons';
     $('result').hidden = true;
     this.renderArmory();
@@ -560,6 +608,12 @@ export class UI {
   }
 
   closeArmory() {
+    if (this.partsDirty) {
+      // New parts show on the guns in the portraits and on the menu survivor.
+      this.partsDirty = false;
+      this.setPortraits(this.game.renderPortraits());
+      this.game.showMenu();
+    }
     if (this.armoryFrom === 'select') { this.renderSelect(); this.show('select'); return; }
     this.renderMenu();
     this.show('menu');
@@ -573,14 +627,9 @@ export class UI {
   }
 
   weaponsHtml() {
-    const maxes = { dmg: 0, rate: 0, range: 0, mag: 0 };
-    const all = WEAPONS.map((w) => weaponStats(w, weaponUps(w.id)));
-    for (const s of all) {
-      maxes.dmg = Math.max(maxes.dmg, s.damage * s.pellets);
-      maxes.rate = Math.max(maxes.rate, s.fireRate);
-      maxes.range = Math.max(maxes.range, s.range);
-      maxes.mag = Math.max(maxes.mag, s.ammoCapacity);
-    }
+    const all = WEAPONS.map((w) => weaponStats(w, fittedParts(w.id)));
+    const deg = (r) => r * 57.2958;
+    const max = (f) => Math.max(...all.map(f));
     const isOwned = (w) => w.price === 0 || save.owned.includes(w.id);
     const eq = loadout();
     const surv = characterDef(save.character);
@@ -599,24 +648,35 @@ export class UI {
     const w = WEAPONS[wi];
     const s = all[wi];
     const owned = isOwned(w);
-    const bar = (label, v, max, text) =>
-      `<div class="stat"><span>${label}</span><i style="--v:${Math.min(1, v / max)}"></i><b>${text}</b></div>`;
-    const deg = (r) => (r * 57.3).toFixed(1);
-    const fine = [`Reload ${s.reloadTime.toFixed(1)}s`, `spread ${deg(s.spread)}°`];
-    if (w.recoil) fine.push(`recoil up to ${deg(s.spread + w.recoil.max)}°`);
-    if (w.blast) fine.push(`${w.blast.radius} m blast`);
-    if (w.pierce) fine.push(`pierces ${w.pierce}`);
+    // Every bar is "longer is better".
+    const bar = (label, v, top, text) =>
+      `<div class="stat"><span>${label}</span><i style="--v:${Math.max(0.03, Math.min(1, v / top))}"></i><b>${text}</b></div>`;
+    const acc = (x) => 1 / (0.5 + deg(x.spread));
+    const kick = (x) => 1 / (0.15 + deg(x.recoil.per));
+    const steady = (x) => x.recoil.recover / x.recoil.max;
+    const quick = (x) => 1 / x.reloadTime;
+    const fine = [];
+    if (s.blast) fine.push(`${s.blast.radius.toFixed(1)} m blast`);
+    if (s.pierce) fine.push(`goes through ${s.pierce}`);
+    const f = fittedParts(w.id);
+    for (const slot of w.slots) for (const [t, , special] of partEffects(fittedPart(w, slot, f))) if (special) fine.push(t.toLowerCase());
     const on = owned && eq.includes(w.id);
     const own = surv.startingWeapon === w.id;
+    const pic = gunPicture(w.model, fittedParts(w.id));
     let html = `${this.loadoutHtml(surv, eq)}<div class="wgrid">${cards}</div>
       <div class="panel wdetail">
         <div class="wd-head"><h3>${esc(w.name)}</h3>${on ? '<span class="pill">Equipped</span>' : own ? `<span class="pill">${esc(surv.name)}'s own</span>` : ''}</div>
+        ${pic ? `<img class="gunpic" src="${pic}" alt="">` : ''}
         <p class="blurb">${esc(w.blurb)}</p>
-        ${bar(w.projectile === 'grenade' ? 'Blast' : 'Damage', s.damage * s.pellets, maxes.dmg, s.pellets > 1 ? `${Math.round(s.damage)}×${s.pellets}` : Math.round(s.damage))}
-        ${bar('Fire rate', s.fireRate, maxes.rate, `${s.fireRate.toFixed(1)}/s`)}
-        ${bar('Range', s.range, maxes.range, `${s.range} m`)}
-        ${bar('Magazine', s.ammoCapacity, maxes.mag, s.ammoCapacity)}
-        <p class="fine">${fine.join(' · ')}</p>`;
+        ${bar(w.projectile === 'grenade' ? 'Blast' : 'Damage', s.damage * s.pellets, max((x) => x.damage * x.pellets), s.pellets > 1 ? `${Math.round(s.damage)}×${s.pellets}` : Math.round(s.damage))}
+        ${bar('Fire rate', s.fireRate, max((x) => x.fireRate), `${s.fireRate.toFixed(1)}/s`)}
+        ${bar('Accuracy', acc(s), max(acc), `±${deg(s.spread).toFixed(1)}°`)}
+        ${bar('Recoil', kick(s), max(kick), `${deg(s.recoil.per).toFixed(2)}°/shot`)}
+        ${bar('Stability', steady(s), max(steady), `settles ${(s.recoil.max / s.recoil.recover).toFixed(2)}s`)}
+        ${bar('Range', s.range, max((x) => x.range), `${s.range.toFixed(0)} m`)}
+        ${bar('Magazine', s.ammoCapacity, max((x) => x.ammoCapacity), s.ammoCapacity)}
+        ${bar('Reload', quick(s), max(quick), `${s.reloadTime.toFixed(1)}s`)}
+        ${fine.length ? `<p class="fine">${esc(fine.join(' · '))}</p>` : ''}`;
     if (!owned) {
       const can = save.coins >= w.price;
       html += `<button class="btn primary wide" data-act="buy" data-id="${w.id}" ${can ? '' : 'aria-disabled="true"'}>
@@ -629,11 +689,33 @@ export class UI {
       if (own) html += `<p class="need">${esc(surv.name)} always brings this one. Equip it to carry it as anyone else.</p>`;
       else if (full) html += '<p class="need">Loadout full. Unequip a gun to make room.</p>';
     }
-    html += '<h4>Upgrades</h4>';
-    for (const [k, u] of Object.entries(WEAPON_UPGRADES)) {
-      const lv = weaponUps(w.id)[k] || 0;
-      html += this.upgradeRow(`w:${w.id}:${k}`, u.label, lv, u.max, lv < u.max ? weaponUpgradeCost(wi, k, lv) : null,
-        `+${Math.round(u.step * 100)}% each`);
+    html += `<h4>Parts</h4>${this.partsHtml(w)}`;
+    return html + '</div>';
+  }
+
+  /* One row per part slot; the open one lists what can go in it. */
+  partsHtml(w) {
+    const g = gunParts(w.id), fitted = fittedParts(w.id);
+    let html = '<div class="slots">';
+    for (const slot of w.slots) {
+      const cur = fittedPart(w, slot, fitted), open = this.openSlot === slot;
+      html += `<button type="button" class="slotrow${open ? ' open' : ''}" data-act="slot" data-slot="${slot}" aria-expanded="${open}">
+        <span>${PART_SLOTS[slot]}</span><b>${esc(cur.name)}</b><i aria-hidden="true"></i></button>`;
+      if (!open) continue;
+      html += '<div class="partlist">';
+      for (const part of partsFor(w, slot)) {
+        const has = part.price === 0 || g.owned.includes(`${slot}:${part.id}`);
+        const on = part.id === cur.id;
+        const cost = partCost(w, part);
+        const fx = partEffects(part).map(([t, good]) => `<em class="${good ? 'up' : 'down'}">${esc(t)}</em>`).join('');
+        const btn = on ? '<span class="pill">Fitted</span>'
+          : has ? `<button class="btn small" data-act="fit" data-slot="${slot}" data-part="${part.id}">Fit</button>`
+            : `<button class="btn small buy" data-act="buypart" data-slot="${slot}" data-part="${part.id}" ${save.coins >= cost ? '' : 'aria-disabled="true"'}>${coin(cost)}</button>`;
+        html += `<div class="part${on ? ' on' : ''}"><div class="pt"><b>${esc(part.name)}</b>
+          ${part.blurb ? `<small>${esc(part.blurb)}</small>` : '<small>What it comes with.</small>'}
+          ${fx ? `<span class="fx">${fx}</span>` : ''}</div>${btn}</div>`;
+      }
+      html += '</div>';
     }
     return html + '</div>';
   }
@@ -680,8 +762,26 @@ export class UI {
     if (!b) return;
     const act = b.dataset.act;
     if (act === 'sel') {
+      if (this.selWeapon !== b.dataset.id) this.openSlot = null;
       this.selWeapon = b.dataset.id;
       sfx.click();
+    } else if (act === 'slot') {
+      this.openSlot = this.openSlot === b.dataset.slot ? null : b.dataset.slot;
+      sfx.click();
+    } else if (act === 'fit' || act === 'buypart') {
+      const w = weaponDef(this.selWeapon), slot = b.dataset.slot;
+      const part = partsFor(w, slot).find((x) => x.id === b.dataset.part);
+      if (!part) return;
+      const g = gunParts(w.id);
+      if (act === 'buypart') {
+        const cost = partCost(w, part);
+        if (save.coins < cost) { sfx.denied(); this.nudge(b); return; }
+        save.coins -= cost;
+        g.owned.push(`${slot}:${part.id}`);
+        sfx.buy();
+      } else sfx.click();
+      g.fitted[slot] = part.id;
+      this.partsDirty = true;
     } else if (act === 'buy') {
       const w = WEAPONS.find((x) => x.id === b.dataset.id);
       if (save.coins < w.price) { sfx.denied(); this.nudge(b); return; }
@@ -705,19 +805,10 @@ export class UI {
       else eq.push(b.dataset.id);
       sfx.click();
     } else if (act === 'up') {
-      const [kind, a, c] = b.dataset.key.split(':');
-      let cost;
-      if (kind === 'w') {
-        const wi = WEAPONS.findIndex((x) => x.id === a);
-        const ups = weaponUps(a);
-        cost = weaponUpgradeCost(wi, c, ups[c] || 0);
-        if (save.coins < cost) { sfx.denied(); this.nudge(b); return; }
-        ups[c] = (ups[c] || 0) + 1;
-      } else {
-        cost = playerUpgradeCost(a, save.pup[a] || 0);
-        if (save.coins < cost) { sfx.denied(); this.nudge(b); return; }
-        save.pup[a] = (save.pup[a] || 0) + 1;
-      }
+      const [, stat] = b.dataset.key.split(':');
+      const cost = playerUpgradeCost(stat, save.pup[stat] || 0);
+      if (save.coins < cost) { sfx.denied(); this.nudge(b); return; }
+      save.pup[stat] = (save.pup[stat] || 0) + 1;
       save.coins -= cost;
       sfx.buy();
     }
@@ -754,11 +845,12 @@ export class UI {
   }
 
   loadoutText() {
-    const ups = (id) => Object.values(weaponUps(id)).reduce((a, b) => a + b, 0);
     const eq = loadout();
     const guns = WEAPONS.filter((w) => w.price === 0 || save.owned.includes(w.id)).map((w) => {
-      const n = ups(w.id);
-      return w.name + (n ? ` +${n}` : '') + (eq.includes(w.id) ? '*' : '');
+      // Only the parts that aren't what it came with, e.g. "SMG[long,reddot]"
+      const f = fittedParts(w.id);
+      const extra = w.slots.map((slot) => fittedPart(w, slot, f)).filter((p) => p.price > 0).map((p) => p.id);
+      return w.name + (extra.length ? `[${extra.join(',')}]` : '') + (eq.includes(w.id) ? '*' : '');
     });
     return `${save.coins} coins · best ${save.best} m · guns (*equipped): ${guns.join(', ')}`;
   }

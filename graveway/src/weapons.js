@@ -1,5 +1,5 @@
 /* A Weapon is one gun in the survivor's hands for one run: a definition
-   from WEAPONS (src/config.js) with the Armory upgrades and the survivor's
+   from WEAPONS (src/config.js) with its fitted parts and the survivor's
    perk applied, plus its live state: rounds left, reload progress, and
    recoil bloom from sustained fire.
 
@@ -11,9 +11,10 @@
 import { weaponStats, weaponDef } from './config.js';
 
 export class Weapon {
-  constructor(id, ups, perk) {
+  constructor(id, fitted, perk) {
     this.def = weaponDef(id);
-    this.stats = weaponStats(this.def, ups, perk);
+    this.fitted = fitted;            // slot -> part id
+    this.stats = weaponStats(this.def, fitted, perk);
     this.ammo = this.stats.ammoCapacity;
     this.reloadT = 0;
     this.cooldown = 0;
@@ -31,8 +32,8 @@ export class Weapon {
   /* Advances timers. Returns true on the frame a reload finishes. */
   tick(dt, firing) {
     this.cooldown = Math.max(this.cooldown - dt, -0.05);
-    const rc = this.def.recoil;
-    if (rc && !firing) this.bloom = Math.max(0, this.bloom - rc.recover * dt);
+    const rc = this.stats.recoil;
+    if (!firing) this.bloom = Math.max(0, this.bloom - rc.recover * dt);
     if (this.reloadT > 0) {
       this.reloadT -= dt;
       if (this.reloadT <= 0) {
@@ -56,8 +57,8 @@ export class Weapon {
     // floors it at -0.05 s), so fire rate doesn't round up to whole frames.
     this.cooldown += 1 / (this.stats.fireRate * rateMult);
     if (!free) this.ammo--;
-    const rc = this.def.recoil;
-    if (rc) this.bloom = Math.min(this.bloom + rc.per, rc.max);
+    const rc = this.stats.recoil;
+    this.bloom = Math.min(this.bloom + rc.per, rc.max);
     return this.ammo <= 0;
   }
 

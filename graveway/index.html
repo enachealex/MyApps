@@ -163,7 +163,7 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 .wd-head{display:flex;align-items:center;justify-content:space-between;gap:10px;}
 .wd-head h3{margin:0;font-family:var(--display);font-weight:400;font-size:28px;letter-spacing:.04em;}
 .blurb{margin:4px 0 14px;color:var(--dim);font-size:14px;}
-.stat{display:grid;grid-template-columns:78px 1fr 64px;align-items:center;gap:10px;margin:8px 0;font-size:13px;}
+.stat{display:grid;grid-template-columns:78px 1fr 88px;align-items:center;gap:10px;margin:8px 0;font-size:13px;}
 .stat span{color:var(--dim);}
 .stat i{height:8px;border-radius:99px;background:rgba(255,255,255,.08);position:relative;overflow:hidden;}
 .stat i::after{content:"";position:absolute;inset:0;width:calc(var(--v) * 100%);border-radius:inherit;background:var(--accent);}
@@ -178,6 +178,29 @@ button{font:inherit;color:inherit;touch-action:manipulation;}
 .pips i{width:18px;height:6px;border-radius:3px;background:rgba(255,255,255,.12);}
 .pips i.on{background:var(--accent);}
 .uprow .buy{min-width:92px;font-variant-numeric:tabular-nums;}
+/* Gun parts */
+.gunpic{display:block;width:100%;max-width:420px;aspect-ratio:12/5;margin:2px auto 6px;object-fit:contain;
+  background:radial-gradient(ellipse at 50% 60%, rgba(155,225,93,.10), rgba(0,0,0,0) 70%);}
+.slots{display:flex;flex-direction:column;gap:6px;margin-top:6px;}
+.slotrow{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:0 14px;border-radius:12px;
+  border:1px solid var(--line);background:rgba(255,255,255,.04);cursor:pointer;text-align:left;}
+.slotrow span{flex:none;width:86px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);}
+.slotrow b{flex:1;min-width:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.slotrow i{flex:none;width:9px;height:9px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);margin-top:-4px;transition:transform .15s;}
+.slotrow.open{border-color:var(--accent);background:rgba(155,225,93,.07);}
+.slotrow.open i{transform:rotate(-135deg);margin-top:4px;}
+.partlist{display:flex;flex-direction:column;gap:6px;padding:2px 0 6px 10px;border-left:2px solid rgba(155,225,93,.3);margin-left:6px;}
+.part{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.25);border:1px solid var(--line);}
+.part.on{border-color:rgba(155,225,93,.45);}
+.pt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+.pt b{font-size:14px;}
+.pt small{font-size:12px;color:var(--dim);}
+.fx{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;}
+.fx em{font-style:normal;font-size:11px;font-weight:700;padding:2px 7px;border-radius:99px;}
+.fx em.up{background:rgba(155,225,93,.14);color:var(--accent);}
+.fx em.down{background:rgba(255,77,77,.13);color:#ff8a8a;}
+.part .btn.small{flex:none;min-width:84px;font-variant-numeric:tabular-nums;}
+.part .pill{flex:none;}
 
 /* ── HUD ─────────────────────────────────────────────────────────────── */
 #hud{position:fixed;inset:0;z-index:3;pointer-events:none;}

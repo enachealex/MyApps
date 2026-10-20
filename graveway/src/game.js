@@ -11,9 +11,9 @@
 import * as THREE from '../vendor/three.module.min.js';
 import {
   WEAPONS, ZOMBIES, PICKUPS, ARMOR_ABSORB, DIRECTOR, CHARACTERS, RUBBLE_SLOW, RUBBLE_SLOW_PLAYER,
-  POWERUPS, POWERUP_DROPS, playerStats, stageScaling, characterDef, pickPowerup,
+  POWERUPS, POWERUP_DROPS, GUNFIRE_NOISE, playerStats, stageScaling, characterDef, pickPowerup,
 } from './config.js';
-import { save, weaponUps, runWeapons } from './save.js';
+import { save, fittedParts, runWeapons } from './save.js';
 import { sfx, vibrate } from './audio.js';
 import { World, resolveColliders, rayProps, mulberry32, WALK_HALF, START_PZ } from './world.js';
 import { NavGrid } from './nav.js';
@@ -21,6 +21,7 @@ import { PropSystem } from './props.js';
 import { Director } from './director.js';
 import { Weapon } from './weapons.js';
 import { VFX } from './vfx.js';
+import { SightShadows, canSee } from './fog.js';
 import {
   initTextures, sharedGeo, makeSurvivor, makeZombie, makeGun, FLASH_MAT, TEX, scorchDecal, lambert, GUN_MOUNT,
 } from './models.js';
@@ -31,6 +32,9 @@ const MAX_BULLETS = 260;
 const MAX_PARTS = 700;
 const MAX_GRENADES = 24;
 const GRAVITY = 20;
+// Tracer colours by ammo (and red-hot under Double Damage), grenade shells by type.
+const TRACER = { fmj: 0xffe2a0, buck: 0xffe2a0, hollow: 0xfff3dc, ap: 0x9fd2ff, incendiary: 0xff8a30, slug: 0xffffff, dragon: 0xff6a1a, flechette: 0xd2e2ff };
+const SHELL = { he: 0x4a5a2a, 'incendiary-g': 0xa8481a, cluster: 0x8a7a2a, concussion: 0x3a5a7a };
 
 const TAU = Math.PI * 2;
 const lerpAngle = (a, b, t) => {
@@ -51,7 +55,8 @@ const steerOut = { x: 0, z: 0 };
 export class Game {
   constructor(canvas, hooks) {
     this.hooks = hooks;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    // stencil: fog.js uses it so overlapping view shadows don't double up.
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', stencil: true });
     this.renderer.setClearColor(FOG);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
@@ -82,11 +87,13 @@ export class Game {
     const geo = sharedGeo();
     this.coinMesh = new THREE.InstancedMesh(geo.coin, new THREE.MeshLambertMaterial({ color: 0xffc928, emissive: 0x7a5200 }), MAX_COINS);
     this.bulletMesh = new THREE.InstancedMesh(geo.tracer, new THREE.MeshBasicMaterial({
-      color: 0xffe2a0, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false,
+      color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false,
     }), MAX_BULLETS);
     this.partMesh = new THREE.InstancedMesh(geo.particle, new THREE.MeshBasicMaterial({ color: 0xffffff }), MAX_PARTS);
     for (let i = 0; i < MAX_PARTS; i++) this.partMesh.setColorAt(i, tmpColor.set(0xffffff));
-    this.grenadeMesh = new THREE.InstancedMesh(geo.grenade, lambert(0x4a5a2a, { emissive: 0x1a2a08 }), MAX_GRENADES);
+    this.grenadeMesh = new THREE.InstancedMesh(geo.grenade, new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x1a2a08 }), MAX_GRENADES);
+    for (let i = 0; i < MAX_BULLETS; i++) this.bulletMesh.setColorAt(i, tmpColor.set(TRACER.fmj));
+    for (let i = 0; i < MAX_GRENADES; i++) this.grenadeMesh.setColorAt(i, tmpColor.set(SHELL.he));
     for (const m of [this.coinMesh, this.bulletMesh, this.partMesh, this.grenadeMesh]) {
       m.count = 0;
       m.frustumCulled = false;
@@ -99,11 +106,18 @@ export class Game {
     }));
     this.muzzleFlash.visible = false;
     this.scene.add(this.muzzleFlash);
+    // Laser sight: a thin red line from the muzzle to whatever it's on.
+    this.laser = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.025, 1).translate(0, 0, 0.5), new THREE.MeshBasicMaterial({
+      color: 0xff2a2a, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    this.laser.visible = false;
+    this.scene.add(this.laser);
 
     this.survivors = {};            // one model per character, built on first use
     this.surv = null;
     this.nav = new NavGrid();
     this.vfx = new VFX(this.scene);
+    this.sight = new SightShadows(this.scene);
     this.vfx.setQuality(save.settings.quality);
     this.propSys = new PropSystem(this);
     this.director = new Director(this);
@@ -182,6 +196,7 @@ export class Game {
     this.throws.length = 0;
     this.propSys.reset();
     this.vfx.clear();
+    this.sight.clear();
     this.run = null;
   }
 
@@ -202,14 +217,40 @@ export class Game {
   makePlayer() {
     const c = this.character;
     const stats = playerStats(c, save.pup);
-    // Your survivor's own gun first, then the ones equipped in the Armory.
-    const weapons = runWeapons(c).map((id) => new Weapon(id, weaponUps(id), c.perk));
+    // Your survivor's own gun first, then the ones equipped in the Armory,
+    // each with its parts, and the models in their hands to match.
+    const weapons = runWeapons(c).map((id) => new Weapon(id, fittedParts(id), c.perk));
+    for (const w of weapons) this.fitGun(w);
     return {
       x: 0, z: START_PZ, yaw: Math.PI, hp: stats.maxHp, maxHp: stats.maxHp, armor: Math.min(PICKUPS.maxArmor, stats.startArmor), stats,
       weapons, wi: 0, swapT: 0, kick: 0, walk: 0, moving: 0, firing: false,
       target: null, hurtT: 0, deadT: 0, furthest: START_PZ, reported: false,
       buffs: {}, buffMax: {},       // timed power-ups: seconds left, and what the timer started at
     };
+  }
+
+  /* Rebuilds the survivor's model of a gun when its parts have changed. */
+  fitGun(w) {
+    const m = this.surv, key = JSON.stringify(w.fitted);
+    const old = m.guns[w.id];
+    if (old && old.key === key) return;
+    const g = makeGun(w.def.model, w.fitted);
+    g.key = key;
+    g.group.visible = false;
+    if (old) {
+      m.body.remove(old.group);
+      old.group.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
+    }
+    m.body.add(g.group);
+    m.guns[w.id] = g;
+  }
+
+  /* Where the current gun's muzzle is, in the world. */
+  muzzle() {
+    const p = this.player, gun = this.surv.guns[this.weapon.id];
+    const sin = Math.sin(p.yaw), cos = Math.cos(p.yaw);
+    const reach = GUN_MOUNT.z + gun.len, gx = GUN_MOUNT.x;
+    return { x: p.x + sin * reach + gx * cos, y: GUN_MOUNT.y + 0.05, z: p.z + cos * reach - gx * sin };
   }
 
   start() {
@@ -262,6 +303,7 @@ export class Game {
       state: chase ? 'chase' : 'idle', attackT: 0, hitDone: false, smash: null,
       wanderT: 0, wx: 0, wz: 0, kx: 0, kz: 0, flash: 0, phase: this.rng() * 10,
       dead: false, deadT: 0, emerging: !!alley, calm, losT: this.rng() * 0.3, los: false, stuck: false,
+      seen: true, seeT: 0, hidT: 0,           // fog of war: in the survivor's view?
       lean: 0.1 + this.rng() * 0.25, headTilt: (this.rng() - 0.5) * 0.6,
     };
     this.zombies.push(zb);
@@ -356,6 +398,7 @@ export class Game {
     }
     this.updateCamera(dt);
     this.syncSurvivor(dt);
+    if (this.world && this.state !== 'paused') this.sight.update(p.x, p.z, this.world.props);
     this.updateFx(dt);
     // While dying too, so the bars show the hit that finished you.
     if (this.state === 'playing' || this.state === 'dying') this.hooks.hud(this.hudState());
@@ -430,7 +473,7 @@ export class Game {
     const props = this.world.props;
     let best = null, bestScore = Infinity;
     for (const z of this.zombies) {
-      if (z.dead) continue;
+      if (z.dead || !z.seen) continue;          // can't aim at what you can't see
       const dx = z.x - p.x, dz = z.z - p.z;
       const d2 = dx * dx + dz * dz;
       if (d2 > range * range || d2 < minRange * minRange) continue;
@@ -500,16 +543,11 @@ export class Game {
     const rapid = this.buffOn('rapid');
     const damage = s.damage * (this.buffOn('double') ? POWERUPS.double.damageMult : 1);
     const emptied = w.consume(rapid ? POWERUPS.rapid.fireRateMult : 1, rapid);
-    const gun = this.surv.guns[w.id];
-    const sin = Math.sin(p.yaw), cos = Math.cos(p.yaw);
-    // The muzzle: GUN_MOUNT plus the gun's length, turned to face the aim.
-    const reach = GUN_MOUNT.z + gun.len, gx = GUN_MOUNT.x;
-    const mx = p.x + sin * reach + gx * cos;
-    const mz = p.z + cos * reach - gx * sin;
-    const my = GUN_MOUNT.y + 0.05;
+    const { x: mx, y: my, z: mz } = this.muzzle();
+    const ammo = w.fitted.ammo || (w.explosive ? 'he' : 'fmj');
     if (w.explosive) {
       const tx = target.x + (this.rng() - 0.5) * 2 * w.spread * 4, tz = target.z + (this.rng() - 0.5) * 2 * w.spread * 4;
-      this.lob(mx, my, mz, tx, tz, damage, s.blast);
+      this.lob(mx, my, mz, tx, tz, damage, s.blast, { fx: s.fx, color: SHELL[ammo] || SHELL.he });
     } else {
       for (let i = 0; i < s.pellets; i++) {
         if (this.bullets.length >= MAX_BULLETS) break;
@@ -519,7 +557,7 @@ export class Game {
           // From the survivor's centre, not the muzzle: pressed against a wall,
           // the muzzle is already past it.
           x: p.x, z: p.z, dx: Math.sin(a), dz: Math.cos(a), speed, life: s.range / speed + 0.05,
-          damage, pierce: s.pierce, knock: s.knockback, hits: null,
+          damage, pierce: s.pierce, knock: s.knockback, hits: null, fx: s.fx, color: TRACER[ammo] || TRACER.fmj,
         });
       }
     }
@@ -533,19 +571,42 @@ export class Game {
     p.kick = 1;
     this.shake = Math.max(this.shake, s.shake);
     sfx.shot(w.def.model);
+    if (!s.fx.quiet) this.noise(p.x, p.z);
     if (emptied) this.reload();
+  }
+
+  /* Gunfire brings idle zombies within earshot running (not through a
+     suppressor). Checked a few times a second, not every shot. */
+  noise(x, z) {
+    if (this.time - (this.noiseAt || 0) < 0.25) return;
+    this.noiseAt = this.time;
+    const r2 = GUNFIRE_NOISE * GUNFIRE_NOISE;
+    for (const zb of this.zombies) {
+      if (zb.dead || zb.state !== 'idle' || zb.calm) continue;
+      const dx = zb.x - x, dz = zb.z - z;
+      if (dx * dx + dz * dz < r2) zb.state = 'chase';
+    }
+  }
+
+  /* Sets a zombie alight: `dps` damage a second for `time` seconds. A new
+     flame doesn't stack on an old one, it keeps the stronger. */
+  ignite(z, dps, time) {
+    if (z.dead) return;
+    if (!(z.burnT > 0)) z.burnDps = 0;
+    z.burnT = Math.max(z.burnT || 0, time);
+    z.burnDps = Math.max(z.burnDps, dps);
   }
 
   /* A grenade from (x, y, z) that lands on (tx, tz): fixed horizontal speed,
      vertical speed solved to come down on the spot. A safe one (thrown by
      a power-up) can't hurt you. */
-  lob(x, y, z, tx, tz, damage, blast, { speed = 15, safe = false } = {}) {
+  lob(x, y, z, tx, tz, damage, blast, { speed = 15, safe = false, fx = {}, color = SHELL.he } = {}) {
     if (this.grenades.length >= MAX_GRENADES) return;
     const dx = tx - x, dz = tz - z, d = Math.hypot(dx, dz);
     const t = Math.max(d / speed, 0.15);
     this.grenades.push({
       x, y, z, sx: x, sz: z, vx: dx / t, vy: (0 - y + 0.5 * GRAVITY * t * t) / t, vz: dz / t,
-      life: t + 0.6, damage, blast, spin: 0, safe,
+      life: t + 0.6, damage, blast, spin: 0, safe, fx, color,
     });
   }
 
@@ -669,6 +730,30 @@ export class Game {
         zs.splice(i, 1);
         continue;
       }
+
+      if (z.burnT > 0) {
+        z.burnT -= dt;
+        z.burnTick = (z.burnTick || 0) + dt;
+        if (z.burnTick >= 0.25) {
+          z.burnTick -= 0.25;
+          z.hp -= z.burnDps * 0.25;
+          if (z.state === 'idle') z.state = 'chase';
+          if (z.hp <= 0) { this.killZombie(z, 0, 1); continue; }
+        }
+        if (this.rng() < dt * 14) this.vfx.flame(z.x + (this.rng() - 0.5) * 0.4, 0.6 + this.rng() * 0.9 * z.scale, z.z + (this.rng() - 0.5) * 0.4, 0.5 * z.scale);
+      }
+
+      // Fog of war: behind something tall, a zombie can't be seen (or aimed
+      // at). Hidden after a moment out of view; back the instant it's in it.
+      if (this.state === 'playing' || this.state === 'dying') {
+        z.seeT -= dt;
+        if (z.seeT <= 0) {
+          z.seeT = 0.1;
+          if (canSee(this.world, p.x, p.z, z.x, z.z, z.radius)) { z.seen = true; z.hidT = 0; }
+          else if ((z.hidT += 0.1) >= 0.15) z.seen = false;
+        }
+      } else z.seen = true;
+      m.root.visible = z.seen;
 
       const dx = p.x - z.x, dz = p.z - z.z;
       const dist = Math.hypot(dx, dz) || 1e-4;
@@ -909,7 +994,7 @@ export class Game {
             const pr = wall.prop;
             const mat = pr ? pr.def.material : 'concrete';
             const y = pr ? Math.min(1.35, (pr.y || 0) + pr.height - 0.08) : 1.4;
-            if (pr) this.propSys.damage(pr, b.damage, b.dx, b.dz, 'bullet');
+            if (pr) this.propSys.damage(pr, b.damage * (b.fx.props || 1), b.dx, b.dz, 'bullet');
             this.vfx.impact(b.x, y, b.z, mat, { x: b.dx, z: b.dz });
             if (mat === 'metal') sfx.ricochet(this.pan(b.x)); else sfx.chip(this.pan(b.x));
             alive = false;
@@ -920,7 +1005,9 @@ export class Game {
         }
         b.x += b.dx * hitT; b.z += b.dz * hitT;
         remaining -= hitT; toWall -= hitT;
-        this.damageZombie(hit, b.damage, b.dx, b.dz, b.knock);
+        const big = hit.kind === 'tank' || hit.kind === 'boss';
+        this.damageZombie(hit, b.damage * ((big ? b.fx.big : b.fx.small) || 1), b.dx, b.dz, b.knock);
+        if (b.fx.fire) this.ignite(hit, b.damage * b.fx.fire.dps, b.fx.fire.time);
         if (b.pierce > 0) { b.pierce--; (b.hits || (b.hits = [])).push(hit); }
         else alive = false;
       }
@@ -960,7 +1047,16 @@ export class Game {
       }
       if (boom) {
         gs.splice(i, 1);
-        this.explode(g.x, g.z, { radius: g.blast.radius, damage: g.damage, impulse: g.blast.impulse }, { mine: true, scorch: true, safe: g.safe });
+        const blast = { radius: g.blast.radius, damage: g.damage, impulse: g.blast.impulse };
+        this.explode(g.x, g.z, blast, { mine: true, scorch: true, safe: g.safe, fire: g.fx.fire });
+        // Cluster grenades: smaller blasts thrown out around the first.
+        const n = g.fx.cluster || 0;
+        for (let k = 0; k < n; k++) {
+          const a = (k / n) * TAU + this.rng(), r = blast.radius * (0.8 + this.rng() * 0.5);
+          this.explodeLater(g.x + Math.cos(a) * r, g.z + Math.sin(a) * r,
+            { radius: blast.radius * 0.6, damage: blast.damage * 0.55, impulse: blast.impulse * 0.5 }, 0.14 + k * 0.09,
+            { mine: true, safe: g.safe, fire: g.fx.fire });
+        }
       }
     }
   }
@@ -980,7 +1076,7 @@ export class Game {
 
   /* A blast: damage falling off with distance to zombies, the survivor and
      props; a shove for everything that can move; fire, smoke and a flash. */
-  explode(x, z, { radius, damage, impulse }, { mine = false, scorch = false, vehicle = false, safe = false } = {}) {
+  explode(x, z, { radius, damage, impulse }, { mine = false, scorch = false, vehicle = false, safe = false, fire = null } = {}) {
     if (!this.world) return;
     const falloff = (d, r) => Math.max(0.25, Math.pow(1 - Math.min(d / r, 1), 0.7));
     for (const zb of this.zombies) {
@@ -991,6 +1087,7 @@ export class Game {
       const f = falloff(d, radius + zb.radius);
       // Anything the blast kills is thrown, harder the closer it stood.
       this.damageZombie(zb, damage * f, dx / u, dz / u, impulse * 0.5, (4 + impulse * 0.35) * f / zb.scale);
+      if (fire) this.ignite(zb, damage * f * fire.dps, fire.time);
     }
     const p = this.player;
     if (this.state === 'playing' && !safe) {
@@ -1220,10 +1317,14 @@ export class Game {
 
   updateFx(dt) {
     const p = this.player;
-    // Flashlight follows the survivor's aim.
+    // Flashlight follows the survivor's aim; a weapon light makes it bigger.
     const sin = Math.sin(p.yaw), cos = Math.cos(p.yaw);
     this.flashlight.position.set(p.x + sin * 0.3, 2.3, p.z + cos * 0.3);
     this.flashTarget.position.set(p.x + sin * 9, 0, p.z + cos * 9);
+    const lit = !!(p.weapons && this.weapon.stats.fx.light);
+    this.flashlight.intensity = lit ? 105 : 70;
+    this.flashlight.distance = lit ? 48 : 34;
+    this.flashlight.angle = lit ? 0.8 : 0.6;
     this.flashlight.visible = this.state !== 'dying';
 
     if (this.flashT > 0) {
@@ -1249,8 +1350,8 @@ export class Game {
     this.coinMesh.count = cs.length;
     this.coinMesh.instanceMatrix.needsUpdate = true;
 
-    // Tracers, red-hot under Double Damage
-    this.bulletMesh.material.color.setHex(this.buffOn('double') ? 0xff7a5a : 0xffe2a0);
+    // Tracers, coloured by ammo, red-hot under Double Damage
+    const hot = this.buffOn('double');
     const bs = this.bullets;
     for (let i = 0; i < bs.length; i++) {
       const b = bs[i];
@@ -1259,9 +1360,11 @@ export class Game {
       dummy.scale.setScalar(1);
       dummy.updateMatrix();
       this.bulletMesh.setMatrixAt(i, dummy.matrix);
+      this.bulletMesh.setColorAt(i, tmpColor.set(hot ? 0xff7a5a : b.color));
     }
     this.bulletMesh.count = bs.length;
     this.bulletMesh.instanceMatrix.needsUpdate = true;
+    if (bs.length) this.bulletMesh.instanceColor.needsUpdate = true;
 
     // Grenades in flight
     const gs = this.grenades;
@@ -1272,9 +1375,23 @@ export class Game {
       dummy.scale.setScalar(1);
       dummy.updateMatrix();
       this.grenadeMesh.setMatrixAt(i, dummy.matrix);
+      this.grenadeMesh.setColorAt(i, tmpColor.set(g.color));
     }
     this.grenadeMesh.count = gs.length;
     this.grenadeMesh.instanceMatrix.needsUpdate = true;
+    if (gs.length) this.grenadeMesh.instanceColor.needsUpdate = true;
+
+    // Laser sight, while there's something to put it on
+    const fx = p.weapons ? this.weapon.stats.fx : {};
+    const lz = this.laser;
+    lz.visible = !!(fx.laser && p.target && this.state === 'playing');
+    if (lz.visible) {
+      const m = this.muzzle();
+      const dx = p.target.x - m.x, dz = p.target.z - m.z;
+      lz.position.set(m.x, m.y, m.z);
+      lz.rotation.set(0, Math.atan2(dx, dz), 0);
+      lz.scale.z = Math.hypot(dx, dz);
+    }
 
     // Particles
     const ps = this.parts;
@@ -1362,7 +1479,7 @@ export class Game {
     const out = {};
     for (const c of CHARACTERS) {
       const m = makeSurvivor(c.look);
-      const gun = makeGun(WEAPONS.find((w) => w.id === c.startingWeapon)?.model || 'pistol');
+      const gun = makeGun(WEAPONS.find((w) => w.id === c.startingWeapon)?.model || 'pistol', fittedParts(c.startingWeapon));
       gun.group.scale.multiplyScalar(0.7);   // full size hides the chest face-on
       m.body.add(gun.group);
       m.armR.rotation.set(-1.3, 0, 0.3);

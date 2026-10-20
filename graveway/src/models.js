@@ -4,7 +4,7 @@
    phone, the number of separate meshes drawn each frame is what costs most. */
 
 import * as THREE from '../vendor/three.module.min.js';
-import { POWERUPS } from './config.js';
+import { POWERUPS, WEAPONS, fittedPart } from './config.js';
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 export function boxGeo(w, h, d, x = 0, y = 0, z = 0) {
@@ -550,30 +550,105 @@ const GUNS = {
 };
 
 const gunMat = (color, glow = 0.22) => lambert(color, { emissive: color, emissiveIntensity: glow });
-export function makeGun(id) {
+/* A gun with its parts fitted (`fitted` maps slot -> part id, as in
+   config.js PARTS). Every part that changes the outline shows: barrel
+   length, what's on the muzzle, the magazine, the sight, the stock and
+   what hangs under the handguard. Trigger and ammo don't show. */
+const DARK = 0x2a2c31;
+export function makeGun(id, fitted = {}) {
   const s = GUNS[id] || GUNS.pistol;
-  const parts = [boxGeo(s.w, s.h, s.len, 0, 0, s.len / 2), boxGeo(s.w * 0.8, 0.18, 0.1, 0, -0.12, 0.08)];
-  if (s.mag) parts.push(boxGeo(s.w * 0.7, 0.22, 0.1, 0, -0.16, s.len * 0.5));
+  // Fill in what it comes with for every slot it has (so a rifle gets its
+  // standard stock), and nothing for slots it doesn't.
+  const wdef = WEAPONS.find((w) => w.model === id);
+  const parts = {};
+  if (wdef) for (const slot of wdef.slots) parts[slot] = fittedPart(wdef, slot, fitted).id;
+  const f = (slot, def) => parts[slot] || def;
+  const L = s.len * ({ long: 1.22, short: 0.82 }[f('barrel')] || 1);
   const group = new THREE.Group();
-  group.add(new THREE.Mesh(mergeGeos(parts), gunMat(s.color)));
+  const add = (geos, color, glow) => group.add(new THREE.Mesh(geos.length > 1 ? mergeGeos(geos) : geos[0], gunMat(color, glow)));
+  const top = s.h / 2;
+
+  // Receiver and barrel in one piece, with the grip.
+  const body = [boxGeo(s.w, s.h, L, 0, 0, L / 2)];
+  if (f('barrel') === 'heavy') body.push(boxGeo(s.w * 1.25, s.h * 0.9, L * 0.45, 0, 0, L * 0.76));
+  add(body, s.color);
+  add([boxGeo(s.w * (f('grip') === 'ergo' ? 0.95 : 0.8), 0.18, 0.1, 0, -0.12, 0.08)],
+    { rubber: 0x24262a, stippled: 0x6a5a40, ergo: 0x3a3e46 }[f('grip')] || s.color);
   // The light strip along the top is what you see from above.
-  group.add(new THREE.Mesh(boxGeo(s.w * 0.4, 0.03, s.len * 0.85, 0, s.h / 2 + 0.015, s.len * 0.48), gunMat(0x8c929c, 0.12)));
-  if (s.drum) {
-    group.add(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.22, 10).rotateX(Math.PI / 2).translate(0, -0.02, 0.22), gunMat(0x3e4630)));
+  add([boxGeo(s.w * 0.4, 0.03, L * 0.85, 0, top + 0.015, L * 0.48)], 0x8c929c, 0.12);
+  if (s.barrel) add([boxGeo(0.06, 0.06, L * 0.55, 0, 0.07, L * 0.72)], s.barrel);
+
+  // Muzzle
+  let muzzle = L;
+  const mz = f('muzzle', 'none');
+  if (mz === 'comp') { add([boxGeo(s.w * 1.05, s.h * 0.75, 0.08, 0, 0, L + 0.04)], DARK); muzzle += 0.08; }
+  if (mz === 'brake') { add([boxGeo(s.w * 1.6, s.h * 0.55, 0.1, 0, 0, L + 0.05)], DARK); muzzle += 0.1; }
+  if (mz === 'choke') { add([boxGeo(s.w * 0.8, s.h * 0.8, 0.05, 0, 0.02, L + 0.025)], DARK); muzzle += 0.05; }
+  if (mz === 'suppressor') {
+    const r = Math.max(s.w, s.h) * 0.42;
+    add([new THREE.CylinderGeometry(r, r, 0.28, 10).rotateX(Math.PI / 2).translate(0, 0, L + 0.14)], 0x34363c);
+    muzzle += 0.28;
   }
-  if (s.barrel) group.add(new THREE.Mesh(boxGeo(0.06, 0.06, s.len * 0.55, 0, 0.07, s.len * 0.72), gunMat(s.barrel)));
   if (s.barrels) {
     const b = [];
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2;
-      b.push(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 6).rotateX(Math.PI / 2).translate(Math.cos(a) * 0.06, Math.sin(a) * 0.06, s.len + 0.12));
+      b.push(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 6).rotateX(Math.PI / 2).translate(Math.cos(a) * 0.06, Math.sin(a) * 0.06, L + 0.12));
     }
-    group.add(new THREE.Mesh(mergeGeos(b), gunMat(0x6a6e76, 0.12)));
+    add(b, 0x6a6e76, 0.12);
+    muzzle = L + 0.37;
   }
+
+  // Magazine (a box under the gun, or in the grip for a pistol; a drum on the launcher)
+  const mag = f('mag', 'factory');
+  if (s.drum) {
+    const r = mag === 'extended' ? 0.19 : 0.15;
+    add([new THREE.CylinderGeometry(r, r, 0.22, 12).rotateX(Math.PI / 2).translate(0, -0.02, 0.22)], 0x3e4630);
+  } else if (mag === 'drum') {
+    add([new THREE.CylinderGeometry(0.14, 0.14, s.w * 1.1, 14).rotateZ(Math.PI / 2).translate(0, -top - 0.12, L * 0.42)], DARK);
+  } else if (s.mag || mag !== 'factory') {
+    const long = mag === 'extended' ? 0.36 : 0.22;
+    const atZ = s.mag ? L * 0.5 : 0.08;            // a pistol's lives in the grip
+    const y0 = s.mag ? -top : -0.21;
+    if (s.mag || mag === 'extended') add([boxGeo(s.w * 0.7, long, 0.1, 0, y0 - long / 2 + 0.03, atZ)], s.mag ? s.color : DARK);
+  }
+  if (mag === 'quick') add([boxGeo(s.w * 0.75, 0.04, 0.12, 0, (s.mag ? -top - 0.22 : -0.22), s.mag ? L * 0.5 : 0.08)], 0xe0b020, 0.35);
+
+  // Sight
+  const sight = f('sight', 'iron');
+  if (sight === 'reddot') {
+    add([boxGeo(0.06, 0.06, 0.08, 0, top + 0.06, L * 0.32)], DARK);
+    group.add(new THREE.Mesh(boxGeo(0.025, 0.025, 0.01, 0, top + 0.07, L * 0.32 - 0.045), basic(0xff3030)));
+  } else if (sight === 'holo') {
+    add([boxGeo(0.08, 0.075, 0.03, 0, top + 0.065, L * 0.36), boxGeo(0.08, 0.02, 0.1, 0, top + 0.035, L * 0.33)], DARK);
+  } else if (sight === 'scope') {
+    add([new THREE.CylinderGeometry(0.04, 0.045, 0.3, 10).rotateX(Math.PI / 2).translate(0, top + 0.07, L * 0.35),
+      boxGeo(0.03, 0.05, 0.04, 0, top + 0.03, L * 0.3)], DARK);
+  }
+
+  // Stock, behind the grip
+  const stock = f('stock');
+  if (stock) {
+    if (stock === 'light') add([boxGeo(s.w * 0.25, s.h * 0.9, 0.24, 0, -0.02, -0.12), boxGeo(s.w * 0.5, s.h * 1.1, 0.04, 0, -0.03, -0.24)], DARK);
+    else if (stock === 'heavy') add([boxGeo(s.w * 0.9, s.h * 1.25, 0.26, 0, -0.03, -0.13), boxGeo(s.w * 0.95, s.h * 1.4, 0.05, 0, -0.04, -0.27)], 0x24262a);
+    else if (stock === 'precision') add([boxGeo(s.w * 0.7, s.h * 1.05, 0.32, 0, -0.03, -0.16), boxGeo(s.w * 0.6, 0.04, 0.16, 0, top + 0.01, -0.14)], s.color);
+    else add([boxGeo(s.w * 0.7, s.h * 0.95, 0.22, 0, -0.03, -0.11)], s.color);
+  }
+
+  // Under the handguard
+  const rail = f('rail', 'none'), rz = L * 0.7, under = -s.h / 2;
+  if (rail === 'foregrip') add([boxGeo(0.05, 0.13, 0.05, 0, under - 0.065, rz)], DARK);
+  if (rail === 'angled') add([boxGeo(0.05, 0.05, 0.16, 0, under - 0.04, rz).rotateX(-0.5)], DARK);
+  if (rail === 'laser' || rail === 'light') {
+    const tip = Math.min(rz + 0.07, L - 0.02);
+    add([boxGeo(0.06, 0.05, 0.12, 0, under - 0.03, tip - 0.06)], DARK);
+    group.add(new THREE.Mesh(boxGeo(0.04, 0.035, 0.012, 0, under - 0.03, tip + 0.002), basic(rail === 'laser' ? 0xff2a2a : 0xfff6d8)));
+  }
+
   group.scale.setScalar(GUN_SCALE);
   group.position.set(GUN_MOUNT.x, GUN_MOUNT.y, GUN_MOUNT.z);
   // len: grip to muzzle, in the survivor's units (after scaling)
-  return { group, len: (s.barrels ? s.len + 0.37 : s.len) * GUN_SCALE };
+  return { group, len: muzzle * GUN_SCALE };
 }
 
 /* ── Props ───────────────────────────────────────────────────────────── */

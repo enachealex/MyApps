@@ -1,4 +1,4 @@
-import { WEAPONS, LOADOUT_SLOTS } from './config.js';
+import { WEAPONS, LOADOUT_SLOTS, partsFor, weaponDef } from './config.js';
 
 /* Progress lives in localStorage on this device. Storage can be missing or
    throw (private browsing, blocked site data), so every access is guarded and
@@ -15,7 +15,9 @@ const defaults = () => ({
   character: 'rook',    // survivor picked last time
   owned: ['pistol'],    // guns bought in the Armory
   loadout: null,        // guns equipped to carry, besides the survivor's own; null until first chosen
-  wup: {},              // weapon upgrades, e.g. { smg: { damage: 2 } }
+  parts: {},            // gun parts, per gun: { smg: { owned: ['barrel:long'], fitted: { barrel: 'long' } } }
+  wup: {},              // old per-stat weapon upgrades, refunded on load (see below)
+  refunded: 0,          // coins given back for them, shown once on the menu
   pup: {},              // survivor upgrades, e.g. { maxHp: 1 }
   settings: { sound: true, haptics: true, quality: 'high', god: false, fps: false, startAt: 0, powers: false },
 });
@@ -36,16 +38,42 @@ function merge(base, stored) {
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return merge(defaults(), JSON.parse(raw));
+    if (raw) return refundOldUpgrades(merge(defaults(), JSON.parse(raw)));
   } catch { /* fall through to a fresh save */ }
   return defaults();
 }
+
+/* Guns used to be upgraded per stat (damage, fire rate, magazine) in
+   levels. Parts replaced that, so whatever was spent on those levels comes
+   back as coins. These are the old prices. */
+function refundOldUpgrades(sv) {
+  const OLD = { damage: 80, fireRate: 90, ammoCapacity: 60 };
+  let back = 0;
+  for (const [id, ups] of Object.entries(sv.wup || {})) {
+    const tier = Math.max(0, WEAPONS.findIndex((w) => w.id === id));
+    for (const [stat, levels] of Object.entries(ups || {})) {
+      for (let lv = 0; lv < (Number(levels) || 0); lv++) {
+        back += Math.round(((OLD[stat] || 0) * (1 + tier * 0.45) * Math.pow(1.65, lv)) / 5) * 5;
+      }
+    }
+  }
+  if (back > 0) {
+    sv.coins += back;
+    sv.refunded += back;
+    refundedNow = true;
+  }
+  sv.wup = {};
+  return sv;
+}
+let refundedNow = false;
 
 export const save = load();
 
 export function persist() {
   try { localStorage.setItem(KEY, JSON.stringify(save)); } catch { /* storage unavailable */ }
 }
+// Save a refund straight away, or the next load would pay it again.
+if (refundedNow) persist();
 
 export function resetSave() {
   const keep = save.settings;
@@ -54,7 +82,25 @@ export function resetSave() {
   persist();
 }
 
-export const weaponUps = (id) => save.wup[id] || (save.wup[id] = {});
+/* One gun's parts: what you've bought for it and what's fitted. */
+export function gunParts(id) {
+  const g = save.parts[id] || (save.parts[id] = {});
+  if (!Array.isArray(g.owned)) g.owned = [];
+  if (!g.fitted || typeof g.fitted !== 'object') g.fitted = {};
+  return g;
+}
+
+/* slot -> part id for a gun, keeping only parts it owns and that still fit. */
+export function fittedParts(id) {
+  const def = weaponDef(id), g = gunParts(id), out = {};
+  for (const slot of def.slots) {
+    const list = partsFor(def, slot);
+    const want = g.fitted[slot];
+    const part = list.find((p) => p.id === want);
+    if (part && (part.price === 0 || g.owned.includes(`${slot}:${part.id}`))) out[slot] = part.id;
+  }
+  return out;
+}
 
 /* The guns equipped in the Armory: up to LOADOUT_SLOTS - 1, carried besides
    the survivor's own. Until you first choose, it's your priciest guns. */
