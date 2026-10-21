@@ -17,6 +17,11 @@ the other apps is still there when you come back.
 The apps are the real upstream apps, not copies: this repository pins each one to an exact commit
 (`upstream.lock`), builds it from source, and adds only the code that hosts it in a tab.
 
+Each window opens on its **Home** tab, which lists its apps with the version of each and checks
+GitHub for newer releases at start-up. An app with a newer release gets an **Update** button, and
+the Home tab shows how many updates are waiting from any other tab (see [Updating the
+apps](#updating-the-apps)).
+
 ## Build and run
 
 You need [Rust](https://rustup.rs) 1.95 or newer and git.
@@ -37,16 +42,18 @@ The first build compiles about 2.5 million lines of Rust and takes about 20 minu
 ### Command line
 
 ```
-craft-studio [--tab <app>] [--no-settings] [--screenshot-all <folder>] [files…]
+craft-studio [--tab <app>] [--no-settings] [--screenshot-all <folder>] [--update <app,…>|all] [files…]
 ```
 
 - **files**: each opens in the app that handles its type (`craft-docs report.docx budget.xlsx`
   opens WordCraft and GridCraft), and the window starts on the first one's tab.
-- `--tab photocraft`: start on that tab (the ids are the lowercase app names).
+- `--tab photocraft`: start on that tab (the ids are the lowercase app names; `home` is Home).
 - `--no-settings`: start every app as on a fresh install and save nothing: no preferences, recent
   files or window layout are read or written.
 - `--screenshot-all <folder>`: open every tab in turn, save a screenshot of each to the folder
   with a `report.txt`, then close. A quick check that every app starts inside the window.
+- `--update photocraft,lightcraft` or `--update all`: what the Home tab's Update buttons do,
+  without opening the window (progress on standard error).
 
 `CRAFT_LOG=debug` makes the log more detailed. The log is in the settings folder (below), under
 `logs/`.
@@ -57,7 +64,8 @@ craft-studio [--tab <app>] [--no-settings] [--screenshot-all <folder>] [files…
 upstream.lock          the twelve apps (and the launcher, for its icons; craft-fonts) at exact commits
 scripts/fetch-upstream checks them out into vendor/, then applies patches/<app>/*.patch
 patches/               the few source changes the apps need to build together (each explained inside)
-crates/craft-suite     the window: title-bar tabs, switching, settings, closing, GPU set-up
+crates/craft-suite     the window: title-bar tabs, switching, settings, closing, GPU set-up,
+                       and the Home tab with its update checks and update builds
 crates/host-<app>      one per app: starts that app the way its own main.rs does, inside a tab
 apps/craft-studio      the Studio window: which tabs, in which order
 apps/craft-docs        the Docs window
@@ -115,13 +123,30 @@ dealt with those are left out (each `crates/host-<app>/src/lib.rs` lists exactly
 
 ## Updating the apps
 
-The upstream apps move quickly. To take newer code:
+The upstream apps publish a release every few days. `upstream.lock` records, beside each app's
+commit, the release it is (`v0.10.0`) or follows (`v0.7.0+`: changes made after v0.7.0).
 
-1. Put the new commit for an app in `upstream.lock` (`git ls-remote https://github.com/storytold/<app> main`).
-2. Run `scripts/fetch-upstream.ps1 -Only <app>`.
-3. `cargo build`, and `cargo test -p host-<app>`. If the app changed how it starts up
-   (`vendor/<app>/apps/<app>/src/main.rs`), bring `crates/host-<app>` in line with it. If a patch in
-   `patches/<app>` no longer applies, check whether upstream fixed the problem and drop or redo it.
+**From the Home tab.** At start-up each window looks up every app's newest release (`git ls-remote`,
+so no GitHub account or rate limit is involved). Clicking an app's **Update** button, or
+**Update all**, rebuilds the window from this folder in the background while you keep working:
+
+1. the app's line in `upstream.lock` is set to the release,
+2. its source is checked out (`scripts/fetch-upstream`),
+3. the window is built (`cargo build --release`, about 20 minutes, needing ~7 GB while it runs),
+4. the new program goes into `dist/`,
+5. the build cache is deleted again.
+
+Then **Restart now** closes the window the usual way (each app asks about unsaved work) and opens
+the new one. If a step fails, typically because the new release changed how the app starts up
+and its host crate needs a change, `upstream.lock` and the source go back to what they were, the
+Home tab says why, and nothing else changes. Updating needs this folder where it was built and
+Rust installed; `upstream.lock` is left changed, for you to commit.
+
+**By hand.** Put the new commit and version in `upstream.lock`, run
+`scripts/fetch-upstream.ps1 -Only <app>`, then `cargo build` and `cargo test -p host-<app>`. If the
+app changed how it starts up (`vendor/<app>/apps/<app>/src/main.rs`), bring `crates/host-<app>` in
+line with it. If a patch in `patches/<app>` no longer applies, check whether upstream fixed the
+problem and drop or redo it.
 
 ## Licences
 

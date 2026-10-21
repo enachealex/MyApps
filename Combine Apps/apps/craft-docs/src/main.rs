@@ -1,6 +1,6 @@
 //! ArtCraft Docs: the apps for writing, data and documents, one tab each.
 //!
-//! Usage: `craft-docs [--tab <app>] [--no-settings] [--screenshot-all <dir>] [files…]`
+//! Usage: `craft-docs [--tab <app>] [--no-settings] [--screenshot-all <dir>] [--update <app,…>|all] [files…]`
 // Release builds on Windows are GUI apps: no console window when started from Explorer.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
@@ -11,5 +11,7 @@ fn main() -> eframe::Result {
         icon_png: include_bytes!("../../../vendor/craft-launcher/assets/app-icon/hicolor/256x256/apps/ai.storyteller.artcraft-launcher.png"),
         // Files go to the first tab that opens their type.
         tools: vec![host_wordcraft::tool(), host_gridcraft::tool(), host_deckcraft::tool(), host_pdfcraft::tool(), host_designcraft::tool()],
+        // The Home tab: each app's version, and updates built from this package.
+        package: Some(env!("CARGO_PKG_NAME")),
     })
 }

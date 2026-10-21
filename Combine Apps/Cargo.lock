@@ -1215,7 +1215,7 @@ dependencies = [
  "cadcraft-engine",
  "cadcraft-geom",
  "cadcraft-render",
- "craft-ui",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675)",
  "egui",
  "egui-wgpu",
  "image",
@@ -1836,6 +1836,14 @@ source = "git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8
 dependencies = [
  "egui",
  "serde",
+]
+
+[[package]]
+name = "craft-ui"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=d27646a5f7c8b4fc85d9dd3213b8c88b58e0088d#d27646a5f7c8b4fc85d9dd3213b8c88b58e0088d"
+dependencies = [
+ "egui",
 ]
 
 [[package]]
@@ -2518,7 +2526,7 @@ dependencies = [
 name = "designcraft-ui-egui"
 version = "0.6.0"
 dependencies = [
- "craft-ui",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675)",
  "designcraft-color",
  "designcraft-compose",
  "designcraft-doc",
@@ -3208,7 +3216,7 @@ dependencies = [
 name = "effectcraft-ui-egui"
 version = "0.8.0"
 dependencies = [
- "craft-ui",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675)",
  "effectcraft-color",
  "effectcraft-engine",
  "effectcraft-geom",
@@ -4458,7 +4466,7 @@ name = "filmcraft-ui-egui"
 version = "0.6.0"
 dependencies = [
  "cpu-time",
- "craft-ui",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675)",
  "eframe",
  "egui",
  "filmcraft-audio-dsp",
@@ -5420,7 +5428,7 @@ dependencies = [
 
 [[package]]
 name = "gridcraft-calc"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
  "gridcraft-core",
  "gridcraft-formula",
@@ -5432,7 +5440,7 @@ dependencies = [
 
 [[package]]
 name = "gridcraft-chart"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
  "gridcraft-calc",
  "gridcraft-core",
@@ -5443,7 +5451,7 @@ dependencies = [
 
 [[package]]
 name = "gridcraft-core"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
  "js-sys",
  "serde",
@@ -5452,7 +5460,7 @@ dependencies = [
 
 [[package]]
 name = "gridcraft-engine"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
  "gridcraft-calc",
  "gridcraft-chart",
@@ -5472,7 +5480,7 @@ dependencies = [
 
 [[package]]
 name = "gridcraft-formula"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
  "gridcraft-core",
  "serde",
@@ -5481,7 +5489,7 @@ dependencies = [
 
 [[package]]
 name = "gridcraft-functions"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
  "gridcraft-core",
  "regex",
@@ -5489,7 +5497,7 @@ dependencies = [
 
 [[package]]
 name = "gridcraft-model"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
  "gridcraft-core",
  "gridcraft-formula",
@@ -5500,19 +5508,20 @@ dependencies = [
 
 [[package]]
 name = "gridcraft-numfmt"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
  "gridcraft-core",
 ]
 
 [[package]]
 name = "gridcraft-pdf"
-version = "0.5.0"
+version = "0.8.0"
 
 [[package]]
 name = "gridcraft-ui-egui"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=d27646a5f7c8b4fc85d9dd3213b8c88b58e0088d)",
  "egui",
  "gridcraft-chart",
  "gridcraft-engine",
@@ -5529,7 +5538,7 @@ dependencies = [
 
 [[package]]
 name = "gridcraft-xlsx"
-version = "0.5.0"
+version = "0.8.0"
 dependencies = [
  "aes 0.9.3",
  "gridcraft-core",
@@ -7304,7 +7313,7 @@ dependencies = [
 name = "lightcraft-ui-egui"
 version = "0.6.0"
 dependencies = [
- "craft-ui",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675)",
  "egui",
  "lightcraft-catalog",
  "lightcraft-color",
@@ -9091,7 +9100,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "bytemuck",
- "craft-ui",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675)",
  "eframe",
  "egui",
  "egui_extras",
@@ -9564,7 +9573,7 @@ name = "photocraft-ui-egui"
 version = "0.7.0"
 dependencies = [
  "base64 0.22.1",
- "craft-ui",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675)",
  "eframe",
  "egui",
  "egui_extras",
@@ -11521,7 +11530,7 @@ dependencies = [
 name = "soundcraft-ui-egui"
 version = "0.5.0"
 dependencies = [
- "craft-ui",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675)",
  "egui",
  "image",
  "log",
@@ -12974,7 +12983,7 @@ dependencies = [
 name = "vectorcraft-ui-egui"
 version = "0.9.0"
 dependencies = [
- "craft-ui",
+ "craft-ui 0.1.0 (git+https://github.com/storytold/craft-libs?rev=5c874d51eeb3de70e735c8ce87a59a7dedd47675)",
  "egui",
  "egui_extras",
  "image",

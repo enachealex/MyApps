@@ -27,6 +27,8 @@ const TAB_MAX: f32 = 180.0;
 const TAB_LABEL_MIN: f32 = 84.0;
 const TAB_MIN: f32 = 40.0;
 const TAB_TOP: f32 = 6.0;
+/// The Home tab's update count.
+const BADGE: Color32 = Color32::from_rgb(0x4c, 0x8d, 0xff);
 /// Resize zone thickness along an edge (thinner along the top, where the tabs are), and the side
 /// of a corner zone.
 const EDGE: f32 = 8.0;
@@ -45,6 +47,10 @@ pub struct TabView<'a> {
     pub summary: &'a str,
     pub icon: Option<TextureId>,
     pub state: TabState,
+    /// Running in the background: a dot under the icon, as in a dock.
+    pub dot: bool,
+    /// A count on the icon (the Home tab's updates); 0 for none.
+    pub badge: usize,
 }
 
 pub struct Bar<'a> {
@@ -189,15 +195,20 @@ fn paint_tab(ui: &Ui, c: &Colors, tab: &TabView<'_>, r: Rect, active: bool, hove
         let tint = if tab.state == TabState::NotStarted && !active { Color32::from_white_alpha(170) } else { Color32::WHITE };
         p.image(icon, icon_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint);
     }
-    match tab.state {
-        // An app running in the background: a dot under its icon, as in a dock.
-        TabState::Running if !active => {
-            p.circle_filled(pos2(icon_rect.center().x, r.bottom() - 3.0), 1.75, c.text_idle);
-        }
-        TabState::Failed => {
-            p.circle_filled(icon_rect.right_top() + vec2(-1.0, 1.0), 3.5, c.failed);
-        }
-        _ => {}
+    if tab.dot && !active {
+        p.circle_filled(pos2(icon_rect.center().x, r.bottom() - 3.0), 1.75, c.text_idle);
+    }
+    if tab.state == TabState::Failed {
+        p.circle_filled(icon_rect.right_top() + vec2(-1.0, 1.0), 3.5, c.failed);
+    }
+    if tab.badge > 0 {
+        let text = if tab.badge > 9 { "9+".to_owned() } else { tab.badge.to_string() };
+        let font = egui::FontId::proportional(9.5);
+        let galley = p.layout_no_wrap(text, font, Color32::WHITE);
+        let size = vec2((galley.size().x + 6.0).max(14.0), 14.0);
+        let badge = Rect::from_center_size(icon_rect.right_top() + vec2(1.0, 1.0), size);
+        p.rect_filled(badge, 7.0, BADGE);
+        p.galley(badge.center() - galley.size() / 2.0, galley, Color32::WHITE);
     }
     if !labelled {
         return;
@@ -396,7 +407,8 @@ mod tests {
             let mut clicked = None;
             let active = self.active;
             let mut out = self.ctx.run_ui(input, |ui| {
-                let tabs: Vec<TabView<'_>> = NAMES.iter().map(|n| TabView { name: n, summary: "", icon: None, state: TabState::Running }).collect();
+                let tabs: Vec<TabView<'_>> =
+                    NAMES.iter().map(|n| TabView { name: n, summary: "", icon: None, state: TabState::Running, dot: true, badge: 0 }).collect();
                 clicked = show(ui, &Bar { suite: "Suite", icon: None, tabs: &tabs, active });
                 if CUSTOM {
                     resize_zones(ui);

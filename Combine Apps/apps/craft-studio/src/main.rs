@@ -1,6 +1,6 @@
 //! ArtCraft Studio: the apps for photo, video, audio and design, one tab each.
 //!
-//! Usage: `craft-studio [--tab <app>] [--no-settings] [--screenshot-all <dir>] [files…]`
+//! Usage: `craft-studio [--tab <app>] [--no-settings] [--screenshot-all <dir>] [--update <app,…>|all] [files…]`
 // Release builds on Windows are GUI apps: no console window when started from Explorer.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
@@ -21,5 +21,7 @@ fn main() -> eframe::Result {
             host_soundcraft::tool(),
             host_cadcraft::tool(),
         ],
+        // The Home tab: each app's version, and updates built from this package.
+        package: Some(env!("CARGO_PKG_NAME")),
     })
 }

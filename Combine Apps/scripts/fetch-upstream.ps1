@@ -30,7 +30,7 @@ function Invoke-Git {
 foreach ($line in Get-Content (Join-Path $root 'upstream.lock')) {
     $line = $line.Trim()
     if (-not $line -or $line.StartsWith('#')) { continue }
-    $name, $commit, $url = $line -split '\s+'
+    $name, $commit, $version, $url = $line -split '\s+'
     if ($Only -and $Only -notcontains $name) { continue }
 
     $dir = Join-Path $vendor $name

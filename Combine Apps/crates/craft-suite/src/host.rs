@@ -21,18 +21,25 @@
 //! **Closing asks every running app.** A close request goes to the shown app first; if it lets
 //! the window close, the next running app is shown with the request, and so on. Any app may keep
 //! the window open (its "save changes?" prompt), which ends the round ([`SuiteApp::continue_close`]).
+//!
+//! **The Home tab** ([`crate::home`]) comes first when the window can update its apps: an app of
+//! the suite's own, which lists the others with their versions and updates. It sits out the close
+//! round (it has nothing to save), and asks the host to show a tab or restart the window.
 
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::mpsc::{Receiver, Sender};
 use std::time::Instant;
 
 use egui::{ViewportCommand, ViewportId};
 
+use crate::home::{self, Request};
 use crate::shoot::Shoot;
 use crate::store::Store;
 use crate::titlebar::{self, TabState, TabView};
+use crate::update::Updates;
 use crate::window_frame::Guard;
 use crate::{Args, Launch, Startup, Suite};
 
@@ -65,6 +72,8 @@ struct Tab {
     /// "Opening …" has been on screen: build the app before the next frame.
     opening_shown: bool,
     started_in_ms: Option<f64>,
+    /// The Home tab rather than an app of the suite.
+    home: bool,
 }
 
 impl Tab {
@@ -111,10 +120,25 @@ pub(crate) struct SuiteApp {
     commands_before: usize,
     frame_guard: Option<Guard>,
     shoot: Option<Shoot>,
+    /// The apps' update checks and update builds, with the Home tab.
+    updates: Option<Arc<Updates>>,
+    /// What the Home tab asks of the window (the sender is the Home tab's; a copy is kept so
+    /// the channel never closes).
+    home_requests: Option<(Sender<Request>, Receiver<Request>)>,
+    /// Start the updated program once the window has closed.
+    restart: bool,
 }
 
 impl SuiteApp {
     pub fn new(cc: &eframe::CreationContext<'_>, suite: Suite, args: Args, data_dir: Option<PathBuf>) -> Self {
+        let apps: Vec<&'static str> = suite.tools.iter().map(|t| t.id).collect();
+        let updates = suite.package.map(|package| Updates::new(package, &apps, cc.egui_ctx.clone()));
+        Self::with_updates(cc, suite, args, data_dir, updates)
+    }
+
+    /// With `updates` (`Some` for a window with a Home tab), which tests replace with one whose
+    /// commands are stand-ins.
+    fn with_updates(cc: &eframe::CreationContext<'_>, suite: Suite, args: Args, data_dir: Option<PathBuf>, updates: Option<Arc<Updates>>) -> Self {
         let ctx = cc.egui_ctx.clone();
         // wgpu's default for an error nothing catches is a panic, which in the renderer would take
         // every app down. Log it instead. Apps that watch the device themselves (PhotoCraft,
@@ -127,25 +151,15 @@ impl SuiteApp {
         for f in args.files {
             match crate::tool_for(&suite.tools, &f) {
                 Some(i) => {
-                    first_file_tool.get_or_insert(i);
+                    first_file_tool.get_or_insert(suite.tools[i].id);
                     files[i].push(f);
                 }
                 None => log::warn!("{}: none of the apps in {} opens this kind of file", f.display(), suite.name),
             }
         }
-        let find = |id: &str| suite.tools.iter().position(|t| t.id == id);
-        let requested = args.tab.as_deref().and_then(|id| {
-            let i = find(id);
-            if i.is_none() {
-                log::warn!("--tab {id}: no such app (have: {})", suite.tools.iter().map(|t| t.id).collect::<Vec<_>>().join(", "));
-            }
-            i
-        });
-        let saved = cc.storage.and_then(|s| s.get_string(ACTIVE_KEY));
         let shoot = args.screenshot_all.map(Shoot::new);
-        let active = if shoot.is_some() { 0 } else { requested.or(first_file_tool).or_else(|| saved.as_deref().and_then(find)).unwrap_or(0) };
 
-        let tabs: Vec<Tab> = suite
+        let mut tabs: Vec<Tab> = suite
             .tools
             .into_iter()
             .zip(files)
@@ -181,12 +195,60 @@ impl SuiteApp {
                     drops: vec![],
                     opening_shown: false,
                     started_in_ms: None,
+                    home: false,
                 }
             })
             .collect();
+        let icon = texture(&ctx, "craft-suite-icon", suite.icon_png);
+        let mut home_requests = None;
+        if let Some(u) = &updates {
+            u.remove_old_exe();
+            u.check();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let tx_keep = tx.clone();
+            let entries = tabs
+                .iter()
+                .enumerate()
+                .map(|(i, t)| home::Entry { tab: i + 1, id: t.id, name: t.name, summary: t.summary, icon: t.icon.as_ref().map(|i| i.id()) })
+                .collect();
+            tabs.insert(
+                0,
+                Tab {
+                    id: "home",
+                    name: "Home",
+                    summary: "Your apps, their versions and their updates",
+                    extensions: &[],
+                    icon: icon.clone(),
+                    launch: Some(home::launch(suite.name, entries, u.clone(), tx)),
+                    app: None,
+                    failed: None,
+                    store: Store::open(None),
+                    memory: None,
+                    fonts: None,
+                    title: None,
+                    drops: vec![],
+                    // Nothing slow to start: no "Opening …" first.
+                    opening_shown: true,
+                    started_in_ms: None,
+                    home: true,
+                },
+            );
+            home_requests = Some((tx_keep, rx));
+        }
+
+        let find = |id: &str| tabs.iter().position(|t| t.id == id);
+        let requested = args.tab.as_deref().and_then(|id| {
+            let i = find(id);
+            if i.is_none() {
+                log::warn!("--tab {id}: no such tab (have: {})", tabs.iter().map(|t| t.id).collect::<Vec<_>>().join(", "));
+            }
+            i
+        });
+        let saved = cc.storage.and_then(|s| s.get_string(ACTIVE_KEY));
+        let active = if shoot.is_some() { 0 } else { requested.or(first_file_tool.and_then(find)).or_else(|| saved.as_deref().and_then(find)).unwrap_or(0) };
         let mut app = Self {
             name: suite.name,
-            icon: texture(&ctx, "craft-suite-icon", suite.icon_png),
+            icon,
             window_icon: icon_data(suite.icon_png).map(Arc::new),
             ctx,
             tabs,
@@ -199,6 +261,9 @@ impl SuiteApp {
             commands_before: 0,
             frame_guard: Guard::new(cc, titlebar::CUSTOM),
             shoot,
+            updates,
+            home_requests,
+            restart: false,
         };
         // The first tab's memory goes straight into the context.
         let memory = app.tabs[active].take_memory();
@@ -317,7 +382,7 @@ impl SuiteApp {
 
     /// A close request arrived: ask the running apps, the shown one first.
     fn begin_close(&mut self) {
-        let mut queue: Vec<usize> = (0..self.tabs.len()).filter(|&i| self.tabs[i].app.is_some()).collect();
+        let mut queue: Vec<usize> = (0..self.tabs.len()).filter(|&i| self.tabs[i].app.is_some() && !self.tabs[i].home).collect();
         queue.sort_by_key(|&i| i != self.active);
         self.closing = queue;
     }
@@ -332,6 +397,7 @@ impl SuiteApp {
             if ctx.viewport(|v| v.commands.contains(&ViewportCommand::CancelClose)) {
                 log::info!("{} kept the window open", self.tabs[self.active].name);
                 self.closing.clear();
+                self.restart = false;
                 return;
             }
             self.closing.remove(0);
@@ -414,6 +480,18 @@ impl eframe::App for SuiteApp {
             self.begin_close();
         }
         self.route_drops(raw);
+        let requests: Vec<Request> = self.home_requests.as_ref().map(|(_, rx)| rx.try_iter().collect()).unwrap_or_default();
+        for r in requests {
+            match r {
+                Request::Show(i) if self.closing.is_empty() => self.switch_to = Some(i),
+                Request::Show(_) => {}
+                Request::Restart => {
+                    log::info!("restarting to finish an update");
+                    self.restart = true;
+                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                }
+            }
+        }
         // Another app handed this one files (`crate::open_in`): show it; it takes them itself.
         if self.closing.is_empty()
             && let Some(i) = crate::handoff::take_show(&self.tabs.iter().map(|t| t.id).collect::<Vec<_>>())
@@ -447,9 +525,22 @@ impl eframe::App for SuiteApp {
         if let Some(guard) = &self.frame_guard {
             guard.reapply();
         }
-        let views: Vec<TabView<'_>> =
-            self.tabs.iter().map(|t| TabView { name: t.name, summary: t.summary, icon: t.icon.as_ref().map(|i| i.id()), state: t.state() }).collect();
-        let bar = titlebar::Bar { suite: self.name, icon: self.icon.as_ref().map(|i| i.id()), tabs: &views, active: self.active };
+        let updates_available = self.updates.as_ref().map_or(0, |u| u.available());
+        let views: Vec<TabView<'_>> = self
+            .tabs
+            .iter()
+            .map(|t| TabView {
+                name: t.name,
+                summary: t.summary,
+                icon: t.icon.as_ref().map(|i| i.id()),
+                state: t.state(),
+                dot: t.state() == TabState::Running && !t.home,
+                badge: if t.home { updates_available } else { 0 },
+            })
+            .collect();
+        // With a Home tab, the suite's mark is on it rather than beside the tabs.
+        let mark = if self.updates.is_some() { None } else { self.icon.as_ref().map(|i| i.id()) };
+        let bar = titlebar::Bar { suite: self.name, icon: mark, tabs: &views, active: self.active };
         if let Some(i) = titlebar::show(ui, &bar)
             && i != self.active
             && self.shoot.is_none()
@@ -511,6 +602,16 @@ impl eframe::App for SuiteApp {
                 && catch_unwind(AssertUnwindSafe(|| app.on_exit())).is_err()
             {
                 log::error!("{} failed while shutting down", tab.name);
+            }
+        }
+        if self.restart
+            && let Some(u) = &self.updates
+        {
+            let exe = Some(u.installed_exe()).filter(|e| e.exists()).or_else(|| std::env::current_exe().ok());
+            match exe.map(|e| std::process::Command::new(&e).current_dir(e.parent().unwrap_or(Path::new("."))).spawn()) {
+                Some(Ok(_)) => log::info!("started the updated {}", self.name),
+                Some(Err(e)) => log::error!("couldn't start the updated {}: {e}", self.name),
+                None => log::error!("couldn't find the updated {}", self.name),
             }
         }
         log::info!("{} closed", self.name);
@@ -710,7 +811,7 @@ mod tests {
         fn new() -> Self {
             let ctx = egui::Context::default();
             let cc = eframe::CreationContext::_new_kittest(ctx.clone());
-            let suite = SuiteApp::new(&cc, Suite { name: "Test", app_id: "test", icon_png: &[], tools: tools() }, Args::default(), None);
+            let suite = SuiteApp::new(&cc, Suite { name: "Test", app_id: "test", icon_png: &[], tools: tools(), package: None }, Args::default(), None);
             events();
             Self { suite, ctx, frame: eframe::Frame::_new_kittest(), time: 0.0, close_sent: false }
         }
@@ -750,6 +851,73 @@ mod tests {
                 self.frame();
             }
         }
+    }
+
+    /// A window with a Home tab, whose update checks ask a stand-in for git: `a` has a newer
+    /// release, `b` is up to date.
+    fn harness_with_home() -> Harness {
+        let ctx = egui::Context::default();
+        let cc = eframe::CreationContext::_new_kittest(ctx.clone());
+        let root = std::env::temp_dir().join(format!("craft-suite-home-{}-{:?}", std::process::id(), std::thread::current().id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let lock = "a  1111  v1.0.0  https://example.com/a\nb  2222  v1.0.0  https://example.com/b\n";
+        let exec: Box<crate::update::Exec> = Box::new(|cmd, on_line| {
+            if cmd.args.first().map(String::as_str) == Some("ls-remote") {
+                on_line(if cmd.args.iter().any(|a| a.ends_with("/a")) { "3333\trefs/tags/v1.1.0" } else { "2222\trefs/tags/v1.0.0" });
+            }
+            Ok(())
+        });
+        let updates = Updates::with("craft-test", &["a", "b", "c", "crash"], lock, root, exec, Box::new(|| {}));
+        let suite = Suite { name: "Test", app_id: "test", icon_png: &[], tools: tools(), package: Some("craft-test") };
+        let suite = SuiteApp::with_updates(&cc, suite, Args::default(), None, Some(updates));
+        events();
+        Harness { suite, ctx, frame: eframe::Frame::_new_kittest(), time: 0.0, close_sent: false }
+    }
+
+    fn send(h: &Harness, request: Request) {
+        h.suite.home_requests.as_ref().unwrap().0.send(request).unwrap();
+    }
+
+    #[test]
+    fn the_home_tab_comes_first_opens_at_once_and_counts_updates() {
+        let mut h = harness_with_home();
+        assert_eq!((h.suite.tabs[0].id, h.suite.tabs[1].id), ("home", "a"));
+        assert_eq!(h.suite.active, 0, "a window opens on Home");
+        h.frame();
+        assert!(h.suite.tabs[0].app.is_some(), "Home needs no \"Opening …\" frame");
+        let u = h.suite.updates.clone().unwrap();
+        let start = Instant::now();
+        while u.checked_at().is_none() && start.elapsed().as_secs() < 5 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        h.frame();
+        assert_eq!(u.available(), 1, "the badge's count");
+        assert!(matches!(u.check_of("a"), Some(crate::update::Check::Available { .. })));
+        assert_eq!(u.check_of("b"), Some(crate::update::Check::UpToDate));
+    }
+
+    #[test]
+    fn home_shows_apps_and_restarts_through_the_close_round() {
+        let mut h = harness_with_home();
+        h.frame();
+        send(&h, Request::Show(2));
+        for _ in 0..3 {
+            h.frame();
+        }
+        assert_eq!(h.suite.active, 2);
+        assert!(h.suite.tabs[2].app.is_some(), "b runs");
+        events();
+        // Restarting closes the window the usual way: every running app but Home is asked, and
+        // one keeping it open (unsaved work) calls the restart off.
+        KEEP_OPEN.with(|k| *k.borrow_mut() = vec!["b"]);
+        send(&h, Request::Restart);
+        assert!(h.frame().contains(&ViewportCommand::Close));
+        assert!(h.suite.restart);
+        h.frame();
+        assert!(!h.suite.restart, "b kept the window open");
+        let asked: Vec<_> = events().into_iter().filter(|e| e.ends_with("asked to close")).collect();
+        assert_eq!(asked, ["b asked to close"]);
+        KEEP_OPEN.with(|k| k.borrow_mut().clear());
     }
 
     #[test]

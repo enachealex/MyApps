@@ -5,3 +5,5 @@
 /vendor/
 # Screenshots from `--screenshot-all` runs.
 /screenshots/
+# An update being built from a window's Home tab (crates/craft-suite/src/update.rs).
+/.update-in-progress

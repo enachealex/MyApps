@@ -11,7 +11,7 @@ set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 mkdir -p "$root/vendor"
 
-grep -v '^[[:space:]]*#' "$root/upstream.lock" | while read -r name commit url; do
+grep -v '^[[:space:]]*#' "$root/upstream.lock" | while read -r name commit version url; do
     [ -n "$name" ] || continue
     if [ $# -gt 0 ]; then
         case " $* " in *" $name "*) ;; *) continue ;; esac

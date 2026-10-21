@@ -12,11 +12,13 @@
 
 mod gpu;
 mod handoff;
+mod home;
 mod host;
 mod logging;
 mod shoot;
 mod store;
 mod titlebar;
+mod update;
 mod window_frame;
 
 use std::path::{Path, PathBuf};
@@ -70,14 +72,21 @@ pub struct Suite {
     pub icon_png: &'static [u8],
     /// The tabs, left to right.
     pub tools: Vec<Tool>,
+    /// The cargo package that builds this window (`craft-studio`). With it, the window opens with
+    /// a Home tab that checks every app for a newer release and rebuilds the window with it
+    /// ([`update`]); `None`: no Home tab.
+    pub package: Option<&'static str>,
 }
 
-/// The command line: `[--tab <id>] [--no-settings] [--screenshot-all <dir>] [files…]`.
+/// The command line: `[--tab <id>] [--no-settings] [--screenshot-all <dir>] [--update <app>|all]
+/// [files…]`.
 #[derive(Debug, Default)]
 struct Args {
     tab: Option<String>,
     no_settings: bool,
     screenshot_all: Option<PathBuf>,
+    /// Build updates for these apps (comma-separated, or `all`) instead of opening the window.
+    update: Option<String>,
     files: Vec<PathBuf>,
 }
 
@@ -90,6 +99,7 @@ impl Args {
                 Some("--tab") => out.tab = Some(args.next().and_then(|v| v.into_string().ok()).ok_or("--tab needs an app id")?),
                 Some("--no-settings") => out.no_settings = true,
                 Some("--screenshot-all") => out.screenshot_all = Some(args.next().map(PathBuf::from).ok_or("--screenshot-all needs a folder")?),
+                Some("--update") => out.update = Some(args.next().and_then(|v| v.into_string().ok()).ok_or("--update needs app ids, or all")?),
                 Some(s) if s.starts_with("--") => return Err(format!("unknown option {s}")),
                 // Old macOS passes a process serial number when launched from Finder.
                 Some(s) if s.starts_with("-psn_") => {}
@@ -113,7 +123,7 @@ pub fn run(suite: Suite) -> eframe::Result {
         Err(e) => {
             eprintln!("{}: {e}", suite.app_id);
             eprintln!(
-                "usage: {} [--tab <{}>] [--no-settings] [--screenshot-all <dir>] [files…]",
+                "usage: {} [--tab <{}>] [--no-settings] [--screenshot-all <dir>] [--update <app,…>|all] [files…]",
                 suite.app_id,
                 suite.tools.iter().map(|t| t.id).collect::<Vec<_>>().join("|")
             );
@@ -124,6 +134,14 @@ pub fn run(suite: Suite) -> eframe::Result {
     let data_dir = if args.no_settings { None } else { eframe::storage_dir(suite.app_id) };
     logging::install(suite.app_id, data_dir.as_deref());
     log::info!("{} {} starting with {} apps", suite.name, env!("CARGO_PKG_VERSION"), suite.tools.len());
+    if let Some(wanted) = &args.update {
+        let Some(package) = suite.package else {
+            eprintln!("{}: this window can't update its apps", suite.app_id);
+            std::process::exit(2);
+        };
+        let apps: Vec<&str> = suite.tools.iter().map(|t| t.id).collect();
+        std::process::exit(update::Updates::run_cli(package, &apps, wanted));
+    }
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(suite.name)
@@ -255,9 +273,10 @@ mod tests {
     #[test]
     fn the_command_line_takes_a_tab_a_screenshot_folder_and_files() {
         let os = |v: &[&str]| v.iter().map(std::ffi::OsString::from).collect::<Vec<_>>();
-        let a = Args::parse(os(&["--tab", "wordcraft", "a.docx", "--screenshot-all", "shots", "--no-settings", "b.xlsx"])).unwrap();
+        let a = Args::parse(os(&["--tab", "wordcraft", "a.docx", "--screenshot-all", "shots", "--no-settings", "b.xlsx", "--update", "all"])).unwrap();
         assert_eq!(a.tab.as_deref(), Some("wordcraft"));
         assert!(a.no_settings);
+        assert_eq!(a.update.as_deref(), Some("all"));
         assert_eq!(a.screenshot_all, Some(PathBuf::from("shots")));
         assert_eq!(a.files, vec![PathBuf::from("a.docx"), PathBuf::from("b.xlsx")]);
         assert!(Args::parse(os(&["--tab"])).is_err());
