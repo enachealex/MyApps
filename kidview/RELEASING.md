@@ -33,7 +33,9 @@ Everything happens on your PC and your website.
    (For the very first release, use the version already in the code: `.\scripts\release.ps1 1.0.0`.)
 3. **Try the draft.** Install the APKs from the links it prints, over your current apps, and run the new
    server (Windows: the zip's `Install KidView.cmd`). Found a problem? Fix it and run `release.ps1`
-   with the same version again.
+   with the same version again. The links it prints always get the new files; other links to a rebuilt
+   draft (like the kid setup page) can get the previous build for up to 10 minutes, while the site's
+   cache catches up. Published versions never change, so this only affects drafts.
 4. **Publish:**
    ```
    .\scripts\publish.ps1 1.1.0

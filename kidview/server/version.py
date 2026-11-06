@@ -76,17 +76,39 @@ def update() -> dict | None:
     return None
 
 
+_own: dict = {"checked": 0.0, "release": None}
+
+
+def _check_own() -> None:
+    """This version's own release.json (it's on the site for drafts too): gives its files' checksums."""
+    try:
+        req = urllib.request.Request(f"{SITE}{VERSION}/release.json",
+                                     headers={"User-Agent": f"KidView/{VERSION}", "Cache-Control": "no-cache"})
+        with urllib.request.urlopen(req, timeout=10) as res:
+            rel = json.load(res)
+        with _lock:
+            _own["release"] = rel
+    except Exception:
+        pass
+
+
 def kids_app_path() -> str | None:
     """The KidView app a child's device should download, relative to SITE: the newest published
-    version, or else this server's own version (always on the site once released)."""
+    version, or else this server's own version (always on the site once released). Includes the
+    file's fingerprint when known, so phones never get an old copy from a cache."""
     if not configured():
         return None
     update()  # refreshes what's published, in the background, when it's old
     with _lock:
         rel = _latest["release"]
-    if rel and rel.get("kids_apk"):
-        return rel["kids_apk"]
-    return f"{VERSION}/KidView-{VERSION}.apk"
+        if time.time() - _own["checked"] > 3600:
+            _own["checked"] = time.time()
+            threading.Thread(target=_check_own, daemon=True).start()
+        own = _own["release"]
+    if not (rel and rel.get("kids_apk")):
+        rel = own if own and own.get("kids_apk") else {"kids_apk": f"{VERSION}/KidView-{VERSION}.apk"}
+    path = rel["kids_apk"]
+    return with_fingerprint(path, rel.get("sha256", {}).get(path))
 
 
 def kids_app_url() -> str | None:
@@ -113,10 +135,16 @@ def _check() -> None:
         pass  # offline, or nothing published yet: try again later
 
 
+def with_fingerprint(path: str, sha: str | None) -> str:
+    """path?h=<start of its checksum>: a rebuilt file gets a new link, so no cache serves an old copy."""
+    return f"{path}?h={sha[:12]}" if sha else path
+
+
 def download(rel: dict, key: str) -> bytes:
     """Downloads one file of a release (e.g. "windows", "server") and checks it isn't damaged."""
     path = rel[key]
-    req = urllib.request.Request(urllib.parse.urljoin(LATEST, path), headers={"User-Agent": f"KidView/{VERSION}"})
+    url = urllib.parse.urljoin(LATEST, with_fingerprint(path, rel.get("sha256", {}).get(path)))
+    req = urllib.request.Request(url, headers={"User-Agent": f"KidView/{VERSION}"})
     with urllib.request.urlopen(req, timeout=300) as res:
         data = res.read()
     if (want := rel.get("sha256", {}).get(path)) and hashlib.sha256(data).hexdigest() != want:

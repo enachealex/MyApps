@@ -27,7 +27,8 @@ if (-not $Yes -and (Read-Host "Publish it? (y/N)") -notmatch '^[yY]') { exit }
 [IO.File]::WriteAllText("$PWD\$site\server-latest.txt", "$($rel.server) $($rel.sha256.($rel.server))`n")
 [IO.File]::WriteAllText("$PWD\$site\install.sh", ((Get-Content docker\install.sh -Raw) -replace '__SITE__', $cfg.url -replace "`r`n", "`n"))
 
-# The download page
+# The download page. Links carry the file's fingerprint (?h=), so no cache can serve an old build.
+function Get-FingerprintLink($rel, $key) { $path = $rel.$key; "$path`?h=$($rel.sha256.$path.Substring(0, 12))" }
 function Html([string]$s) { [Net.WebUtility]::HtmlEncode($s) }
 $notesHtml = ""; $inList = $false
 foreach ($line in ($rel.notes -split "`n")) {
@@ -44,9 +45,9 @@ if ($inList) { $notesHtml += "</ul>" }
 $fill = [ordered]@{
     '{{VERSION}}'     = $Version
     '{{DATE}}'        = ([datetime]$rel.date).ToString('MMMM d, yyyy', [Globalization.CultureInfo]::InvariantCulture)
-    '{{KIDS_APK}}'    = $rel.kids_apk
-    '{{PARENT_APK}}'  = $rel.parent_apk
-    '{{WINDOWS_ZIP}}' = $rel.windows
+    '{{KIDS_APK}}'    = Get-FingerprintLink $rel 'kids_apk'
+    '{{PARENT_APK}}'  = Get-FingerprintLink $rel 'parent_apk'
+    '{{WINDOWS_ZIP}}' = Get-FingerprintLink $rel 'windows'
     '{{SITE}}'        = $cfg.url
     '{{NOTES}}'       = $notesHtml
 }

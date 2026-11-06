@@ -22,7 +22,7 @@ echo "Downloading the latest KidView server..."
 latest=$(curl -fsSL "${SITE}server-latest.txt")
 path=${latest%% *}
 want=$(printf '%s' "${latest#* }" | tr -d '[:space:]')
-curl -fsSL "${SITE}${path}" -o kidview-server.tar.gz
+curl -fsSL "${SITE}${path}?h=$(printf '%s' "$want" | cut -c1-12)" -o kidview-server.tar.gz
 have=$( (sha256sum kidview-server.tar.gz 2>/dev/null || shasum -a 256 kidview-server.tar.gz) | cut -d' ' -f1)
 if [ "$want" != "$have" ]; then
     rm -f kidview-server.tar.gz

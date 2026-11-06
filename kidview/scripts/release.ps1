@@ -109,8 +109,10 @@ Complete-Upload $cfg "KidView $Version (draft)" @('android/gradle.properties', '
 Write-Host ""
 Write-Host "Draft $Version is ready. Families can't see it yet." -ForegroundColor Green
 if ("$($cfg.upload.method)" -eq 'none') { Write-Host "Upload the folder $out to $($cfg.url)$Version/ yourself." }
-Write-Host "Try it:"
-Write-Host "  Kids' app:   $($cfg.url)$Version/$($files.kids_apk)"
-Write-Host "  Parent app:  $($cfg.url)$Version/$($files.parent_apk)"
-Write-Host "  Windows:     $($cfg.url)$Version/$($files.windows)"
+# "?h=" makes the links skip the site's cache, in case this version was built before.
+function TryLink($name) { "$($cfg.url)$Version/$name`?h=$($sha["$Version/$name"].Substring(0, 12))" }
+Write-Host "Try it (live a few minutes after the push):"
+Write-Host "  Kids' app:   $(TryLink $files.kids_apk)"
+Write-Host "  Parent app:  $(TryLink $files.parent_apk)"
+Write-Host "  Windows:     $(TryLink $files.windows)"
 Write-Host "When it's good, send it to every family:   .\scripts\publish.ps1 $Version"

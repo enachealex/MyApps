@@ -85,9 +85,10 @@ object Updater {
         if (version.isEmpty() || !isNewer(version, currentVersion(ctx))) return@withContext null
         if (!force && p.getString("later", null) == version && now - p.getLong("later_at", 0) < 24 * 3600 * 1000L) return@withContext null
         val path = json.optString("parent_apk").ifEmpty { return@withContext null }
-        val url = java.net.URL(java.net.URL(latestUrl), path).toString()
-        Release(version, url, path.substringAfterLast('/'), json.optString("notes"),
-            json.optJSONObject("sha256")?.optString(path).orEmpty())
+        val sha = json.optJSONObject("sha256")?.optString(path).orEmpty()
+        // "?h=" + the file's fingerprint: a rebuilt file gets a new link, so no cache can serve an old one.
+        val url = java.net.URL(java.net.URL(latestUrl), path).toString() + (if (sha.isNotEmpty()) "?h=${sha.take(12)}" else "")
+        Release(version, url, path.substringAfterLast('/'), json.optString("notes"), sha)
     }
 
     fun later(ctx: Context, r: Release) {

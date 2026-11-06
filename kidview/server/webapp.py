@@ -434,8 +434,10 @@ def add_page(server: str, code: str, code_ok: bool, apk_url: str | None, android
 {phone_note}
 <ol>
   <li><b>Install KidView</b>
-    <p>Tap the button, then open the file when it has downloaded. Android may ask you to allow installs from
-    this browser, and Google Play Protect may ask you to confirm, because KidView isn't from the Play Store.</p>
+    <p>Tap the button, then open the file when it has downloaded. Because KidView isn't from the Play Store,
+    Chrome says the file "might be harmful" (it says that about every app from a website: tap
+    <b>Download anyway</b>), Android asks once to allow installs from this browser, and Google Play
+    Protect may ask you to confirm.</p>
     {install}</li>
   <li><b>Connect it to your home</b>
     <p>When KidView is installed, come back to this page and tap:</p>
