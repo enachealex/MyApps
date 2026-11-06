@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 
 VERSION = "1.0.0"
-SITE = "https://YOUR-SITE/kidview/"   # set from scripts/site.json by scripts/release.ps1
+SITE = "https://myapps.thejumpvault.com/kidview/"   # set from scripts/site.json by scripts/release.ps1
 LATEST = SITE + "latest.json"
 
 # How this copy was installed decides how it updates. Set by the Dockerfile and the Windows tray.

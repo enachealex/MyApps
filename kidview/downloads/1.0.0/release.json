@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "date": "2026-11-05",
+  "notes": "The first public version.\n\n- A kids' app for Android that only shows what your rules allow: no ads, comments or \"up next\".\n- Block videos, channels, words and whole topics (Roblox, scary games, brainrot memes, pranks).\n- Filtered mode (anything not blocked) or Approved mode (only channels you allow).\n- Schedules for when watching is on or off, with \"allow for 30 minutes\" when you need it.\n- Different restrictions for each child's device.\n- An offline library that saves videos onto the kids' devices for car trips and flights.\n- Recommendations that start with funny and educational picks, then follow what each child likes.\n- Activity for the past week (or longer, if you choose), with filters.\n- The KidView Parent app for your phone, with parent accounts and a change log.\n- Set up a device by scanning a QR code.\n- The apps tell you when a new version is out, and you choose when to update.",
+  "kids_apk": "1.0.0/KidView-1.0.0.apk",
+  "parent_apk": "1.0.0/KidView-Parent-1.0.0.apk",
+  "windows": "1.0.0/KidView-Server-Windows-1.0.0.zip",
+  "server": "1.0.0/kidview-server-1.0.0.tar.gz",
+  "sha256": {
+    "1.0.0/KidView-1.0.0.apk": "5bf1ff7dfc1cd46642be45cbfda73a457db0366ce49c1e0aa20353cb9a9ac80d",
+    "1.0.0/KidView-Parent-1.0.0.apk": "43591e526ed0613ed5a6903bd2c5b996ccfb996b9ebb3338424cd37786291373",
+    "1.0.0/KidView-Server-Windows-1.0.0.zip": "8ff29e5252b68c3299a0cc807b61a3dccb349362005708467941867350fe9a08",
+    "1.0.0/kidview-server-1.0.0.tar.gz": "f9821997e530fd9cb7a904eb681d2fd88a76bcd46414c980d09bfb1522eeaa1d"
+  }
+}
