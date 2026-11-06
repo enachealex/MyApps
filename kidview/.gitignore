@@ -1,0 +1,20 @@
+# Never commit these.
+# The app signing key (back it up somewhere safe instead):
+android/signing/
+*.jks
+*.keystore
+# Notes about your own home server:
+deploy/
+# Settings, activity and saved videos from running the server here:
+server/data/
+
+# Build output (the published downloads live in downloads/ and ARE committed)
+dist/
+__pycache__/
+server/.venv/
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/parent/build/
+android/local.properties

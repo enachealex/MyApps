@@ -1,0 +1,1330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>KidView Parent Controls</title>
+<!-- Installable as an app: iPhone Safari → Share → Add to Home Screen; Android Chrome → ⋮ → Add to Home screen. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="KidView">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b2029" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/admin/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/admin/icon-180.png">
+<link rel="icon" type="image/png" href="/admin/icon-192.png">
+<style>
+:root {
+  --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+  --accent: #3b6fe0; --accent-soft: #e8efff; --ok: #1f8a4c; --ok-soft: #e3f5ea;
+  --bad: #c43d3d; --bad-soft: #fde8e8; --warn-soft: #fff4dc; --warn: #8a5a00;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151b; --card: #1b2029; --text: #e7eaf0; --muted: #98a2b3; --line: #2c3340;
+    --accent: #7aa2ff; --accent-soft: #1f2a44; --ok: #5fd28e; --ok-soft: #173225;
+    --bad: #ff7b7b; --bad-soft: #3a1d1f; --warn-soft: #3a2f14; --warn: #f3c56a;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+/* Always reserve the scrollbar's space so short and long tabs are the same width. */
+html { scrollbar-gutter: stable; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header { background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.bar { max-width: 1100px; margin: 0 auto; padding: 14px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.logo { font-weight: 700; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.logo span { background: var(--accent); color: #fff; border-radius: 8px; padding: 2px 8px; font-size: 14px; }
+nav { display: flex; gap: 4px; flex-wrap: wrap; }
+/* Same weight for every tab label, so the selected one doesn't get wider and push the others. */
+nav button { background: none; border: 0; color: var(--muted); padding: 8px 12px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer; }
+nav button.on { background: var(--accent-soft); color: var(--accent); }
+.spacer { flex: 1; }
+main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+/* One layout for every tab: two even columns (one on narrow screens). Wide cards span both. */
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+@media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.wide { grid-column: 1 / -1; }
+section[data-page] > .card + .results, section[data-page] > .card + .card { margin-top: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); }
+.card h2 { margin: 0 0 4px; font-size: 16px; }
+.card p.sub { margin: 0 0 14px; color: var(--muted); font-size: 13.5px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.between { justify-content: space-between; }
+input[type=text], input[type=number], input[type=password], select {
+  font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 9px; padding: 9px 11px; min-width: 0;
+}
+input[type=text] { flex: 1; }
+button.btn { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 8px 13px; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+button.btn:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.small { padding: 4px 9px; font-size: 13px; }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+.switch { position: relative; width: 52px; height: 30px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch span { position: absolute; inset: 0; background: var(--line); border-radius: 30px; cursor: pointer; transition: .2s; }
+.switch span::before { content: ""; position: absolute; width: 24px; height: 24px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.switch input:checked + span { background: var(--ok); }
+.switch input:checked + span::before { transform: translateX(22px); }
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.setting:first-of-type { border-top: 0; }
+.setting b { display: block; }
+.setting small { color: var(--muted); }
+.big-status { font-size: 22px; font-weight: 700; }
+.code { font: 700 34px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 6px; }
+.addr { font-family: ui-monospace, Consolas, monospace; background: var(--bg); border: 1px solid var(--line); padding: 3px 8px; border-radius: 7px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { background: var(--bg); border: 1px solid var(--line); border-radius: 20px; padding: 3px 4px 3px 11px; display: inline-flex; align-items: center; gap: 4px; font-size: 13.5px; }
+.chip button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 6px; border-radius: 10px; }
+.chip button:hover { background: var(--bad-soft); color: var(--bad); }
+.list { margin-top: 10px; }
+.item { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.item:first-child { border-top: 0; }
+.item .grow { flex: 1; min-width: 0; }
+.item .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item small, .muted { color: var(--muted); }
+.thumb { width: 96px; aspect-ratio: 16/9; object-fit: cover; border-radius: 7px; background: var(--line); flex: none; }
+.results { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.vid { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; }
+.vid.hidden-vid { opacity: .78; }
+.vid img { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; background: var(--line); }
+.vid.hidden-vid img { filter: grayscale(.8); }
+.vid .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.vid .title { font-weight: 600; font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vid .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 4px; }
+.badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+.badge.ok { background: var(--ok-soft); color: var(--ok); }
+.badge.bad { background: var(--bad-soft); color: var(--bad); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+table { width: 100%; border-collapse: collapse; }
+td { padding: 10px 8px; border-top: 1px solid var(--line); vertical-align: middle; }
+tr:first-child td { border-top: 0; }
+td.when { color: var(--muted); white-space: nowrap; font-size: 13px; }
+td.acts { text-align: right; white-space: nowrap; }
+td.acts button { margin-left: 4px; }
+.banner { background: var(--warn-soft); color: var(--warn); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
+.banner.info { background: var(--accent-soft); color: var(--text); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.appfoot { color: var(--muted); font-size: 13px; text-align: center; padding: 24px 0 8px; }
+.linkbtn { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
+.linkbtn:disabled { color: var(--muted); cursor: default; }
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 10px; opacity: 0; transition: .2s; pointer-events: none; z-index: 10; }
+#toast.show { opacity: 1; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; background: var(--card); color: var(--muted); padding: 8px 12px; font: inherit; cursor: pointer; }
+.seg button.on { background: var(--accent); color: #fff; }
+.empty { color: var(--muted); padding: 18px 0; text-align: center; }
+.filters { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.filters label { display: flex; flex-direction: column; gap: 4px; }
+.filters small { color: var(--muted); font-size: 12px; }
+.filters .grow-field { flex: 1 1 200px; }
+.filters input[type=search], .filters input[type=datetime-local] { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; min-width: 0; }
+.filters .seg button { padding: 8px 10px; }
+.chip.pick { cursor: pointer; padding: 6px 14px; font: inherit; font-weight: 600; color: var(--text); }
+.chip.pick.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.stat { display: inline-flex; flex-direction: column; padding: 8px 14px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+.stat b { font-size: 20px; }
+.stat small { color: var(--muted); }
+.kid-grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) { .kid-grid { grid-template-columns: minmax(0, 1fr); } }
+.pair-row { display: flex; gap: 16px; align-items: center; }
+.qr { width: 150px; height: 150px; border-radius: 10px; background: #fff; flex: none; }
+.qr.small { width: 96px; height: 96px; }
+@media (max-width: 480px) { .pair-row { flex-direction: column; align-items: flex-start; } }
+.modal-back { position: fixed; inset: 0; background: rgba(10, 12, 20, .55); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 20; }
+.modal { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; width: 100%; max-width: 400px; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+.modal h2 { margin: 0 0 6px; font-size: 18px; }
+.modal p { margin: 0 0 14px; }
+.modal-choices { display: flex; flex-direction: column; gap: 8px; }
+.modal-choices .btn { width: 100%; padding: 11px; text-align: center; }
+.allow-menu { margin-top: 12px; background: var(--accent-soft); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.sched-editor { display: flex; flex-direction: column; gap: 12px; margin: 14px 0 6px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.sched-editor label { display: inline-flex; align-items: center; gap: 6px; }
+input[type=time] { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 7px 9px; }
+.days { display: flex; flex-wrap: wrap; gap: 6px; }
+.days label { cursor: pointer; }
+.days input { display: none; }
+.days span { display: inline-block; min-width: 46px; text-align: center; padding: 7px 10px; border-radius: 20px; border: 1px solid var(--line); background: var(--card); color: var(--muted); font-weight: 600; font-size: 13.5px; }
+.days input:checked + span { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sched { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.sched:first-child { border-top: 0; }
+.sched input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+.sched.off-sched .grow { opacity: .55; }
+@media (max-width: 640px) { td.acts { white-space: normal; } .thumb { width: 72px; } }
+body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+/* Tab icons and short labels are for the phone layout. */
+#tabs .ti, #tabs .short, .mobile-only, .mobile-row { display: none; }
+#footWho { white-space: nowrap; }
+/* ---- Phone layout (and the installed app): tabs along the bottom, like the KidView Parent app. */
+@media (max-width: 700px) {
+  html { scrollbar-gutter: auto; }
+  .bar { padding: 10px 16px; gap: 10px; flex-wrap: nowrap; }
+  #tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+          background: var(--card); border-top: 1px solid var(--line);
+          padding: 6px max(4px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-right)); }
+  #tabs button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 2px 0; font-size: 11.5px; border-radius: 0; background: none; }
+  #tabs .ti { display: block; width: 52px; height: 30px; padding: 5px 15px; border-radius: 15px; }
+  #tabs button.on { color: var(--text); background: none; }
+  #tabs button.on .ti { background: var(--accent-soft); color: var(--accent); }
+  #tabs .full, #tabs .desk-only { display: none; }
+  #tabs .short { display: inline; }
+  #whoBox { display: none !important; }   /* in the footer instead */
+  main { padding: 14px 12px calc(92px + env(safe-area-inset-bottom)); }
+  .card { padding: 16px; }
+  #toast { bottom: calc(88px + env(safe-area-inset-bottom)); }
+  .mobile-only { display: inline-flex; }
+  .mobile-row { display: flex; }
+  .setting { flex-wrap: wrap; }
+  .setting .seg, .setting select { margin-left: auto; }
+  .results { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="logo"><span>▶</span> KidView</div>
+    <nav id="tabs">
+      <button data-tab="home" class="on"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg><span class="full">Home</span><span class="short">Home</span></button>
+      <button data-tab="check"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><span class="full">Check a search</span><span class="short">Search</span></button>
+      <button data-tab="activity"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg><span class="full">Activity</span><span class="short">Activity</span></button>
+      <button data-tab="kids"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16 14.3c3 .1 5.5 2.2 5.5 5.7"/></svg><span class="full">Kids</span><span class="short">Kids</span></button>
+      <button data-tab="rules"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v5c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6z"/></svg><span class="full">Rules</span><span class="short">Rules</span></button>
+      <button data-tab="library" class="desk-only"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span class="full">Offline library</span><span class="short">Library</span></button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="row" id="whoBox" hidden><small class="muted" id="whoName"></small><button class="btn small" id="signOut">Sign out</button></div>
+    <div class="row"><span id="watchLabel" class="muted"></span>
+      <label class="switch" title="Turn watching on or off"><input type="checkbox" id="watchTop"><span></span></label></div>
+  </div>
+</header>
+
+<main>
+  <div id="installHint" class="banner info" hidden><span id="installText"></span><button class="linkbtn" id="hideInstall" type="button">Not now</button></div>
+  <div id="updateBanner" class="banner info" hidden></div>
+  <div id="jsWarn" class="banner" hidden>yt-dlp needs <b>Deno</b> or <b>Node.js</b> installed on this computer to play YouTube videos. Install one and restart the server.</div>
+
+  <!-- HOME -->
+  <section data-page="home">
+    <div class="grid">
+      <div class="card">
+        <h2>Watching</h2>
+        <p class="sub">A video that's playing stops within a few seconds of watching turning off.</p>
+        <div class="row between"><div><div class="big-status" id="watchBig"></div><div class="muted" id="watchWhy"></div></div>
+          <label class="switch"><input type="checkbox" id="watchMain"><span></span></label></div>
+        <div id="resumeRow" style="margin-top:10px" hidden><button class="btn small" id="resumeBtn">Go back to the schedule</button></div>
+        <div class="setting" style="margin-top:10px"><div><b>Allow searching</b><small>Off = kids only see your Picks</small></div>
+          <label class="switch"><input type="checkbox" data-rule="search_enabled"><span></span></label></div>
+        <div class="setting"><div><b>What can they find?</b><small id="modeHelp"></small></div>
+          <div class="seg" id="modeSeg"><button data-mode="blocklist" title="Anything on YouTube except what your rules hide">Filtered</button><button data-mode="allowlist" title="Only channels you've allowed, plus your Picks">Approved</button></div></div>
+      </div>
+
+      <div class="card">
+        <h2>Set up a kid's device</h2>
+        <p class="sub">Install the KidView app, open it, and tap <b>Scan code</b>. Or type the server address and family code.</p>
+        <div class="pair-row">
+          <img class="qr" id="kidQr" alt="QR code for setting up a kid's device">
+          <div class="grow">
+            <div class="muted" style="font-size:13px">Server address</div>
+            <div id="addrs" style="margin:6px 0 14px; display:flex; flex-direction:column; gap:6px"></div>
+            <div class="muted" style="font-size:13px">Family code</div>
+            <div class="row between" style="margin-top:6px"><div class="code" id="code"></div>
+              <button class="btn small" id="newCode">New code</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <div class="row between"><div><h2>Schedules</h2>
+          <p class="sub" style="margin:0">Turn watching off at set times, or only allow it at set times. Untick a schedule to switch it off without deleting it.
+            Kids' devices follow schedules even when they're offline.</p></div>
+          <button class="btn primary" id="addSched">Add schedule</button></div>
+        <form id="schedEditor" class="sched-editor" hidden>
+          <div class="row"><input type="text" id="sName" placeholder="Name, e.g. Bedtime" maxlength="40" style="flex:1 1 200px">
+            <select id="sKind"><option value="off">Watching off during this time</option><option value="allowed">Watching allowed only during this time</option></select></div>
+          <div class="days" id="sDays"></div>
+          <div class="row" style="gap:6px"><small class="muted">Quick pick:</small>
+            <button type="button" class="btn small" data-days="0,1,2,3,4,5,6">Every day</button>
+            <button type="button" class="btn small" data-days="0,1,2,3,4">Weekdays</button>
+            <button type="button" class="btn small" data-days="5,6">Weekends</button>
+            <button type="button" class="btn small" data-days="6,0,1,2,3">School nights</button></div>
+          <div class="row"><label>From <input type="time" id="sStart" required></label><label>To <input type="time" id="sEnd" required></label>
+            <small class="muted" id="sHint"></small></div>
+          <div><small class="muted">Applies to</small><div class="days" id="sDevices" style="margin-top:6px"></div></div>
+          <label class="row" style="gap:8px"><input type="checkbox" id="sEnabled" checked> Apply this schedule now</label>
+          <div class="row"><button class="btn primary">Save</button><button type="button" class="btn" id="sCancel">Cancel</button>
+            <span class="muted" id="sError" style="color:var(--bad)"></span></div>
+        </form>
+        <div class="list" id="schedList"></div>
+      </div>
+
+      <div class="card">
+        <h2>Devices</h2>
+        <p class="sub">Removing a device signs it out. It'll need the family code to get back in.</p>
+        <div class="list" id="devices"></div>
+      </div>
+
+      <div class="card">
+        <h2>Parent accounts</h2>
+        <p class="sub">Each parent signs in with their name and PIN, on the dashboard or their phone, and the Activity log shows who changed what.</p>
+        <div class="pair-row" style="margin-bottom:12px">
+          <img class="qr small" id="parentQr" alt="QR code that opens KidView on a phone">
+          <small class="muted">Point your phone's camera at this code to open KidView on it. On iPhone, then tap <b>Share</b> and <b>Add to Home Screen</b> to use it like an app. With the Android KidView Parent app, tap <b>Scan code</b> instead.</small>
+        </div>
+        <form class="row" id="parentForm"><input type="text" id="pName" placeholder="Name" maxlength="30" style="flex:1 1 120px">
+          <input type="password" id="pPin" placeholder="PIN (4-8 digits)" inputmode="numeric" maxlength="8" style="width:150px"><button class="btn primary" id="pAdd" disabled>Add</button></form>
+        <div class="list" id="parents"></div>
+      </div>
+
+      <div class="card wide">
+        <div class="row between"><div><h2>Recent activity</h2><p class="sub" style="margin:0">Latest from the past 7 days</p></div>
+          <button class="btn small" data-goto="activity">See all and filter</button></div>
+        <table id="recent" style="margin-top:8px"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHECK A SEARCH -->
+  <section data-page="check" hidden>
+    <div class="grid">
+      <div class="card wide">
+        <h2>See what your kids would see</h2>
+        <p class="sub">Search like they would. Hidden videos are greyed out with the reason. Block or allow anything right from here.</p>
+        <form class="row" id="checkForm"><input type="text" id="checkQ" placeholder="e.g. minecraft, slime, paw patrol" autocomplete="off">
+          <button class="btn primary">Search</button></form>
+        <div id="checkInfo" style="margin-top:12px"></div>
+      </div>
+      <div class="results wide" id="checkResults"></div>
+    </div>
+  </section>
+
+  <!-- ACTIVITY -->
+  <section data-page="activity" hidden>
+    <div class="grid">
+      <div class="card wide">
+        <div class="row between"><div><h2>Activity</h2>
+          <p class="sub" style="margin:0" id="keepNote"></p></div>
+          <label class="row" style="gap:6px"><small class="muted">Keep activity for</small>
+            <select id="keepDays"><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="90">90 days</option></select></label></div>
+        <form class="filters" id="actFilters" autocomplete="off">
+          <label><small>Who</small><select id="fWho"></select></label>
+          <label><small>Type</small><select id="fKind">
+            <option value="">All activity</option><option value="watch">Watched</option><option value="saved">Watched saved videos</option>
+            <option value="search">Searched</option><option value="blocked">Blocked</option><option value="change">Changes by parents</option></select></label>
+          <label><small>When</small><div class="seg" id="fRange">
+            <button type="button" data-range="today">Today</button><button type="button" data-range="24h">24 hours</button>
+            <button type="button" data-range="week" class="on">7 days</button><button type="button" data-range="all">All kept</button>
+            <button type="button" data-range="custom">Custom</button></div></label>
+          <label id="fCustom" hidden><small>From – to</small><span class="row" style="gap:6px;flex-wrap:nowrap">
+            <input type="datetime-local" id="fFrom"><input type="datetime-local" id="fTo"></span></label>
+          <label class="grow-field"><small>Find</small><input type="search" id="fText" placeholder="Video, channel, search words, or change"></label>
+          <label><small>&nbsp;</small><button type="button" class="btn" id="fClear">Clear filters</button></label>
+        </form>
+        <div class="muted" id="actCount" style="margin-top:10px; font-size:13px"></div>
+        <table id="activity" style="margin-top:6px"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- KIDS -->
+  <section data-page="kids" hidden>
+    <div class="grid">
+      <div class="card wide">
+        <h2>Kids</h2>
+        <p class="sub">Pick a child's device to see what they watch and what they're recommended, and to set limits just for them.</p>
+        <div class="chips" id="kidPicker"></div>
+      </div>
+      <div class="card wide" id="kidHeader" hidden></div>
+      <div class="wide" id="kidTabsRow" hidden>
+        <div class="seg" id="kidTabs"><button data-kt="activity" class="on">Activity</button><button data-kt="recommended">Recommended</button><button data-kt="restrictions">Restrictions</button></div>
+      </div>
+      <div class="wide" id="kidBody"></div>
+    </div>
+  </section>
+
+  <!-- RULES -->
+  <section data-page="rules" hidden>
+    <div class="grid">
+      <div class="card wide">
+        <h2>Blocked topics</h2>
+        <p class="sub">One switch blocks a whole topic: searches, titles, channel names, descriptions and tags. Each topic is a set of words you can see in the list below.</p>
+        <div id="topics"></div>
+      </div>
+
+      <div class="card wide">
+        <h2>Blocked words</h2>
+        <p class="sub">Searches with these words show nothing, and videos with them in the title, channel name, description or tags are hidden.
+          Short words (5 letters or fewer) only match whole words, so "kill" won't hide "skills". Tricks like "sk1bidi" are caught too.</p>
+        <form class="row" id="wordForm"><input type="text" id="wordIn" placeholder="Add words, separated by commas"><button class="btn primary">Add</button></form>
+        <div class="chips" id="words"></div>
+      </div>
+
+      <div class="card">
+        <h2>Picks</h2>
+        <p class="sub">Videos you hand-pick. They show on the kids' home screen and are always allowed.</p>
+        <form class="row" id="pickForm"><input type="text" id="pickIn" placeholder="Paste a YouTube video link"><button class="btn primary">Add</button></form>
+        <div class="list" id="picks"></div>
+      </div>
+
+      <div class="card">
+        <h2>Allowed channels</h2>
+        <p class="sub" id="allowHelp"></p>
+        <form class="row" id="allowForm"><input type="text" id="allowIn" placeholder="Channel link or @handle"><button class="btn primary">Allow</button></form>
+        <div class="list" id="allowed"></div>
+      </div>
+
+      <div class="card">
+        <h2>Blocked channels</h2>
+        <p class="sub">Nothing from these channels ever shows up.</p>
+        <form class="row" id="blockChForm"><input type="text" id="blockChIn" placeholder="Channel link or @handle"><button class="btn primary">Block</button></form>
+        <div class="list" id="blockedCh"></div>
+      </div>
+
+      <div class="card">
+        <h2>Blocked videos</h2>
+        <p class="sub">Single videos you've blocked.</p>
+        <form class="row" id="blockVidForm"><input type="text" id="blockVidIn" placeholder="Paste a YouTube video link"><button class="btn primary">Block</button></form>
+        <div class="list" id="blockedVid"></div>
+      </div>
+
+      <div class="card">
+        <h2>Other limits</h2>
+        <div class="setting"><div><b>Hide Shorts</b><small>Short vertical videos</small></div>
+          <label class="switch"><input type="checkbox" data-rule="block_shorts"><span></span></label></div>
+        <div class="setting"><div><b>Check descriptions and tags</b><small>Stricter: also looks for blocked words there</small></div>
+          <label class="switch"><input type="checkbox" data-rule="check_descriptions"><span></span></label></div>
+        <div class="setting"><div><b>Longest video</b><small>Minutes. 0 means no limit.</small></div>
+          <input type="number" min="0" max="600" style="width:90px" data-rule-num="max_minutes"></div>
+        <div class="setting"><div><b>Video quality</b><small>Lower uses less Wi-Fi</small></div>
+          <select data-rule-num="max_quality"><option value="360">360p</option><option value="480">480p</option><option value="720">720p</option><option value="1080">1080p</option></select></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OFFLINE LIBRARY -->
+  <section data-page="library" hidden>
+    <div class="chips mobile-row" id="libKidPicker" style="margin:0 0 14px"></div>
+    <div class="grid">
+      <div class="card wide">
+        <div class="row between"><div><h2>Offline library</h2>
+          <p class="sub" style="margin:0">This computer downloads these videos. Each kid's device copies them whenever it's on home Wi-Fi, so they can watch with no internet.
+            Removed or blocked videos are deleted from the devices on their next sync.</p></div>
+          <button class="btn" id="libSync">Check for new videos now</button></div>
+        <div id="libStatus" class="row" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <h2>Channels that stay up to date</h2>
+        <p class="sub">The newest videos from these channels are downloaded automatically, after passing your rules. Older ones drop off as new ones arrive.</p>
+        <form class="row" id="libChForm"><input type="text" id="libChIn" placeholder="Channel link or @handle">
+          <select id="libChCount" title="How many of the newest videos to keep"><option value="3">Newest 3</option><option value="5" selected>Newest 5</option><option value="10">Newest 10</option><option value="20">Newest 20</option></select>
+          <button class="btn primary">Add</button></form>
+        <div class="list" id="libChannels"></div>
+      </div>
+
+      <div class="card">
+        <h2>Single videos</h2>
+        <p class="sub">Videos you add yourself stay until you remove them.</p>
+        <form class="row" id="libVidForm"><input type="text" id="libVidIn" placeholder="Paste a YouTube video link"><button class="btn primary">Add</button></form>
+        <div class="list" id="libVideos"></div>
+      </div>
+
+      <div class="card wide">
+        <h2>What's in the library</h2>
+        <div class="list" id="libItems"></div>
+      </div>
+    </div>
+  </section>
+  <div class="appfoot"><span id="verLabel">KidView</span> · <button class="linkbtn" id="checkUpd" type="button">Check for updates</button><span id="footWho" hidden> · <span id="footName"></span> · <button class="linkbtn" id="footSignOut" type="button">Sign out</button></span></div>
+</main>
+<div id="toast"></div>
+
+<!-- Sign in (when the dashboard is opened from another device) -->
+<div class="modal-back" id="signIn" hidden>
+  <form class="modal" id="signInForm" autocomplete="on">
+    <h2 id="signInTitle">Sign in to KidView</h2>
+    <p class="muted" id="signInText">Use your parent name and PIN, the same as the KidView Parent app.</p>
+    <div style="display:flex; flex-direction:column; gap:10px">
+      <input type="text" id="siCode" placeholder="Setup code from the server log" inputmode="numeric" autocomplete="one-time-code" hidden>
+      <input type="text" id="siName" placeholder="Your name" autocomplete="username">
+      <input type="password" id="siPin" placeholder="PIN (4-8 digits)" inputmode="numeric" maxlength="8" autocomplete="current-password">
+      <span id="siError" style="color:var(--bad)"></span>
+      <button class="btn primary" id="siButton" disabled>Sign in</button>
+    </div>
+  </form>
+</div>
+
+<!-- Pop-up: how long to turn watching on while a schedule has it off -->
+<div class="modal-back" id="allowModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="allowTitle">
+    <h2 id="allowTitle">Turn watching on?</h2>
+    <p id="allowText" class="muted"></p>
+    <div id="allowChoices" class="modal-choices"></div>
+    <div class="row" style="justify-content:flex-end; margin-top:14px"><button class="btn" data-allow="cancel">Cancel</button></div>
+  </div>
+</div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+let S = null;          // server state
+let activity = [];      // Activity tab (filtered)
+let recent = [];        // Home: latest few
+let currentTab = 'home';
+// Kids tab
+let kidSel = null, kidTab = 'activity', kidData = null, kidRec = null, kidAct = [], blockScope = 'device';
+// Activity filters
+let range = 'week';
+
+// Signed in from another device? The token is kept in this browser only.
+let TOKEN = null;
+try { TOKEN = localStorage.getItem('kidview_token'); } catch (e) {}
+function thumb(id) { return '/thumb/' + encodeURIComponent(id) + (TOKEN ? '?t=' + encodeURIComponent(TOKEN) : ''); }
+async function api(path, body) {
+  const headers = { 'X-KidView-Admin': '1' };
+  if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+  const opt = body === undefined ? { headers } : { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  const res = await fetch(path, opt);
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && path.startsWith('/admin/')) { showSignIn(); throw new Error('Please sign in'); }
+  if (!res.ok) throw new Error(data.detail || res.statusText);
+  return data;
+}
+let setupMode = false;
+// ---- Installed as an app on a phone, or in a browser?
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /Android/.test(navigator.userAgent);
+const STANDALONE = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+const PHONE = () => matchMedia('(max-width: 700px)').matches;
+const DEVICE_NAME = IS_IOS ? (/iPad/.test(navigator.userAgent) ? 'iPad' : 'iPhone') + (STANDALONE ? ' app' : ' browser')
+  : IS_ANDROID ? (STANDALONE ? 'Android web app' : 'Android browser') : 'Web browser';
+function showInstallHint() {
+  let hidden = false;
+  try { hidden = localStorage.getItem('kidview_hide_install') === '1'; } catch (e) {}
+  if (STANDALONE || hidden || !(IS_IOS || IS_ANDROID)) return;
+  $('#installText').innerHTML = IS_IOS
+    ? 'Use KidView like an app: tap <b>Share</b>, then <b>Add to Home Screen</b>.'
+    : 'Use KidView like an app: tap <b>⋮</b>, then <b>Add to Home screen</b>.';
+  $('#installHint').hidden = false;
+}
+document.addEventListener('click', e => {
+  if (e.target.id === 'hideInstall') {
+    $('#installHint').hidden = true;
+    try { localStorage.setItem('kidview_hide_install', '1'); } catch (err) {}
+  } else if (e.target.id === 'footSignOut') {
+    $('#signOut').click();
+  }
+});
+let pairAddr = '';
+function authed(url) { return TOKEN ? url + (url.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(TOKEN) : url; }
+let qrKey = '';
+function renderQr() {
+  // Only reload the images when something on them changed.
+  const key = pairAddr + '|' + S.family_code;
+  if (key === qrKey) return;
+  qrKey = key;
+  const a = encodeURIComponent(pairAddr);
+  $('#kidQr').src = authed(`/admin/api/pair-qr?kind=kid&addr=${a}`);
+  $('#parentQr').src = authed(`/admin/api/pair-qr?kind=parent&addr=${a}`);
+}
+document.addEventListener('change', e => { if (e.target.name === 'pairAddr') { pairAddr = e.target.value; renderQr(); } });
+async function showSignIn() {
+  if (!$('#signIn').hidden) return;
+  try { setupMode = (await (await fetch('/parent/api/status')).json()).needs_setup; } catch (e) { setupMode = false; }
+  $('#signInTitle').textContent = setupMode ? 'Create the first parent account' : 'Sign in to KidView';
+  $('#signInText').textContent = setupMode
+    ? 'Enter the one-time setup code from the server log, then choose your name and a 4-8 digit PIN. You\'ll use these here and in the KidView Parent app.'
+    : 'Use your parent name and PIN, the same as the KidView Parent app.';
+  $('#siCode').hidden = !setupMode;
+  $('#siButton').textContent = setupMode ? 'Create account' : 'Sign in';
+  $('#signIn').hidden = false;
+  (setupMode ? $('#siCode') : $('#siName')).focus();
+}
+function signInValid() {
+  return $('#siName').value.trim() !== '' && /^\d{4,8}$/.test($('#siPin').value) && (!setupMode || $('#siCode').value.trim() !== '');
+}
+for (const id of ['#siCode', '#siName', '#siPin']) $(id).addEventListener('input', () => {
+  if (id === '#siPin') $('#siPin').value = $('#siPin').value.replace(/\D/g, '');
+  $('#siButton').disabled = !signInValid();
+});
+$('#signInForm').onsubmit = async e => {
+  e.preventDefault();
+  if (!signInValid()) return;
+  $('#siError').textContent = '';
+  const body = { name: $('#siName').value.trim(), pin: $('#siPin').value, device: DEVICE_NAME };
+  if (setupMode) body.code = $('#siCode').value.trim();
+  const res = await fetch(setupMode ? '/parent/api/setup' : '/parent/api/login',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { $('#siError').textContent = data.detail || 'That didn\'t work'; return; }
+  TOKEN = data.token;
+  try { localStorage.setItem('kidview_token', TOKEN); } catch (err) {}
+  $('#signIn').hidden = true; $('#siPin').value = ''; $('#siCode').value = '';
+  load();
+};
+$('#signOut').onclick = async () => {
+  try { await api('/parent/api/logout', {}); } catch (e) {}
+  TOKEN = null;
+  try { localStorage.removeItem('kidview_token'); } catch (e) {}
+  location.reload();
+};
+// ---- Updates: checked quietly by the server; this only shows something when there's a new version.
+function renderUpdate() {
+  const up = S.update, u = S.updating || {}, b = $('#updateBanner');
+  $('#verLabel').textContent = 'KidView ' + S.version;
+  b.hidden = !(up || u.version || u.error);
+  if (u.version) {
+    b.innerHTML = `<span>Updating KidView to ${esc(u.version)}… This page reloads when it's done (about a minute).</span>`;
+    waitForUpdate();
+  } else if (up) {
+    b.innerHTML = `<span><b>KidView ${esc(up.version)} is ready</b> (you have ${esc(S.version)}).` +
+      (u.error ? ` The last try didn't work: ${esc(u.error)}` : '') + `</span>` +
+      (up.auto ? `<button class="btn small primary" id="updNow" type="button">${u.error ? 'Try again' : 'Update now'}</button>` : `<span>${esc(up.how || '')}</span>`) +
+      `<a href="${esc(up.url)}" target="_blank" rel="noopener">What's new</a>`;
+  } else if (u.error) {
+    b.innerHTML = `<span>The update didn't install: ${esc(u.error)}</span>`;
+  }
+}
+let waitingForUpdate = false;
+async function waitForUpdate() {
+  if (waitingForUpdate) return;
+  waitingForUpdate = true;
+  const from = S.version;
+  for (;;) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const s = await (await fetch('/parent/api/status', { cache: 'no-store' })).json();
+      if (s.version && s.version !== from) { location.reload(); return; }
+    } catch (e) { /* restarting */ }
+  }
+}
+document.addEventListener('click', async (e) => {
+  if (e.target.id === 'updNow') {
+    e.target.disabled = true;
+    try { const r = await api('/admin/api/update/install', {}); S.updating = { version: r.version }; renderUpdate(); }
+    catch (err) { e.target.disabled = false; toast(err.message); }
+  } else if (e.target.id === 'checkUpd') {
+    const btn = e.target; btn.disabled = true; btn.textContent = 'Checking…';
+    try {
+      const r = await api('/admin/api/update/check', {});
+      S.update = r.update; renderUpdate();
+      toast(r.update ? `KidView ${r.update.version} is ready to install` : 'KidView is up to date');
+    } catch (err) { toast(err.message); }
+    btn.disabled = false; btn.textContent = 'Check for updates';
+  }
+});
+
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2200); }
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+function dur(s) { if (!s) return ''; const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); }
+function ago(ts) {
+  const d = (Date.now() / 1000 - ts); if (d < 60) return 'just now'; if (d < 3600) return Math.floor(d / 60) + ' min ago';
+  const dt = new Date(ts * 1000), today = new Date().toDateString() === dt.toDateString();
+  return today ? dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : dt.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+const ytLink = id => `https://www.youtube.com/watch?v=${id}`;
+
+// ---- actions shared by every page
+async function act(kind, d) {
+  const map = {
+    blockVideo: ['blocked_videos', { id: d.id, title: d.title, channel: d.channel }, 'Video blocked'],
+    pick: ['approved_videos', { id: d.id, title: d.title, channel: d.channel, duration: d.duration }, 'Added to Picks'],
+    blockChannel: ['blocked_channels', { id: d.channel_id, name: d.channel }, `Blocked ${d.channel}`],
+    allowChannel: ['allowed_channels', { id: d.channel_id, name: d.channel }, `Allowed ${d.channel}`],
+    blockWord: ['blocked_words', { word: d.word }, `Blocked "${d.word}"`],
+    saveOffline: ['library_videos', { id: d.id, title: d.title, channel: d.channel, channel_id: d.channel_id, duration: d.duration }, 'Added to the offline library'],
+  }[kind];
+  // On the Kids tab, blocks can apply to just that child.
+  const perKid = currentTab === 'kids' && kidSel && blockScope === 'device'
+    && ['blocked_videos', 'blocked_channels', 'allowed_channels', 'blocked_words'].includes(map[0]);
+  const res = await api('/admin/api/list/add', { key: map[0], item: map[1], ...(perKid ? { device: kidSel } : {}) });
+  if (perKid) toast(`${map[2]} for ${kidName()}`); else { S.rules = res; toast(map[2]); renderAll(); }
+  if (currentTab === 'kids') { kidRec = null; loadKid(); }
+}
+async function unlist(key, id) { S.rules = await api('/admin/api/list/remove', { key, id }); renderAll(); refreshCheck(); }
+async function setRule(changes) { S.rules = await api('/admin/api/rules', changes); renderAll(); }
+
+// ---- rendering
+function renderAll() { renderHome(); renderRules(); renderActivity(); renderLibrary(); if (lastCheck) renderCheck(lastCheck); }
+
+function size(b) { return b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; }
+let lib = null;
+function renderLibrary() {
+  const r = S.rules;
+  $('#libChannels').innerHTML = r.library_channels.length ? r.library_channels.map(c => `
+    <div class="item"><div class="grow"><div class="t"><a href="https://www.youtube.com/channel/${esc(c.id)}" target="_blank" rel="noopener">${esc(c.name)}</a></div>
+      <small>Newest ${c.count}</small></div>
+      <button class="btn small" data-unlist="library_channels" data-id="${esc(c.id)}">Remove</button></div>`).join('')
+    : '<div class="empty">None yet</div>';
+  $('#libVideos').innerHTML = listItems(r.library_videos, 'library_videos', 'video');
+  if (!lib) return;
+  const ready = lib.items.filter(i => i.state === 'ready').length;
+  const waiting = lib.items.filter(i => i.state === 'waiting' || i.state === 'downloading').length;
+  $('#libStatus').innerHTML = `<span class="badge ok">${ready} ready · ${size(lib.total_size)}</span>
+    ${waiting ? `<span class="badge warn">${waiting} to download</span>` : ''}
+    ${lib.current ? `<small class="muted">Downloading “${esc(lib.current)}”…</small>` : `<small class="muted">${lib.last_run ? 'Last checked ' + ago(lib.last_run) : 'Starting…'}</small>`}
+    ${lib.ffmpeg ? '' : '<span class="badge warn">ffmpeg not found: saving in 360p</span>'}
+    ${lib.error ? `<span class="badge bad">${esc(lib.error)}</span>` : ''}`;
+  const label = { ready: ['ok', 'Ready'], downloading: ['warn', 'Downloading…'], waiting: ['warn', 'Waiting'], failed: ['bad', 'Failed'], skipped: ['bad', 'Skipped'] };
+  $('#libItems').innerHTML = lib.items.length ? lib.items.map(i => {
+    const [cls, txt] = label[i.state] || ['warn', i.state];
+    return `<div class="item"><img class="thumb" src="${thumb(i.id)}" loading="lazy" alt="">
+      <div class="grow"><div class="t"><a href="${ytLink(i.id)}" target="_blank" rel="noopener">${esc(i.title || i.id)}</a></div>
+      <small>${esc(i.channel)} · from ${esc(i.source)}${i.size ? ' · ' + size(i.size) : ''}${i.error ? ' · ' + esc(i.error) : ''}</small></div>
+      <span class="badge ${cls}">${txt}</span></div>`;
+  }).join('') : '<div class="empty">Add a channel or a video to get started</div>';
+}
+async function loadLibrary() { lib = await api('/admin/api/library'); renderLibrary(); }
+
+// ---- watching + schedules
+const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+function fmtTime(hhmm) { const [h, m] = hhmm.split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+function fmtWhen(ts) {
+  if (!ts) return '';
+  const d = new Date(ts * 1000), now = new Date(), t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const days = Math.round((new Date(d.toDateString()) - new Date(now.toDateString())) / 864e5);
+  return days === 0 ? t : days === 1 ? 'tomorrow ' + t : d.toLocaleDateString([], { weekday: 'short' }) + ' ' + t;
+}
+function daysLabel(days) {
+  const set = new Set(days);
+  if (set.size === 7) return 'Every day';
+  if (set.size === 5 && [0, 1, 2, 3, 4].every(d => set.has(d))) return 'Weekdays';
+  if (set.size === 2 && set.has(5) && set.has(6)) return 'Weekends';
+  const runs = [];
+  for (let d = 0; d < 7; d++) {
+    if (!set.has(d) || set.has((d + 6) % 7)) continue;  // start of a run
+    let e = d; while (set.has((e + 1) % 7) && (e + 1) % 7 !== d) e = (e + 1) % 7;
+    runs.push(e === d ? DAY[d] : (e === (d + 1) % 7 ? DAY[d] + ', ' + DAY[e] : DAY[d] + '–' + DAY[e]));
+  }
+  return runs.join(', ');
+}
+function schedTimes(s) {
+  if (s.start === s.end) return 'All day';
+  return `${fmtTime(s.start)} – ${fmtTime(s.end)}${s.end < s.start ? ' (next day)' : ''}`;
+}
+function watchText(w) {
+  if (w.override) return w.reason + (w.until ? ' until ' + fmtWhen(w.until) : '');
+  if (!w.on) return w.reason + (w.until ? ' · back on ' + fmtWhen(w.until) : '');
+  return w.until ? 'Turns off ' + fmtWhen(w.until) : '';
+}
+async function setWatching(on, minutes) {
+  closeAllow();
+  S = await api('/admin/api/watching', { on, minutes });
+  renderAll();
+  toast(S.watching.on ? 'Watching is on' : 'Watching is off');
+}
+function closeAllow() { $('#allowModal').hidden = true; renderHome(); }
+function flipWatching(on) {
+  const w = S.watching;
+  if (on && !w.on && !w.override && w.has_schedules) {
+    // The schedule has it off: ask for how long, in a pop-up.
+    const until = w.scheduled_until ? fmtWhen(w.scheduled_until) : '';
+    $('#allowText').innerHTML = `<b>${esc(w.reason)}</b> has watching off${until ? ' until ' + esc(until) : ''}. Turn it on for:`;
+    $('#allowChoices').innerHTML = `
+      <button class="btn" data-allow="30">30 minutes</button>
+      <button class="btn" data-allow="60">1 hour</button>
+      <button class="btn" data-allow="120">2 hours</button>
+      ${until ? `<button class="btn" data-allow="0">Until ${esc(until)}</button>` : ''}`;
+    $('#allowModal').hidden = false;
+    renderHome();  // puts the switch back until a choice is made
+    $('#allowChoices button').focus();
+    return;
+  }
+  setWatching(on);
+}
+$('#allowModal').addEventListener('click', e => { if (e.target.id === 'allowModal') closeAllow(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#allowModal').hidden) closeAllow(); });
+
+let editing = null;
+function deviceName(id) { return (S.devices.find(d => d.id === id) || {}).name || 'a removed device'; }
+function appliesTo(s) { return s.devices && s.devices.length ? 'Only ' + s.devices.map(deviceName).join(', ') : 'Every device'; }
+function renderDevicePicks(selected) {
+  $('#sDevices').innerHTML = `<label><input type="checkbox" value="" ${selected.length ? '' : 'checked'}><span>Every device</span></label>` +
+    S.devices.map(d => `<label><input type="checkbox" value="${esc(d.id)}" ${selected.includes(d.id) ? 'checked' : ''}><span>${esc(d.name)}</span></label>`).join('');
+}
+$('#sDevices').addEventListener('change', e => {
+  // "Every device" and specific devices are either/or.
+  if (e.target.value === '') $$('#sDevices input').forEach(i => { if (i.value) i.checked = false; });
+  else $('#sDevices input[value=""]').checked = !$$('#sDevices input:checked').some(i => i.value);
+  if (!$$('#sDevices input:checked').length) $('#sDevices input[value=""]').checked = true;
+});
+function renderSchedules() {
+  const list = S.rules.schedules, w = S.watching, nowTs = Date.now() / 1000;
+  $('#schedList').innerHTML = list.length ? list.map(s => {
+    const activeNow = s.enabled && w.scheduled_reason === s.name && (s.kind === 'off' ? !w.scheduled_on : w.scheduled_on);
+    return `<div class="sched ${s.enabled ? '' : 'off-sched'}">
+      <input type="checkbox" title="Apply this schedule" data-sched-toggle="${esc(s.id)}" ${s.enabled ? 'checked' : ''}>
+      <div class="grow"><div class="t"><b>${esc(s.name)}</b>
+        <span class="badge ${s.kind === 'off' ? 'bad' : 'ok'}">${s.kind === 'off' ? 'Watching off' : 'Watching allowed'}</span>
+        ${activeNow ? '<span class="badge warn">In effect now</span>' : ''}${s.enabled ? '' : '<span class="badge warn">Switched off</span>'}</div>
+        <small>${esc(daysLabel(s.days))} · ${schedTimes(s)} · ${esc(appliesTo(s))}</small></div>
+      <button class="btn small" data-sched-edit="${esc(s.id)}">Edit</button>
+      <button class="btn small danger" data-sched-delete="${esc(s.id)}">Delete</button></div>`;
+  }).join('') : `<div class="empty">No schedules yet. Start from one of these:</div>
+    <div class="row" style="justify-content:center;gap:6px">
+      <button class="btn small" data-preset="bed">Bedtime (school nights)</button>
+      <button class="btn small" data-preset="wbed">Weekend bedtime</button>
+      <button class="btn small" data-preset="school">School hours</button>
+      <button class="btn small" data-preset="after">After school only</button></div>`;
+}
+const PRESETS = {
+  bed: { name: 'Bedtime', kind: 'off', days: [6, 0, 1, 2, 3], start: '20:00', end: '07:00' },
+  wbed: { name: 'Weekend bedtime', kind: 'off', days: [4, 5], start: '21:00', end: '08:00' },
+  school: { name: 'School hours', kind: 'off', days: [0, 1, 2, 3, 4], start: '08:00', end: '15:00' },
+  after: { name: 'After school', kind: 'allowed', days: [0, 1, 2, 3, 4], start: '15:30', end: '18:00' },
+};
+function openEditor(s) {
+  editing = s && s.id ? s.id : null;
+  s = s || { name: '', kind: 'off', days: [], start: '20:00', end: '07:00', enabled: true };
+  $('#sName').value = s.name; $('#sKind').value = s.kind; $('#sStart').value = s.start; $('#sEnd').value = s.end;
+  $('#sEnabled').checked = s.enabled !== false; $('#sError').textContent = '';
+  $('#sDays').innerHTML = DAY.map((d, i) => `<label><input type="checkbox" value="${i}" ${s.days.includes(i) ? 'checked' : ''}><span>${d}</span></label>`).join('');
+  renderDevicePicks(s.devices || []);
+  $('#schedEditor').hidden = false; updateHint(); $('#sName').focus();
+}
+function updateHint() {
+  const a = $('#sStart').value, b = $('#sEnd').value;
+  $('#sHint').textContent = a && b && a === b ? 'Same time = all day' : a && b && b < a ? 'Runs overnight into the next day' : '';
+}
+$('#sStart').oninput = $('#sEnd').oninput = updateHint;
+$('#addSched').onclick = () => openEditor(null);
+$('#sCancel').onclick = () => { $('#schedEditor').hidden = true; editing = null; };
+$('#schedEditor').onsubmit = async e => {
+  e.preventDefault();
+  const days = $$('#sDays input:checked').map(i => +i.value);
+  const sched = { id: editing, name: $('#sName').value, kind: $('#sKind').value, days,
+    start: $('#sStart').value, end: $('#sEnd').value, enabled: $('#sEnabled').checked,
+    devices: $$('#sDevices input:checked').map(i => i.value).filter(Boolean) };
+  try {
+    S = await api('/admin/api/schedules/save', { schedule: sched });
+    $('#schedEditor').hidden = true; editing = null; renderAll(); toast('Schedule saved');
+    if (currentTab === 'kids') loadKid();
+  } catch (err) { $('#sError').textContent = err.message; }
+};
+$('#schedEditor').addEventListener('click', e => {
+  const b = e.target.closest('[data-days]'); if (!b) return;
+  const want = b.dataset.days.split(',').map(Number);
+  $$('#sDays input').forEach(i => i.checked = want.includes(+i.value));
+});
+$('#schedList').addEventListener('change', async e => {
+  const id = e.target.dataset.schedToggle; if (!id) return;
+  const s = S.rules.schedules.find(x => x.id === id);
+  S = await api('/admin/api/schedules/save', { schedule: { ...s, enabled: e.target.checked } });
+  renderAll(); toast(e.target.checked ? `${s.name} is on` : `${s.name} is switched off`);
+});
+
+function renderParents() {
+  $('#parents').innerHTML = S.parents.length ? S.parents.map(p => `
+    <div class="item"><div class="grow"><div class="t"><b>${esc(p.name)}</b></div><small>Added ${ago(p.created)}</small></div>
+      <button class="btn small danger" data-remove-parent="${esc(p.id)}" data-name="${esc(p.name)}">Remove</button></div>`).join('')
+    : '<div class="empty">No parent accounts yet. Add yourself here to use KidView from your phone or other devices.</div>';
+}
+// The Add button only works once there's a name and a 4-8 digit PIN.
+function parentFormValid() { return $('#pName').value.trim() !== '' && /^\d{4,8}$/.test($('#pPin').value); }
+$('#pPin').addEventListener('input', () => { $('#pPin').value = $('#pPin').value.replace(/\D/g, ''); });
+for (const id of ['#pName', '#pPin']) $(id).addEventListener('input', () => { $('#pAdd').disabled = !parentFormValid(); });
+$('#parentForm').onsubmit = async e => {
+  e.preventDefault();
+  if (!parentFormValid()) return;
+  try {
+    S.parents = (await api('/admin/api/parents/add', { name: $('#pName').value.trim(), pin: $('#pPin').value })).parents;
+    toast('Added ' + $('#pName').value.trim()); $('#pName').value = $('#pPin').value = ''; $('#pAdd').disabled = true;
+    renderParents(); loadActivity();
+  } catch (err) { toast(err.message); }
+};
+
+// Renaming a kid's device happens in place: the name turns into a text box.
+let renaming = null;
+function renderDevices() {
+  if (renaming && S.devices.some(d => d.id === renaming)) return;  // don't wipe what's being typed
+  renaming = null;
+  $('#devices').innerHTML = S.devices.length ? S.devices.map(d => `
+    <div class="item"><div class="grow"><div class="t"><b>${esc(d.name)}</b></div><small>Last used ${ago(d.last_seen)}</small></div>
+      <button class="btn small" data-view-kid="${esc(d.id)}">View</button>
+      <button class="btn small" data-rename-device="${esc(d.id)}">Rename</button>
+      <button class="btn small danger" data-remove-device="${esc(d.id)}">Remove</button></div>`).join('')
+    : '<div class="empty">No devices yet</div>';
+}
+function startRename(id) {
+  const d = S.devices.find(x => x.id === id);
+  renderDevices();
+  renaming = id;
+  const row = $(`[data-rename-device="${CSS.escape(id)}"]`).closest('.item');
+  row.innerHTML = `<form class="row grow" style="flex-wrap:nowrap" data-rename-form>
+      <input type="text" maxlength="40" value="${esc(d.name)}" aria-label="Device name">
+      <button class="btn small primary">Save</button><button type="button" class="btn small" data-rename-cancel>Cancel</button></form>`;
+  const input = $('input', row);
+  input.focus(); input.select();
+  input.addEventListener('keydown', ev => { if (ev.key === 'Escape') { renaming = null; renderDevices(); } });
+  $('[data-rename-form]', row).onsubmit = async ev => {
+    ev.preventDefault();
+    const name = input.value.trim();
+    if (!name) { input.focus(); return; }
+    try {
+      S.devices = (await api('/admin/api/devices/rename', { id, name })).devices;
+      renaming = null; renderDevices(); toast('Renamed to ' + name); loadActivity();
+    } catch (err) { toast(err.message); }
+  };
+}
+
+function renderHome() {
+  const r = S.rules, w = S.watching, on = w.on;
+  $('#watchTop').checked = $('#watchMain').checked = on;
+  $('#watchLabel').textContent = on ? 'Watching is on' : 'Watching is off';
+  $('#watchBig').textContent = on ? 'On' : 'Off — kids see "Video time is over"';
+  $('#watchBig').style.color = on ? 'var(--ok)' : 'var(--bad)';
+  $('#watchWhy').textContent = watchText(w);
+  $('#resumeRow').hidden = !(w.override && w.has_schedules);
+  renderSchedules(); renderParents();
+  $$('[data-rule]').forEach(el => el.checked = !!r[el.dataset.rule]);
+  $$('[data-rule-num]').forEach(el => { if (document.activeElement !== el) el.value = r[el.dataset.ruleNum]; });
+  $$('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === r.mode));
+  $('#modeHelp').textContent = r.mode === 'allowlist'
+    ? `Approved: only your ${r.allowed_channels.length} allowed channel(s) and your Picks can be watched.`
+    : 'Filtered: anything on YouTube except what your rules hide.';
+  $('#code').textContent = S.family_code;
+  if (!S.addresses.some(a => a.addr === pairAddr)) pairAddr = S.addresses.length ? S.addresses[0].addr : '';
+  $('#addrs').innerHTML = S.addresses.map(a => `<label class="row" style="gap:8px; cursor:pointer">
+      <input type="radio" name="pairAddr" value="${esc(a.addr)}" ${a.addr === pairAddr ? 'checked' : ''}>
+      <span class="addr">${esc(a.addr)}</span><small class="muted">${esc(a.label)}</small></label>`).join('') || '<span class="muted">No network found</span>';
+  renderQr();
+  renderUpdate();
+  $('#jsWarn').hidden = S.js_runtime;
+  renderDevices();
+  $('#recent').innerHTML = activityRows(recent) || '<tr><td class="empty">Nothing in the past 7 days</td></tr>';
+}
+
+function listItems(items, key, kind) {
+  if (!items.length) return '<div class="empty">None yet</div>';
+  return items.map(i => {
+    const isVid = kind === 'video';
+    const title = isVid ? i.title : i.name;
+    const sub = isVid ? i.channel : '';
+    return `<div class="item">${isVid ? `<img class="thumb" src="${thumb(i.id)}" loading="lazy" alt="">` : ''}
+      <div class="grow"><div class="t">${isVid ? `<a href="${ytLink(i.id)}" target="_blank" rel="noopener">${esc(title)}</a>` : `<a href="https://www.youtube.com/channel/${esc(i.id)}" target="_blank" rel="noopener">${esc(title || i.id)}</a>`}</div>
+      ${sub ? `<small>${esc(sub)}</small>` : ''}</div>
+      <button class="btn small" data-unlist="${key}" data-id="${esc(i.id)}">Remove</button></div>`;
+  }).join('');
+}
+
+function renderRules() {
+  const r = S.rules;
+  $('#topics').innerHTML = Object.entries(S.topics).map(([name, words]) => {
+    const on = words.every(w => r.blocked_words.includes(w));
+    return `<div class="setting"><div><b>${esc(name)}</b><small>${esc(words.slice(0, 6).join(', '))}${words.length > 6 ? ', …' : ''}</small></div>
+      <label class="switch" title="${on ? 'Blocked' : 'Not blocked'}"><input type="checkbox" data-topic="${esc(name)}" ${on ? 'checked' : ''}><span></span></label></div>`;
+  }).join('');
+  $$('[data-topic]').forEach(el => el.onchange = async () => {
+    S.rules = await api('/admin/api/topic', { name: el.dataset.topic, block: el.checked });
+    toast(el.checked ? `${el.dataset.topic} is blocked` : `${el.dataset.topic} is allowed`); renderAll();
+  });
+  $('#words').innerHTML = r.blocked_words.map(w => `<span class="chip">${esc(w)}<button title="Remove" data-unlist="blocked_words" data-id="${esc(w)}">×</button></span>`).join('');
+  $('#picks').innerHTML = listItems(r.approved_videos, 'approved_videos', 'video');
+  $('#allowed').innerHTML = listItems(r.allowed_channels, 'allowed_channels', 'channel');
+  $('#blockedCh').innerHTML = listItems(r.blocked_channels, 'blocked_channels', 'channel');
+  $('#blockedVid').innerHTML = listItems(r.blocked_videos, 'blocked_videos', 'video');
+  $('#allowHelp').textContent = r.mode === 'allowlist'
+    ? 'Kids can only watch these channels (plus your Picks).'
+    : 'Only used when "What can they find?" is set to Approved (Home tab). Add them now if you plan to switch.';
+}
+
+function activityRows(rows) {
+  return rows.map((e, i) => {
+    let what = '', acts = '';
+    const d = encodeURIComponent(JSON.stringify({ id: e.video_id, title: e.title, channel: e.channel, channel_id: e.channel_id, word: e.query }));
+    if (e.kind === 'change') {
+      what = `<span class="badge warn">Change</span> ${esc(e.reason)}`;
+    } else if (e.kind === 'search') {
+      what = `Searched <b>"${esc(e.query)}"</b> <small class="muted">· ${e.results} result${e.results === 1 ? '' : 's'}</small>`;
+      acts = `<button class="btn small" data-check="${esc(e.query)}">See results</button><button class="btn small danger" data-act="blockWord" data-d="${d}">Block search</button>`;
+    } else if (e.kind === 'blocked_search') {
+      what = `<span class="badge bad">Blocked</span> Searched <b>"${esc(e.query)}"</b> <small class="muted">· ${esc(e.reason)}</small>`;
+    } else {
+      const blocked = e.kind === 'blocked_watch';
+      what = `<div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${thumb(e.video_id)}" loading="lazy" alt="">
+        <div style="min-width:0">${blocked ? '<span class="badge bad">Stopped</span> ' : ''}${e.kind === 'watch_saved' ? '<span class="badge ok">Saved video</span> ' : ''}<a href="${ytLink(e.video_id)}" target="_blank" rel="noopener">${esc(e.title)}</a>
+        <br><small class="muted">${esc(e.channel)}${blocked ? ' · ' + esc(e.reason) : ''}</small></div></div>`;
+      acts = blocked
+        ? `<button class="btn small" data-act="pick" data-d="${d}">Allow this video</button>`
+        : `<button class="btn small danger" data-act="blockVideo" data-d="${d}">Block video</button><button class="btn small danger" data-act="blockChannel" data-d="${d}">Block channel</button>`;
+    }
+    return `<tr><td class="when">${ago(e.ts)}<br>${esc(e.device)}</td><td>${what}</td><td class="acts">${acts}</td></tr>`;
+  }).join('');
+}
+
+function renderActivity() {
+  $('#activity').innerHTML = activityRows(activity) || '<tr><td class="empty">Nothing matches these filters</td></tr>';
+  $('#actCount').textContent = `${activity.length}${activity.length >= 500 ? '+' : ''} event${activity.length === 1 ? '' : 's'}`;
+  const days = S.rules.activity_days || 7;
+  $('#keepNote').textContent = `Searches, videos and changes from the past ${days} days, newest first. Anything older is deleted automatically.`;
+  if (document.activeElement !== $('#keepDays')) $('#keepDays').value = days;
+  fillWho();
+}
+function fillWho() {
+  const sel = $('#fWho'), cur = sel.value;
+  sel.innerHTML = `<option value="">Everyone</option>
+    <optgroup label="Kids' devices">${S.devices.map(d => `<option value="d:${esc(d.id)}">${esc(d.name)}</option>`).join('')}</optgroup>
+    <optgroup label="Parents (changes)"><option value="p:PC dashboard">PC dashboard</option>${S.parents.map(x => `<option value="p:${esc(x.name)}">${esc(x.name)}</option>`).join('')}</optgroup>`;
+  sel.value = cur;
+  if (sel.value !== cur) sel.value = '';
+}
+function toLocalInput(d) { const z = new Date(d - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 16); }
+async function loadActivity() {
+  const q = new URLSearchParams({ limit: 500 });
+  const who = $('#fWho').value;
+  if (who.startsWith('d:')) q.set('device', who.slice(2));
+  if (who.startsWith('p:')) q.set('who', who.slice(2));
+  if ($('#fKind').value) q.set('kind', $('#fKind').value);
+  const now = Date.now() / 1000;
+  const since = range === 'today' ? new Date(new Date().toDateString()) / 1000
+    : range === '24h' ? now - 86400 : range === 'week' ? now - 7 * 86400 : range === 'all' ? 0
+    : ($('#fFrom').value ? new Date($('#fFrom').value) / 1000 : 0);
+  q.set('since', since);
+  if (range === 'custom' && $('#fTo').value) q.set('until', new Date($('#fTo').value) / 1000);
+  if ($('#fText').value.trim()) q.set('q', $('#fText').value.trim());
+  activity = await api('/admin/api/activity?' + q);
+  renderActivity();
+}
+$('#fWho').onchange = $('#fKind').onchange = $('#fFrom').onchange = $('#fTo').onchange = () => loadActivity();
+let textTimer = null;
+$('#fText').oninput = () => { clearTimeout(textTimer); textTimer = setTimeout(loadActivity, 300); };
+$('#fRange').onclick = e => {
+  const b = e.target.closest('[data-range]'); if (!b) return;
+  range = b.dataset.range;
+  $$('#fRange button').forEach(x => x.classList.toggle('on', x === b));
+  $('#fCustom').hidden = range !== 'custom';
+  if (range === 'custom' && !$('#fFrom').value) {
+    $('#fFrom').value = toLocalInput(new Date(Date.now() - 86400000)); $('#fTo').value = toLocalInput(new Date());
+  }
+  loadActivity();
+};
+$('#fClear').onclick = () => {
+  $('#fWho').value = ''; $('#fKind').value = ''; $('#fText').value = ''; $('#fFrom').value = ''; $('#fTo').value = '';
+  range = 'week'; $$('#fRange button').forEach(x => x.classList.toggle('on', x.dataset.range === 'week')); $('#fCustom').hidden = true;
+  loadActivity();
+};
+$('#keepDays').onchange = async e => {
+  const days = +e.target.value, was = S.rules.activity_days || 7;
+  if (days < was && !confirm(`Delete activity older than ${days} days now?`)) { e.target.value = was; return; }
+  await setRule({ activity_days: days }); toast(`Activity is kept for ${days} days`); loadActivity();
+};
+
+let lastCheck = null;
+function renderCheck(data) {
+  lastCheck = data;
+  const r = S.rules;
+  const shown = data.results.filter(v => !v.reason).length;
+  $('#checkInfo').innerHTML = data.query_reason
+    ? `<span class="badge bad">Search blocked</span> Kids would see nothing: ${esc(data.query_reason)}. Showing what's out there anyway.`
+    : `<span class="badge ok">${shown} shown</span> <span class="badge warn">${data.results.length - shown} hidden</span>
+       <button class="btn small danger" style="margin-left:8px" data-act="blockWord" data-d="${encodeURIComponent(JSON.stringify({ word: data.q }))}">Block this search</button>`;
+  $('#checkResults').innerHTML = data.results.map(v => {
+    const d = encodeURIComponent(JSON.stringify(v));
+    const allowed = r.allowed_channels.some(c => c.id === v.channel_id);
+    return `<div class="vid ${v.reason ? 'hidden-vid' : ''}">
+      <a href="${ytLink(v.id)}" target="_blank" rel="noopener"><img src="${thumb(v.id)}" loading="lazy" alt=""></a>
+      <div class="body">
+        <div>${v.reason ? `<span class="badge bad">Hidden · ${esc(v.reason)}</span>` : '<span class="badge ok">Shown</span>'}</div>
+        <div class="title" title="${esc(v.title)}">${esc(v.title)}</div>
+        <small class="muted">${esc(v.channel)} ${v.duration ? '· ' + dur(v.duration) : ''}</small>
+        <div class="acts">
+          <button class="btn small danger" data-act="blockVideo" data-d="${d}">Block video</button>
+          <button class="btn small danger" data-act="blockChannel" data-d="${d}">Block channel</button>
+          ${allowed ? '' : `<button class="btn small" data-act="allowChannel" data-d="${d}">Allow channel</button>`}
+          <button class="btn small" data-act="pick" data-d="${d}">Add to Picks</button>
+          ${v.reason ? '' : `<button class="btn small" data-act="saveOffline" data-d="${d}">Save offline</button>`}
+        </div></div></div>`;
+  }).join('');
+}
+
+async function refreshCheck() {
+  const q = lastCheck && lastCheck.q;
+  if (!q) return;
+  try { renderCheck({ ...(await api('/admin/api/preview?q=' + encodeURIComponent(q))), q }); } catch (e) {}
+}
+async function runCheck(q) {
+  q = q.trim(); if (!q) return;
+  showTab('check'); $('#checkQ').value = q;
+  $('#checkInfo').innerHTML = '<span class="muted">Searching YouTube…</span>'; $('#checkResults').innerHTML = '';
+  try {
+    const data = await api('/admin/api/preview?q=' + encodeURIComponent(q));
+    // Re-check verdicts against the current rules each render
+    renderCheck({ ...data, q });
+  } catch (e) { $('#checkInfo').textContent = e.message; }
+}
+
+// ---- events
+function showTab(name) {
+  currentTab = name;
+  // On a phone the library lives under Kids, like in the KidView Parent app.
+  const navTab = name === 'library' && PHONE() ? 'kids' : name;
+  $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === navTab));
+  if (name === 'library') renderKidPicker();
+  $$('section[data-page]').forEach(s => s.hidden = s.dataset.page !== name);
+  if (name === 'activity') loadActivity();
+  if (name === 'library') loadLibrary();
+  if (name === 'kids') loadKid();
+}
+$('#libSync').onclick = async () => { await api('/admin/api/library/sync', {}); toast('Checking for new videos'); setTimeout(loadLibrary, 1500); };
+$('#libChForm').onsubmit = async e => {
+  e.preventDefault();
+  const btn = $('button', e.target), text = $('#libChIn').value.trim(); if (!text) return;
+  btn.disabled = true;
+  try {
+    const ch = await api('/admin/api/lookup/channel', { text });
+    S.rules = await api('/admin/api/list/add', { key: 'library_channels', item: { ...ch, count: +$('#libChCount').value } });
+    $('#libChIn').value = ''; toast('Added ' + ch.name); renderAll(); setTimeout(loadLibrary, 1500);
+  } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+};
+$('#tabs').onclick = e => { const b = e.target.closest('button[data-tab]'); if (b) { showTab(b.dataset.tab); window.scrollTo(0, 0); } };
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  try {
+    if (b.dataset.goto) showTab(b.dataset.goto);
+    if (b.dataset.act) { await act(b.dataset.act, JSON.parse(decodeURIComponent(b.dataset.d))); refreshCheck(); }
+    if (b.dataset.unlist) await unlist(b.dataset.unlist, b.dataset.id);
+    if (b.dataset.check) runCheck(b.dataset.check);
+    if (b.dataset.removeDevice && confirm('Remove this device? It will need the family code to get back in.')) {
+      await api('/admin/api/devices/remove', { id: b.dataset.removeDevice }); await load();
+    }
+    if (b.dataset.mode) await setRule({ mode: b.dataset.mode });
+    if (b.dataset.renameDevice) startRename(b.dataset.renameDevice);
+    if (b.dataset.renameCancel !== undefined) { renaming = null; renderDevices(); }
+    if (b.dataset.allow) {
+      if (b.dataset.allow === 'cancel') closeAllow();
+      else await setWatching(true, +b.dataset.allow || null);
+    }
+    if (b.dataset.preset) openEditor({ ...PRESETS[b.dataset.preset], enabled: true });
+    if (b.dataset.schedEdit) openEditor(S.rules.schedules.find(s => s.id === b.dataset.schedEdit));
+    if (b.dataset.schedDelete) {
+      const s = S.rules.schedules.find(x => x.id === b.dataset.schedDelete);
+      if (confirm(`Delete the schedule "${s.name}"?`)) { S = await api('/admin/api/schedules/delete', { id: s.id }); renderAll(); }
+    }
+    if (b.dataset.removeParent && confirm(`Remove ${b.dataset.name}'s parent account? Their phone will be signed out.`)) {
+      S.parents = (await api('/admin/api/parents/remove', { id: b.dataset.removeParent })).parents; renderParents(); loadActivity();
+    }
+    if (b.dataset.viewKid) { kidSel = b.dataset.viewKid; kidRec = null; showTab('kids'); }
+    if (b.dataset.kid) { kidSel = b.dataset.kid; kidRec = null; kidData = null; if (currentTab === 'kids') loadKid(); else showTab('kids'); }
+    if (b.dataset.kt) { kidTab = b.dataset.kt; renderKid(); }
+    if (b.dataset.scope) { blockScope = b.dataset.scope; renderKid(); }
+    if (b.dataset.kidUnlist) {
+      await api('/admin/api/list/remove', { key: b.dataset.kidUnlist, id: b.dataset.id, device: kidSel });
+      toast('Removed'); loadKid();
+    }
+    if (b.dataset.kidSched !== undefined) {
+      showTab('home');
+      openEditor({ name: '', kind: 'off', days: [], start: '20:00', end: '07:00', enabled: true, devices: [kidSel] });
+      $('#schedEditor').scrollIntoView({ block: 'center' });
+    }
+  } catch (err) { toast(err.message); }
+});
+for (const id of ['watchTop', 'watchMain']) $('#' + id).onchange = e => flipWatching(e.target.checked);
+$('#resumeBtn').onclick = async () => { S = await api('/admin/api/watching/resume', {}); renderAll(); toast('Back on the schedule'); };
+$$('[data-rule]').forEach(el => el.onchange = () => setRule({ [el.dataset.rule]: el.checked }));
+$$('[data-rule-num]').forEach(el => el.onchange = () => setRule({ [el.dataset.ruleNum]: Math.max(0, parseInt(el.value || '0', 10)) }).then(() => toast('Saved')));
+$('#newCode').onclick = async () => {
+  if (!confirm('Make a new family code? Devices already set up keep working.')) return;
+  S.family_code = (await api('/admin/api/code/new', {})).family_code; renderHome();
+};
+$('#checkForm').onsubmit = e => { e.preventDefault(); runCheck($('#checkQ').value); };
+$('#wordForm').onsubmit = async e => {
+  e.preventDefault();
+  for (const w of $('#wordIn').value.split(',').map(x => x.trim()).filter(Boolean)) S.rules = await api('/admin/api/list/add', { key: 'blocked_words', item: { word: w } });
+  $('#wordIn').value = ''; renderAll();
+};
+function linkForm(formId, inputId, lookup, key) {
+  $(formId).onsubmit = async e => {
+    e.preventDefault();
+    const btn = $('button', e.target), text = $(inputId).value.trim(); if (!text) return;
+    btn.disabled = true;
+    try {
+      const found = await api(`/admin/api/lookup/${lookup}`, { text });
+      const item = lookup === 'channel' ? found : { id: found.id, title: found.title, channel: found.channel, duration: found.duration };
+      S.rules = await api('/admin/api/list/add', { key, item });
+      $(inputId).value = ''; toast('Added ' + (found.name || found.title)); renderAll();
+    } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+  };
+}
+linkForm('#pickForm', '#pickIn', 'video', 'approved_videos');
+linkForm('#blockVidForm', '#blockVidIn', 'video', 'blocked_videos');
+linkForm('#allowForm', '#allowIn', 'channel', 'allowed_channels');
+linkForm('#blockChForm', '#blockChIn', 'channel', 'blocked_channels');
+linkForm('#libVidForm', '#libVidIn', 'video', 'library_videos');
+
+// ---- Kids tab: one child's activity, recommendations and restrictions
+function kidName() { return (kidData && kidData.device.name) || deviceName(kidSel); }
+function renderKidPicker() {
+  // Phones get a Library chip first: the offline library lives under Kids there.
+  const lib = `<button class="chip pick mobile-only ${currentTab === 'library' ? 'on' : ''}" data-goto="library">Library</button>`;
+  const kids = S.devices.map(d => `<button class="chip pick ${currentTab === 'kids' && d.id === kidSel ? 'on' : ''}" data-kid="${esc(d.id)}">${esc(d.name)}</button>`).join('');
+  $('#kidPicker').innerHTML = lib + (kids || '<div class="empty">No kids\' devices yet. Set one up on the Home tab.</div>');
+  $('#libKidPicker').innerHTML = lib + kids;
+}
+async function loadKid() {
+  if (!S.devices.some(d => d.id === kidSel)) kidSel = S.devices.length ? S.devices[0].id : null;
+  renderKidPicker();
+  if (!kidSel) { $('#kidHeader').hidden = $('#kidTabsRow').hidden = true; $('#kidBody').innerHTML = ''; return; }
+  const id = kidSel;
+  const [data, acts] = await Promise.all([api(`/admin/api/devices/${id}`), api(`/admin/api/activity?device=${id}&limit=300`)]);
+  if (id !== kidSel) return;
+  kidData = data; kidAct = acts;
+  renderKid();
+}
+async function loadKidRec() {
+  const id = kidSel;
+  $('#kidBody').innerHTML = `<div class="card"><span class="muted">Loading what ${esc(kidName())} sees…</span></div>`;
+  const r = await api(`/admin/api/devices/${id}/recommended`);
+  if (id === kidSel) { kidRec = { id, ...r }; renderKid(); }
+}
+function renderKid() {
+  const k = kidData; if (!k) return;
+  $('#kidHeader').hidden = $('#kidTabsRow').hidden = false;
+  const w = k.watching, st = k.stats;
+  $('#kidHeader').innerHTML = `<div class="row between"><div><h2 style="font-size:20px">${esc(k.device.name)}</h2>
+      <small class="muted">Last used ${ago(k.device.last_seen)} · set up ${ago(k.device.added)}</small></div>
+      <div class="row"><span class="badge ${w.on ? 'ok' : 'bad'}">${w.on ? 'Can watch now' : 'Watching off'}</span><small class="muted">${esc(watchText(w))}</small></div></div>
+    <div class="row" style="margin-top:12px; gap:10px">
+      <div class="stat"><b>${st.watches_7d}</b><small>video${st.watches_7d === 1 ? '' : 's'} this week</small></div>
+      <div class="stat"><b>${st.searches_7d}</b><small>search${st.searches_7d === 1 ? '' : 'es'} this week</small></div>
+      <div class="stat" style="flex:1; min-width:220px"><b style="font-size:14px">${st.top_channels.length ? st.top_channels.slice(0, 3).map(c => `${esc(c.channel)} (${c.count})`).join(' · ') : '—'}</b><small>most watched channels</small></div>
+    </div>`;
+  $$('#kidTabs button').forEach(b => b.classList.toggle('on', b.dataset.kt === kidTab));
+  if (kidTab === 'activity') renderKidActivity();
+  if (kidTab === 'recommended') { if (!kidRec || kidRec.id !== kidSel) loadKidRec(); else renderKidRec(); }
+  if (kidTab === 'restrictions') renderKidLimits();
+}
+function scopeBar() {
+  return `<div class="row" style="gap:8px"><small class="muted">Blocks from here apply to</small><div class="seg">
+    <button data-scope="device" class="${blockScope === 'device' ? 'on' : ''}">Just ${esc(kidName())}</button>
+    <button data-scope="all" class="${blockScope === 'all' ? 'on' : ''}">Everyone</button></div></div>`;
+}
+function renderKidActivity() {
+  $('#kidBody').innerHTML = `<div class="card"><div class="row between"><div><h2>Activity</h2>
+      <p class="sub" style="margin:0">${esc(kidName())}'s searches and videos from the past ${S.rules.activity_days || 7} days.</p></div>${scopeBar()}</div>
+    <table style="margin-top:12px">${activityRows(kidAct) || '<tr><td class="empty">Nothing yet</td></tr>'}</table></div>`;
+}
+function recCard(v) {
+  const d = encodeURIComponent(JSON.stringify(v));
+  return `<div class="vid"><a href="${ytLink(v.id)}" target="_blank" rel="noopener"><img src="${thumb(v.id)}" loading="lazy" alt=""></a>
+    <div class="body"><div class="title" title="${esc(v.title)}">${esc(v.title)}</div>
+    <small class="muted">${esc(v.channel)} ${v.duration ? '· ' + dur(v.duration) : ''}</small>
+    <div class="acts"><button class="btn small danger" data-act="blockVideo" data-d="${d}">Block video</button>
+    <button class="btn small danger" data-act="blockChannel" data-d="${d}">Block channel</button>
+    <button class="btn small" data-act="pick" data-d="${d}">Add to Picks</button></div></div></div>`;
+}
+function renderKidRec() {
+  const n = esc(kidName());
+  const note = kidRec.personal
+    ? `Based on what ${n} watches most: ${esc((kidRec.based_on || []).join(', '))}.`
+    : `${n} hasn't watched much yet, so they get a starter mix of funny and educational videos.`;
+  $('#kidBody').innerHTML = `<div class="card"><div class="row between"><div><h2>Recommended</h2>
+      <p class="sub" style="margin:0">Exactly what ${n} sees on their Home screen. ${note}</p></div>${scopeBar()}</div></div>` +
+    kidRec.sections.map(sec => `<h3 style="margin:18px 4px 10px">${esc(sec.title)}</h3>
+      <div class="results">${sec.videos.map(recCard).join('') || '<div class="empty">Nothing here</div>'}</div>`).join('');
+}
+const FAMILY_LABEL = {
+  search_enabled: v => v ? 'On' : 'Off',
+  mode: v => v === 'allowlist' ? 'Approved' : 'Filtered',
+  max_minutes: v => v ? `${v} min` : 'No limit',
+  block_shorts: v => v ? 'Hidden' : 'Allowed',
+};
+function limitSelect(key, choices) {
+  const cur = JSON.stringify(kidData.limits[key]);
+  const opts = [[null, `Family setting (${FAMILY_LABEL[key](kidData.family[key])})`], ...choices];
+  return `<select data-kid-limit="${key}">${opts.map(([v, label]) =>
+    `<option value='${esc(JSON.stringify(v))}' ${JSON.stringify(v) === cur ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+}
+function kidList(key, title, kind, sub) {
+  const items = kidData.limits[key];
+  return `<div class="card"><h2>${title}</h2><p class="sub">${sub}</p>
+    <form class="row" data-kid-link="${key}" data-kind="${kind}"><input type="text" placeholder="${kind === 'channel' ? 'Channel link or @handle' : 'Paste a YouTube video link'}"><button class="btn primary">Add</button></form>
+    <div class="list">${items.length ? items.map(i => `<div class="item">${kind === 'video' ? `<img class="thumb" src="${thumb(i.id)}" loading="lazy" alt="">` : ''}
+      <div class="grow"><div class="t">${esc(i.title || i.name || i.id)}</div>${i.channel ? `<small>${esc(i.channel)}</small>` : ''}</div>
+      <button class="btn small" data-kid-unlist="${key}" data-id="${esc(i.id)}">Remove</button></div>`).join('') : '<div class="empty">None</div>'}</div></div>`;
+}
+function renderKidLimits() {
+  const L = kidData.limits, n = esc(kidName());
+  $('#kidBody').innerHTML = `<div class="kid-grid">
+    <div class="card"><h2>Limits for ${n}</h2><p class="sub">These add to your family rules. "Family setting" follows the Rules tab.</p>
+      <div class="setting"><div><b>Watching on this device</b><small>Off = ${n} can't watch anything, even saved videos</small></div>
+        <label class="switch"><input type="checkbox" data-kid-watching ${L.watching ? 'checked' : ''}><span></span></label></div>
+      <div class="setting"><div><b>Searching</b></div>${limitSelect('search_enabled', [[true, 'On'], [false, 'Off']])}</div>
+      <div class="setting"><div><b>What can they find?</b></div>${limitSelect('mode', [['blocklist', 'Filtered'], ['allowlist', 'Approved']])}</div>
+      <div class="setting"><div><b>Longest video</b></div>${limitSelect('max_minutes', [[0, 'No limit'], [10, '10 min'], [15, '15 min'], [20, '20 min'], [30, '30 min'], [45, '45 min'], [60, '1 hour']])}</div>
+      <div class="setting"><div><b>Shorts</b></div>${limitSelect('block_shorts', [[true, 'Hidden'], [false, 'Allowed']])}</div>
+    </div>
+    <div class="card"><h2>Schedules for ${n}</h2><p class="sub">Every-device schedules, plus any just for ${n}.</p>
+      <div class="list">${kidData.schedules.length ? kidData.schedules.map(s => `<div class="item"><div class="grow">
+        <div class="t"><b>${esc(s.name)}</b> <span class="badge ${s.kind === 'off' ? 'bad' : 'ok'}">${s.kind === 'off' ? 'Watching off' : 'Watching allowed'}</span>
+        ${s.enabled ? '' : '<span class="badge warn">Switched off</span>'}</div>
+        <small>${esc(daysLabel(s.days))} · ${schedTimes(s)} · ${esc(appliesTo(s))}</small></div></div>`).join('') : '<div class="empty">No schedules</div>'}</div>
+      <button class="btn" data-kid-sched style="margin-top:10px">Add a schedule just for ${n}</button></div>
+    <div class="card"><h2>Extra blocked words</h2><p class="sub">Only for ${n}, on top of the family list.</p>
+      <form class="row" data-kid-word><input type="text" placeholder="Add words, separated by commas"><button class="btn primary">Add</button></form>
+      <div class="chips">${L.blocked_words.map(w => `<span class="chip">${esc(w)}<button title="Remove" data-kid-unlist="blocked_words" data-id="${esc(w)}">×</button></span>`).join('')}</div></div>
+    ${kidList('blocked_channels', 'Blocked channels', 'channel', `Nothing from these for ${n}.`)}
+    ${kidList('allowed_channels', 'Allowed channels', 'channel', `Extra channels ${n} can watch when set to Approved.`)}
+    ${kidList('blocked_videos', 'Blocked videos', 'video', `Single videos blocked for ${n}.`)}
+  </div>`;
+}
+$('#kidBody').addEventListener('change', async e => {
+  try {
+    if (e.target.dataset.kidLimit) {
+      await api(`/admin/api/devices/${kidSel}/limits`, { [e.target.dataset.kidLimit]: JSON.parse(e.target.value) });
+      toast('Saved for ' + kidName()); loadKid();
+    }
+    if (e.target.dataset.kidWatching !== undefined) {
+      await api(`/admin/api/devices/${kidSel}/limits`, { watching: e.target.checked });
+      toast(e.target.checked ? `${kidName()} can watch again` : `Watching is off for ${kidName()}`); loadKid();
+    }
+  } catch (err) { toast(err.message); }
+});
+$('#kidBody').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target, input = $('input', f), text = input.value.trim(); if (!text) return;
+  try {
+    if (f.dataset.kidWord !== undefined) {
+      for (const w of text.split(',').map(x => x.trim()).filter(Boolean))
+        await api('/admin/api/list/add', { key: 'blocked_words', item: { word: w }, device: kidSel });
+    } else {
+      const kind = f.dataset.kind;
+      const found = await api(`/admin/api/lookup/${kind}`, { text });
+      const item = kind === 'channel' ? found : { id: found.id, title: found.title, channel: found.channel, channel_id: found.channel_id };
+      await api('/admin/api/list/add', { key: f.dataset.kidLink, item, device: kidSel });
+    }
+    toast('Added for ' + kidName()); loadKid();
+  } catch (err) { toast(err.message); }
+});
+
+let rulesRev = null;
+async function load() {
+  S = await api('/admin/api/state');
+  if (rulesRev !== null && S.rules_rev !== rulesRev) {
+    refreshCheck();
+    if (currentTab === 'kids') kidRec = null;
+  }
+  rulesRev = S.rules_rev;
+  $('#whoBox').hidden = !TOKEN;
+  $('#whoName').textContent = TOKEN ? 'Signed in as ' + S.me : '';
+  $('#footWho').hidden = !TOKEN;
+  $('#footName').textContent = TOKEN ? 'Signed in as ' + S.me : '';
+  recent = await api('/admin/api/activity?limit=8');
+  if (currentTab === 'library') lib = await api('/admin/api/library');
+  renderAll();
+  if (currentTab === 'activity') loadActivity();
+  // Don't redraw the Kids tab under someone who's typing in it.
+  if (currentTab === 'kids' && !$('#kidBody').contains(document.activeElement)) loadKid();
+}
+showInstallHint();
+load().catch(() => {});
+setInterval(() => { if (!document.hidden && $('#signIn').hidden) load().catch(() => {}); }, 15000);
+setInterval(() => { if (!document.hidden && !$('section[data-page="library"]').hidden) loadLibrary().catch(() => {}); }, 4000);
+</script>
+</body>
+</html>

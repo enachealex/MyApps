@@ -7,6 +7,9 @@ name: Deploy site
 #   /oncall/      a Vite app, built here
 #   /my-tasks/    an Expo (React Native web) PWA, built here; its baseUrl
 #                 is set to /my-tasks in my-tasks/app.json
+#   /kidview/     KidView's downloads, copied as-is from kidview/downloads
+#                 (built and committed on a PC by kidview/scripts; see
+#                 kidview/RELEASING.md)
 #
 # Pages for this repo is set to "GitHub Actions" as its build type, so a
 # deployment only happens through actions/deploy-pages below. Pushing a
@@ -80,6 +83,9 @@ jobs:
           # baseUrl "/demos/my-tasks" and so references its bundle by absolute
           # path — mounted anywhere else it 404s and the frame goes blank.
           cp -r demos _site/demos
+          # KidView: only its downloads folder is published, never its code.
+          # It doesn't exist until the first release, hence the check.
+          if [ -d kidview/downloads ]; then cp -r kidview/downloads _site/kidview; fi
           # Without .nojekyll, Pages drops files and folders beginning with an
           # underscore — which is what Vite names some chunks, and what Expo
           # names the demo bundle directory (_expo).

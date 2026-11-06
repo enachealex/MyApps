@@ -1,0 +1,7 @@
+{
+  "url": "https://myapps.thejumpvault.com/kidview/",
+  "upload": {
+    "method": "git",
+    "folder": "downloads"
+  }
+}

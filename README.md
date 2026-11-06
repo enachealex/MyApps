@@ -8,6 +8,7 @@ Small apps, one per folder, published together at
 | My Apps landing page | [`index.html`](index.html) | / | static |
 | Putt Count | [`puttcount/`](puttcount) | /puttcount/ | static |
 | OnCall Schedule | [`oncall/`](oncall) | /oncall/ | Vite build |
+| KidView | [`kidview/`](kidview) | /kidview/ (downloads only) | Android apps + home server, released from a PC ([how](kidview/RELEASING.md)) |
 
 ## How deployment works
 

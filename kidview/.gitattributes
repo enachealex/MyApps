@@ -1,0 +1,14 @@
+# Store text with LF line endings so the Linux build machines (GitHub Actions, Docker) can use it.
+* text=auto
+*.sh text eol=lf
+gradlew text eol=lf
+# Windows needs CRLF for these
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+# Binary
+*.jar binary
+*.jks binary
+*.png binary
+*.webp binary
+*.ico binary

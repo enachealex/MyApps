@@ -1,0 +1,150 @@
+<!doctype html>
+<!-- KidView download page. scripts/publish.ps1 fills in the {{...}} values and uploads it. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidView: YouTube for kids, on your rules</title>
+<meta name="description" content="A YouTube player for your kids' Android devices that you control, running on a computer in your own home.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='13' fill='%236c4bf4'/%3E%3Cpath d='M24 18 48 32 24 46z' fill='white'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f5fb; --card: #ffffff; --text: #1d2330; --muted: #5d6475; --line: #e3e1ee;
+    --accent: #6c4bf4; --accent-text: #ffffff; --accent-soft: #ece8fe; --code: #f0eef8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121218; --card: #1c1c25; --text: #ecebf3; --muted: #a3a3b5; --line: #2d2c3a;
+      --accent: #8b70ff; --accent-text: #ffffff; --accent-soft: #2a2546; --code: #24232f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 16px; }
+  header { display: flex; align-items: center; gap: 12px; padding: 20px 0; }
+  .logo { width: 40px; height: 40px; border-radius: 10px; background: var(--accent); display: grid; place-items: center; }
+  .logo svg { width: 18px; height: 18px; }
+  header b { font-size: 20px; }
+  .hero { padding: 40px 0 24px; }
+  h1 { font-size: clamp(30px, 6vw, 46px); line-height: 1.15; margin: 0 0 14px; letter-spacing: -0.02em; }
+  .lead { font-size: 19px; color: var(--muted); max-width: 640px; margin: 0 0 18px; }
+  .chip { display: inline-block; background: var(--accent-soft); color: var(--accent); border-radius: 99px; padding: 4px 12px; font-size: 14px; font-weight: 600; }
+  h2 { font-size: 24px; margin: 48px 0 16px; letter-spacing: -0.01em; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0 0 16px; color: var(--muted); font-size: 15px; }
+  .btn { display: inline-block; background: var(--accent); color: var(--accent-text); text-decoration: none; font-weight: 600;
+         border-radius: 10px; padding: 10px 16px; border: 0; font: inherit; cursor: pointer; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn.ghost { background: var(--accent-soft); color: var(--accent); }
+  .cmd { display: flex; gap: 8px; align-items: stretch; margin-top: 8px; }
+  code, .cmd pre { background: var(--code); border-radius: 8px; font: 14px/1.5 ui-monospace, Consolas, monospace; }
+  code { padding: 1px 6px; }
+  .cmd pre { margin: 0; padding: 10px 12px; overflow-x: auto; flex: 1; min-width: 0; }
+  ol.steps { padding: 0; margin: 0; list-style: none; counter-reset: s; display: grid; gap: 12px; }
+  ol.steps li { counter-increment: s; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 20px 16px 64px; position: relative; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 18px; top: 16px; width: 30px; height: 30px; border-radius: 50%;
+                        background: var(--accent); color: var(--accent-text); display: grid; place-items: center; font-weight: 700; }
+  ol.steps b { display: block; }
+  ol.steps p { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
+  ul.plain { margin: 0; padding-left: 20px; }
+  ul.plain li { margin: 6px 0; }
+  .notes ul { margin: 0; padding-left: 20px; } .notes li { margin: 4px 0; } .notes p { margin: 0 0 8px; }
+  .muted { color: var(--muted); }
+  footer { color: var(--muted); font-size: 14px; padding: 48px 0 32px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3 21 12 6 21z" fill="#fff"/></svg></div>
+    <b>KidView</b>
+  </header>
+
+  <section class="hero">
+    <h1>YouTube for your kids,<br>on your rules.</h1>
+    <p class="lead">A YouTube player for your kids' Android tablets and phones that you control. Block videos, channels,
+      words and whole topics, set bedtimes, see what they watch, and save videos for trips.</p>
+    <span class="chip">Version {{VERSION}} · {{DATE}}</span>
+  </section>
+
+  <h2>How it works</h2>
+  <div class="grid">
+    <div class="card"><h3>A server in your home</h3><p>KidView runs on a computer you already have: a Windows PC, or a home server, NAS or Raspberry Pi. Your rules, your kids' activity and saved videos stay on it.</p></div>
+    <div class="card"><h3>The kids' app</h3><p>Kids search and watch through your server, which hides anything your rules don't allow. No ads, no comments, no "up next", no links out.</p></div>
+    <div class="card"><h3>You're in charge</h3><p>Manage everything from the dashboard in any browser, or from your phone: the KidView Parent app on Android, or KidView added to your iPhone's Home Screen. Each parent has their own name and PIN.</p></div>
+  </div>
+
+  <h2 id="download">Download</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Server for Windows</h3>
+      <p>For a Windows PC that's on while the kids watch. Unzip it and double-click <b>Install KidView</b>.</p>
+      <a class="btn" href="{{WINDOWS_ZIP}}">Download for Windows</a>
+    </div>
+    <div class="card">
+      <h3>Kids' app</h3>
+      <p>For each child's Android tablet or phone (Android 8 or newer).</p>
+      <a class="btn" href="{{KIDS_APK}}">Download KidView</a>
+    </div>
+    <div class="card">
+      <h3>Parent app</h3>
+      <p>For your Android phone. On iPhone there's nothing to download: scan the code on your dashboard and add KidView to your Home Screen (step 4 below).</p>
+      <a class="btn ghost" href="{{PARENT_APK}}">Download KidView Parent</a>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3>Server with Docker</h3>
+    <p style="margin-bottom:0">For a home server, NAS or 64-bit Raspberry Pi with Docker. Run this there (and again any time to update):</p>
+    <div class="cmd"><pre id="dockerCmd">curl -fsSL {{SITE}}install.sh | sh</pre><button class="btn ghost" type="button" id="copyBtn">Copy</button></div>
+  </div>
+
+  <h2>Set it up</h2>
+  <ol class="steps">
+    <li><b>Install the server</b><p>Windows: unzip the download and double-click <b>Install KidView</b>. It installs what it needs, starts with Windows, and shows a purple icon by the clock. When Windows asks, allow KidView on private networks.<br>Docker: run the command above.</p></li>
+    <li><b>Create your parent account</b><p>On the KidView PC, open <code>http://localhost:8765/admin</code> and add yourself under Home → Parent accounts. With Docker, open <code>http://&lt;server address&gt;:8765/admin</code> from your phone or PC and use the one-time setup code the installer showed.</p></li>
+    <li><b>Set up each kid's device</b><p>Install the kids' app (Android asks once to allow installs from your browser, and may ask you to confirm because it's not from the Play Store). Open it, tap <b>Scan code</b>, and scan the code on the dashboard under Home → Set up a kid's device.</p></li>
+    <li><b>Put KidView on your phone</b><p><b>iPhone:</b> point the Camera at the small code under Home → Parent accounts on your dashboard. KidView opens in Safari; tap <b>Share</b>, then <b>Add to Home Screen</b>, and sign in with your name and PIN. It opens full screen like an app.<br><b>Android:</b> install the parent app, tap <b>Scan code</b>, scan the same code, and sign in.</p></li>
+    <li><b>Lock the devices down</b><p>KidView only helps if it's the only way to YouTube. With Google Family Link (free), hide the YouTube app, YouTube Kids and web browsers, and require your approval for new apps.</p></li>
+  </ol>
+
+  <h2>Updates</h2>
+  <div class="card">
+    <ul class="plain">
+      <li>KidView checks for new versions quietly and only asks when there is one. Tap <b>Update</b> or <b>Later</b>. Nothing updates without you.</li>
+      <li>The apps download and install the update themselves. The first time, Android asks you to allow installs from KidView, and Google Play Protect may ask you to confirm because KidView isn't from the Play Store.</li>
+      <li>For the server, press <b>Update now</b> on the dashboard or in the parent app's Settings. It restarts by itself in about a minute.</li>
+      <li>Want to check right away? Use <b>Check for updates</b> in the parent app's Settings, in the kids' app's grown-up setup (long-press the KidView title), or at the bottom of the dashboard.</li>
+      <li>Your settings, activity and saved videos are kept through every update.</li>
+    </ul>
+  </div>
+
+  <h2>Privacy</h2>
+  <div class="card">
+    <ul class="plain">
+      <li>There's no KidView account and no cloud service. Everything KidView knows stays on the computer you install it on.</li>
+      <li>Your KidView server talks to YouTube to search and stream, and checks this website for new versions. The apps only talk to your own server, plus this website for app updates. No analytics, no ads.</li>
+      <li>KidView reaches YouTube with the open-source tool yt-dlp, which isn't an official YouTube service, so KidView is meant for personal use at home.</li>
+    </ul>
+  </div>
+
+  <h2>What's new in {{VERSION}}</h2>
+  <div class="card notes">{{NOTES}}</div>
+
+  <footer>KidView {{VERSION}}</footer>
+</div>
+<script>
+  document.getElementById('copyBtn').addEventListener('click', async (e) => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('dockerCmd').textContent);
+      e.target.textContent = 'Copied';
+      setTimeout(() => { e.target.textContent = 'Copy'; }, 1500);
+    } catch (err) { /* select it so it can be copied by hand */
+      const r = document.createRange(); r.selectNodeContents(document.getElementById('dockerCmd'));
+      getSelection().removeAllRanges(); getSelection().addRange(r);
+    }
+  });
+</script>
+</body>
+</html>
