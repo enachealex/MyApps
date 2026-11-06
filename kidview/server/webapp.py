@@ -1,6 +1,10 @@
-"""The KidView Parent web app: what iPhones (and other phones) need to install the dashboard
-as an app from the browser ("Add to Home Screen"). Icons are the same art as the Android parent app."""
+"""Pages for phones: the KidView Parent web app (what iPhones and other phones need to install the
+dashboard from the browser, "Add to Home Screen"; the icons are the Android parent app's art), and the
+page a child's device opens from the kid setup QR code (download KidView, then open it set up)."""
 import base64
+import html
+import re
+from urllib.parse import quote, urlencode
 
 ICONS = {
     180: base64.b64decode(
@@ -372,3 +376,71 @@ MANIFEST = {
         {"src": "/admin/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
     ],
 }
+
+
+# ---------------------------------------------------------------- kid setup page (/add)
+
+KIDS_APP_ID = "com.thejumpvault.kidview"
+
+_ADD_STYLE = """
+:root { --bg: #f4f1ff; --card: #fff; --text: #241c4a; --muted: #6b6880; --accent: #6c4bf4; --line: #e6e1fa; }
+@media (prefers-color-scheme: dark) { :root { --bg: #15122a; --card: #201b3d; --text: #efeaff; --muted: #aaa3c7; --line: #2f2856; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 520px; margin: 0 auto; padding: 28px 18px 40px; }
+.logo { width: 56px; height: 56px; border-radius: 16px; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 26px; }
+h1 { font-size: 26px; line-height: 1.2; margin: 16px 0 6px; }
+.lead { color: var(--muted); margin: 0 0 20px; }
+ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; counter-reset: s; }
+li { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px 18px 18px 62px; position: relative; counter-increment: s; }
+li::before { content: counter(s); position: absolute; left: 18px; top: 18px; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; }
+li b { display: block; font-size: 18px; }
+li p { margin: 6px 0 12px; color: var(--muted); font-size: 15px; }
+.btn { display: block; text-align: center; background: var(--accent); color: #fff; text-decoration: none; font-weight: 700; border-radius: 999px; padding: 14px 18px; }
+.btn.alt { background: transparent; color: var(--accent); border: 2px solid var(--accent); }
+.small { color: var(--muted); font-size: 14px; }
+code { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-size: 15px; }
+.note { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; }
+"""
+
+
+def _page(title: str, body: str) -> str:
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            f'<meta name="viewport" content="width=device-width, initial-scale=1"><title>{html.escape(title)}</title>'
+            f'<meta name="robots" content="noindex"><style>{_ADD_STYLE}</style></head><body><main>'
+            f'<div class="logo" aria-hidden="true">&#9654;</div>{body}</main></body></html>')
+
+
+def add_page(server: str, code: str, code_ok: bool, apk_url: str | None, android: bool) -> str:
+    """The page the kid setup QR code opens on a child's phone or tablet."""
+    if not re.fullmatch(r"[A-Za-z0-9.\-:\[\]]{1,100}", server or ""):
+        server = ""
+    if not code_ok or not server:
+        return _page("KidView setup code", '<h1>This setup code is out of date</h1>'
+                     '<p class="lead">Ask a grown-up to open the KidView dashboard and scan the code shown there now.</p>')
+    e = html.escape
+    pair = "pair?" + urlencode({"server": server, "code": code})
+    fallback = apk_url or ""
+    open_link = (f"intent://{pair}#Intent;scheme=kidview;package={KIDS_APP_ID};"
+                 + (f"S.browser_fallback_url={quote(fallback, safe='')};" if fallback else "") + "end")
+    if not android:
+        open_link = "kidview://" + pair
+    install = (f'<a class="btn" href="{e(apk_url)}">Download KidView</a>' if apk_url
+               else '<p>Ask a grown-up for the KidView app.</p>')
+    phone_note = "" if android else ('<p class="note">KidView for kids works on <b>Android</b> phones and tablets. '
+                                     'Scan this code with the child\'s Android device.</p>')
+    body = f"""<h1>Set up KidView on this device</h1>
+<p class="lead">Two steps, then it's ready to watch.</p>
+{phone_note}
+<ol>
+  <li><b>Install KidView</b>
+    <p>Tap the button, then open the file when it has downloaded. Android may ask you to allow installs from
+    this browser, and Google Play Protect may ask you to confirm, because KidView isn't from the Play Store.</p>
+    {install}</li>
+  <li><b>Connect it to your home</b>
+    <p>When KidView is installed, come back to this page and tap:</p>
+    <a class="btn alt" href="{e(open_link)}">Open KidView</a>
+    <p class="small">KidView opens with your home's details filled in. Give the device a name and tap Connect.</p></li>
+</ol>
+<p class="small">Didn't open? Open KidView and type the server address <code>{e(server)}</code> and the family code <code>{e(code)}</code>.</p>"""
+    return _page("Set up KidView", body)

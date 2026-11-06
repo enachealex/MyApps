@@ -439,6 +439,32 @@ def _addresses() -> list[str]:
     return [f"{ip}:{PORT}" for ip in found]
 
 
+@app.get("/add")
+def add_device_page(request: Request, code: str = ""):
+    """Opened from the kid setup QR code on a child's phone: download KidView, then open it set up.
+    Only works with the current family code, so it can't be used to look the code up.
+
+    It sends the phone on to the setup page on the KidView website: Chrome warns about downloads that
+    start from a plain-http page like this one, but not from that https page. The home's address and
+    family code go after the "#", which browsers never send to the website."""
+    host = request.headers.get("host", "")
+    code_ok = bool(code) and code == store.family_code()
+    if code_ok and version.configured() and re.fullmatch(r"[A-Za-z0-9.\-:\[\]]{1,100}", host):
+        details = {"server": host, "code": code}
+        if apk := version.kids_app_path():
+            details["apk"] = apk
+        return Response(status_code=302, headers={"Location": f"{version.SITE}setup.html#{urlencode(details)}",
+                                                  "Cache-Control": "no-store"})
+    page = webapp.add_page(
+        server=request.headers.get("host", ""),
+        code=code,
+        code_ok=bool(code) and code == store.family_code(),
+        apk_url=version.kids_app_url(),
+        android="android" in request.headers.get("user-agent", "").lower(),
+    )
+    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/admin/manifest.webmanifest")
 def admin_manifest():
     """Lets phones install the dashboard as an app (iPhone: Share → Add to Home Screen)."""
@@ -512,7 +538,10 @@ def pair_link(kind: str, addr: str) -> str:
     and the Android parent app's Scan code reads the server address from it."""
     if kind == "parent":
         return f"http://{addr}/admin"
-    return "kidview://pair?" + urlencode({"server": addr, "code": store.family_code()})
+    # The kid code is a web link to this server's /add page: a child's camera opens it, the page offers
+    # the app download, then opens KidView with this server and the family code filled in.
+    # (The kids' app's own Scan code reads the server and code straight from it.)
+    return f"http://{addr}/add?" + urlencode({"code": store.family_code()})
 
 
 @app.get("/admin/api/pair-qr", dependencies=[Depends(parent)])

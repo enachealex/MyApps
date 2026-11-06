@@ -76,6 +76,24 @@ def update() -> dict | None:
     return None
 
 
+def kids_app_path() -> str | None:
+    """The KidView app a child's device should download, relative to SITE: the newest published
+    version, or else this server's own version (always on the site once released)."""
+    if not configured():
+        return None
+    update()  # refreshes what's published, in the background, when it's old
+    with _lock:
+        rel = _latest["release"]
+    if rel and rel.get("kids_apk"):
+        return rel["kids_apk"]
+    return f"{VERSION}/KidView-{VERSION}.apk"
+
+
+def kids_app_url() -> str | None:
+    path = kids_app_path()
+    return urllib.parse.urljoin(SITE, path) if path else None
+
+
 def check_now() -> dict | None:
     """Checks right away (Check for updates). Raises if the website can't be reached."""
     if not configured():

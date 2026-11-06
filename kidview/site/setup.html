@@ -1,0 +1,101 @@
+<!doctype html>
+<!--
+  KidView: set up a child's device. Published at https://myapps.thejumpvault.com/kidview/setup.html.
+  A family's KidView server sends the child's phone here from the kid setup QR code, with the details
+  after the "#": #server=192.168.1.20:8765&code=123456&apk=1.0.0/KidView-1.0.0.apk
+  Nothing after the "#" is ever sent to this website. Downloading from this https page avoids Chrome's
+  "can't be downloaded securely" warning, which a download started from the home server's http page gets.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Set up KidView</title>
+<style>
+  :root { --bg: #f4f1ff; --card: #fff; --text: #241c4a; --muted: #6b6880; --accent: #6c4bf4; --line: #e6e1fa; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #15122a; --card: #201b3d; --text: #efeaff; --muted: #aaa3c7; --line: #2f2856; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 28px 18px 40px; }
+  .logo { width: 56px; height: 56px; border-radius: 16px; background: var(--accent); color: #fff; display: grid; place-items: center; font-size: 26px; }
+  h1 { font-size: 26px; line-height: 1.2; margin: 16px 0 6px; }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; counter-reset: s; }
+  li { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px 18px 18px 62px; position: relative; counter-increment: s; }
+  li::before { content: counter(s); position: absolute; left: 18px; top: 18px; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; }
+  li b { display: block; font-size: 18px; }
+  li p { margin: 6px 0 12px; color: var(--muted); font-size: 15px; }
+  .btn { display: block; text-align: center; background: var(--accent); color: #fff; text-decoration: none; font-weight: 700; border-radius: 999px; padding: 14px 18px; }
+  .btn.alt { background: transparent; color: var(--accent); border: 2px solid var(--accent); }
+  .small { color: var(--muted); font-size: 14px; }
+  code { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; font-size: 15px; }
+  .note { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 18px; margin: 0 0 14px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo" aria-hidden="true">&#9654;</div>
+  <div id="setup" hidden>
+    <h1>Set up KidView on this device</h1>
+    <p class="lead">Two steps, then it's ready to watch.</p>
+    <p class="note" id="notAndroid" hidden>KidView for kids works on <b>Android</b> phones and tablets. Scan the code with the child's Android device.</p>
+    <ol>
+      <li><b>Install KidView</b>
+        <p>Tap the button, then open the file when it has downloaded. Android may ask you to allow installs from
+        this browser, and Google Play Protect may ask you to confirm, because KidView isn't from the Play Store.</p>
+        <a class="btn" id="download" href="./">Download KidView</a></li>
+      <li><b>Connect it to your home</b>
+        <p>When KidView is installed, come back to this page and tap:</p>
+        <a class="btn alt" id="open" href="#">Open KidView</a>
+        <p class="small">KidView opens with your home's details filled in. Give the device a name and tap Connect.</p></li>
+    </ol>
+    <p class="small">Didn't open? Open KidView and type the server address <code id="server"></code> and the family code <code id="code"></code>.</p>
+  </div>
+  <div id="missing" hidden>
+    <h1>Scan the setup code</h1>
+    <p class="lead">Open the KidView dashboard at home and scan the code under <b>Set up a kid's device</b> with this phone's camera.</p>
+    <a class="btn alt" href="./">About KidView</a>
+  </div>
+</main>
+<script>
+  const KIDS_APP_ID = 'com.thejumpvault.kidview';
+  const p = new URLSearchParams(location.hash.slice(1));
+  const server = p.get('server') || '', code = p.get('code') || '';
+  // Only ever offer KidView's own downloads from this site, never a file named in someone's link.
+  let apk = /^\d+\.\d+\.\d+\/KidView-\d+\.\d+\.\d+\.apk$/.test(p.get('apk') || '') ? p.get('apk') : '';
+  const valid = /^[A-Za-z0-9.\-:\[\]]{1,100}$/.test(server) && /^\d{6}$/.test(code);
+
+  if (!valid) {
+    document.getElementById('missing').hidden = false;
+  } else {
+    document.getElementById('setup').hidden = false;
+    document.getElementById('server').textContent = server;
+    document.getElementById('code').textContent = code;
+    const android = /Android/i.test(navigator.userAgent);
+    document.getElementById('notAndroid').hidden = android;
+
+    const pair = `pair?server=${encodeURIComponent(server)}&code=${encodeURIComponent(code)}`;
+    const setOpen = (fallback) => {
+      // Chrome on Android: opens KidView if it's installed, otherwise downloads it.
+      document.getElementById('open').href = android
+        ? `intent://${pair}#Intent;scheme=kidview;package=${KIDS_APP_ID};` +
+          (fallback ? `S.browser_fallback_url=${encodeURIComponent(fallback)};` : '') + 'end'
+        : `kidview://${pair}`;
+    };
+    setOpen('');
+    const setApk = (path) => {
+      const url = new URL(path, location.href).href;
+      document.getElementById('download').href = url;
+      setOpen(url);
+    };
+    // Newest published version if there is one; otherwise the version the family's server named.
+    fetch('latest.json', { cache: 'no-cache' })
+      .then(r => r.ok ? r.json() : null)
+      .then(rel => { if (rel && /^\d+\.\d+\.\d+\/KidView-[\d.]+\.apk$/.test(rel.kids_apk || '')) apk = rel.kids_apk; })
+      .catch(() => {})
+      .finally(() => { if (apk) setApk(apk); else document.getElementById('download').href = './'; });
+  }
+</script>
+</body>
+</html>

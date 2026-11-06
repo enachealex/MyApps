@@ -59,6 +59,7 @@ index.html             the download page and setup guide (site/index.html, fille
 latest.json            what the apps and servers check. Only publish.ps1 changes it.
 install.sh             the Docker installer/updater
 server-latest.txt      which server package install.sh downloads, and its checksum
+setup.html             where a child's phone lands from the kid setup QR code: download KidView, then open it set up
 1.0.0/  1.1.0/  ...    every version's files: both APKs, the Windows zip, the Docker server
 ```
 

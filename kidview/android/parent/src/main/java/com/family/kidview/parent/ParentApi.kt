@@ -402,8 +402,9 @@ class ParentViewModel(app: Application) : AndroidViewModel(app) {
     var pendingServer by mutableStateOf<String?>(null)
 
     /** kidview://pair?server=...&code=... for setting up a kid's device from this phone's screen. */
+    /** Same as the dashboard's kid QR code: the server's /add page, which installs and connects KidView. */
     fun kidPairLink(addr: String): String =
-        "kidview://pair?server=" + android.net.Uri.encode(addr) + "&code=" + android.net.Uri.encode(state?.str("family_code").orEmpty())
+        "http://$addr/add?code=" + android.net.Uri.encode(state?.str("family_code").orEmpty())
 
     fun syncLibrary() = act("Checking for new videos") { it.post("/admin/api/library/sync") }
     fun removeDevice(id: String) = act("Device removed") { it.post("/admin/api/devices/remove", jsonOf("id" to id)) }

@@ -100,6 +100,9 @@ $release.sha256 = $sha
 
 Write-Host "==> Uploading the draft" -ForegroundColor Cyan
 Send-ToSite $cfg $out $Version
+# The page a child's phone opens from the kid setup QR code. Not tied to a version, so it goes up now.
+Copy-Item site\setup.html "dist\site\setup.html" -Force
+Send-ToSite $cfg "dist\site\setup.html" 'setup.html'
 # With the MyApps repo, this commits the draft (and the version change) and pushes it.
 Complete-Upload $cfg "KidView $Version (draft)" @('android/gradle.properties', 'server/version.py', 'RELEASE_NOTES.md')
 

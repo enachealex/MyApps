@@ -66,9 +66,19 @@ data class PairInfo(val server: String, val code: String)
 
 fun parsePairLink(text: String?): PairInfo? {
     val uri = runCatching { Uri.parse(text?.trim() ?: return null) }.getOrNull() ?: return null
-    if (uri.scheme != "kidview" || uri.host != "pair") return null
-    val server = uri.getQueryParameter("server")?.takeIf { it.isNotBlank() } ?: return null
-    return PairInfo(server, uri.getQueryParameter("code").orEmpty())
+    return when {
+        // The dashboard's kid code: the server's setup page, e.g. http://192.168.1.20:8765/add?code=123456
+        (uri.scheme == "http" || uri.scheme == "https") && uri.path == "/add" -> {
+            val host = uri.authority?.takeIf { it.isNotBlank() } ?: return null
+            PairInfo(if (uri.scheme == "https") "https://$host" else host, uri.getQueryParameter("code").orEmpty())
+        }
+        // What that page's Open KidView button (and older codes) use: kidview://pair?server=...&code=...
+        uri.scheme == "kidview" && uri.host == "pair" -> {
+            val server = uri.getQueryParameter("server")?.takeIf { it.isNotBlank() } ?: return null
+            PairInfo(server, uri.getQueryParameter("code").orEmpty())
+        }
+        else -> null
+    }
 }
 
 class MainActivity : ComponentActivity() {

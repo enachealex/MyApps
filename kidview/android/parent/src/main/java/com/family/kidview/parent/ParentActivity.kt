@@ -375,7 +375,7 @@ fun SettingsScreen(vm: ParentViewModel, snackHost: SnackbarHostState) {
                 }
             }
             item {
-                Section("Set up a kid's device", "On the kid's device, open KidView, tap Scan code, and point it at this code. Or type the address and family code.") {
+                Section("Set up a kid's device", "Scan this with the child's phone or tablet camera: it downloads KidView and connects it. Already have KidView? Tap Scan code in the app.") {
                     val addresses = st.optJSONArray("addresses")?.objects().orEmpty()
                     var pick by remember { mutableStateOf(0) }
                     addresses.getOrNull(pick)?.let { a ->

@@ -57,7 +57,8 @@ Copy-Item $draft "$site\latest.json" -Force
 
 Write-Host "==> Uploading" -ForegroundColor Cyan
 Send-ToSite $cfg "$site\$Version" $Version
-foreach ($f in 'server-latest.txt', 'install.sh', 'index.html') {
+Copy-Item site\setup.html "$site\setup.html" -Force
+foreach ($f in 'server-latest.txt', 'install.sh', 'index.html', 'setup.html') {
     Send-ToSite $cfg "$site\$f" $f
 }
 Send-ToSite $cfg "$site\latest.json" 'latest.json'   # last, so everything it points to is already there
