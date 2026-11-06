@@ -7,9 +7,9 @@
   "windows": "1.0.0/KidView-Server-Windows-1.0.0.zip",
   "server": "1.0.0/kidview-server-1.0.0.tar.gz",
   "sha256": {
-    "1.0.0/KidView-1.0.0.apk": "7d27a9ce0a0f5438aacf935347689bdee38b4546800b2b8c55fc2b2ef2a51386",
-    "1.0.0/KidView-Parent-1.0.0.apk": "3677a19b6ca3625812e3c06ab627291a1c9487ec68c2566ce7eaadfd4b75934a",
-    "1.0.0/KidView-Server-Windows-1.0.0.zip": "d54ebe74ca11cf7e83ab5cbf76a79e8c4bf5b18add010488f8c878896f7536cb",
-    "1.0.0/kidview-server-1.0.0.tar.gz": "64888fdcaafec43bd76d8dc9076f04eb038751b6cc75024a1d90dd43546bf5da"
+    "1.0.0/KidView-1.0.0.apk": "c36e9a45f6be5ce557e11b26ffcbd63be65336929f191ea893e993db39e57664",
+    "1.0.0/KidView-Parent-1.0.0.apk": "2cea6cb61df746b1d3f7001500aafe8112ea311c210f573cf5e5f08aa51361b0",
+    "1.0.0/KidView-Server-Windows-1.0.0.zip": "9720eb7e4c1ae227d8a74dc78d8143d926f27d556c26316e4fbee4f42137f6be",
+    "1.0.0/kidview-server-1.0.0.tar.gz": "27fdbe946a0c2f4ef6dae5130dcda41dfe88d63ef5dad69fa5a153011e43c3f2"
   }
 }

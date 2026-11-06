@@ -42,8 +42,10 @@
     <p class="note" id="notAndroid" hidden>KidView for kids works on <b>Android</b> phones and tablets. Scan the code with the child's Android device.</p>
     <ol>
       <li><b>Install KidView</b>
-        <p>Tap the button, then open the file when it has downloaded. Android may ask you to allow installs from
-        this browser, and Google Play Protect may ask you to confirm, because KidView isn't from the Play Store.</p>
+        <p>Tap the button, then open the file when it has downloaded. Because KidView isn't from the Play Store,
+        Chrome says the file "might be harmful" (it says that about every app from a website: tap
+        <b>Download anyway</b>), Android asks once to allow installs from this browser, and Google Play
+        Protect may ask you to confirm.</p>
         <a class="btn" id="download" href="./">Download KidView</a></li>
       <li><b>Connect it to your home</b>
         <p>When KidView is installed, come back to this page and tap:</p>
@@ -63,7 +65,7 @@
   const p = new URLSearchParams(location.hash.slice(1));
   const server = p.get('server') || '', code = p.get('code') || '';
   // Only ever offer KidView's own downloads from this site, never a file named in someone's link.
-  let apk = /^\d+\.\d+\.\d+\/KidView-\d+\.\d+\.\d+\.apk$/.test(p.get('apk') || '') ? p.get('apk') : '';
+  let apk = /^\d+\.\d+\.\d+\/KidView-\d+\.\d+\.\d+\.apk(\?h=[0-9a-f]{6,64})?$/.test(p.get('apk') || '') ? p.get('apk') : '';
   const valid = /^[A-Za-z0-9.\-:\[\]]{1,100}$/.test(server) && /^\d{6}$/.test(code);
 
   if (!valid) {
@@ -92,7 +94,12 @@
     // Newest published version if there is one; otherwise the version the family's server named.
     fetch('latest.json', { cache: 'no-cache' })
       .then(r => r.ok ? r.json() : null)
-      .then(rel => { if (rel && /^\d+\.\d+\.\d+\/KidView-[\d.]+\.apk$/.test(rel.kids_apk || '')) apk = rel.kids_apk; })
+      .then(rel => {
+        if (rel && /^\d+\.\d+\.\d+\/KidView-[\d.]+\.apk$/.test(rel.kids_apk || '')) {
+          const sha = (rel.sha256 || {})[rel.kids_apk] || '';
+          apk = rel.kids_apk + (/^[0-9a-f]{12,}$/.test(sha) ? `?h=${sha.slice(0, 12)}` : '');
+        }
+      })
       .catch(() => {})
       .finally(() => { if (apk) setApk(apk); else document.getElementById('download').href = './'; });
   }
