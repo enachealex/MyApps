@@ -63,15 +63,7 @@ private fun LazyListScope.everyone(vm: ParentViewModel) {
         val f = vm.filter
         val days = vm.rules.optInt("activity_days", 7)
         Section("Activity", "Searches, videos and changes from the past $days days. Older activity is deleted automatically.") {
-            Text("Type", color = Muted, fontSize = 12.sp)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                KINDS.forEach { (k, label) -> FilterChip(selected = f.kind == k, onClick = { vm.updateFilter(f.copy(kind = k)) }, label = { Text(label) }) }
-            }
-            Text("When", color = Muted, fontSize = 12.sp)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                RANGES.forEach { (k, label) -> FilterChip(selected = f.range == k, onClick = { vm.updateFilter(f.copy(range = k)) }, label = { Text(label) }) }
-            }
-            WhoPicker(vm)
+            ActivityFilters(vm)
             OutlinedTextField(
                 value = f.text, onValueChange = { vm.updateFilter(f.copy(text = it), debounce = true) },
                 placeholder = { Text("Find a video, channel, search or change", fontSize = 14.sp) },
@@ -90,20 +82,30 @@ private fun LazyListScope.everyone(vm: ParentViewModel) {
     items(events, key = { "e" + it.optLong("id") }) { e -> ActivityRow(vm, e) }
 }
 
+/** Type, When and Who: three buttons, each opening a wheel of choices. */
 @Composable
-private fun WhoPicker(vm: ParentViewModel) {
-    var open by remember { mutableStateOf(false) }
+private fun ActivityFilters(vm: ParentViewModel) {
     val f = vm.filter
     val parents = vm.state?.optJSONArray("parents")?.objects().orEmpty().map { it.str("name") }
-    val options = listOf("" to "Everyone") + vm.devices.map { "d:" + it.str("id") to it.str("name") } +
+    val who = listOf("" to "Everyone") + vm.devices.map { "d:" + it.str("id") to it.str("name") } +
         (listOf("PC dashboard") + parents).map { "p:$it" to "$it (changes)" }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Who", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        Box {
-            OutlinedButton(onClick = { open = true }) { Text(options.firstOrNull { it.first == f.who }?.second ?: "Everyone") }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                options.forEach { (v, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { open = false; vm.updateFilter(f.copy(who = v)) }) }
-            }
+    var picking by remember { mutableStateOf<String?>(null) }
+    fun label(options: List<Pair<String, String>>, value: String) = options.firstOrNull { it.first == value }?.second ?: options[0].second
+
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PickerButton("Type", label(KINDS, f.kind), f.kind != "", Modifier.weight(1f)) { picking = "type" }
+        PickerButton("When", label(RANGES, f.range), f.range != "week", Modifier.weight(1f)) { picking = "when" }
+        PickerButton("Who", label(who, f.who), f.who != "", Modifier.weight(1f)) { picking = "who" }
+    }
+    when (picking) {
+        "type" -> WheelPickerSheet("Type of activity", KINDS, f.kind, { picking = null }) {
+            picking = null; vm.updateFilter(f.copy(kind = it))
+        }
+        "when" -> WheelPickerSheet("When", RANGES, f.range, { picking = null }) {
+            picking = null; vm.updateFilter(f.copy(range = it))
+        }
+        "who" -> WheelPickerSheet("Who", who, f.who, { picking = null }) {
+            picking = null; vm.updateFilter(f.copy(who = it))
         }
     }
 }

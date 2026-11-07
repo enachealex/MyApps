@@ -73,7 +73,10 @@ button:disabled { opacity: .5; cursor: default; }
 .switch span::before { content: ""; position: absolute; width: 24px; height: 24px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
 .switch input:checked + span { background: var(--ok); }
 .switch input:checked + span::before { transform: translateX(22px); }
-.setting { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; padding: 12px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+/* In a narrow card the control moves under its label (right-aligned) instead of being cut off. */
+.setting > div:first-child { flex: 1 1 180px; min-width: 0; }
+.setting > :last-child:not(:first-child) { margin-left: auto; }
 .setting:first-of-type { border-top: 0; }
 .setting b { display: block; }
 .setting small { color: var(--muted); }
@@ -180,8 +183,6 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
   #toast { bottom: calc(88px + env(safe-area-inset-bottom)); }
   .mobile-only { display: inline-flex; }
   .mobile-row { display: flex; }
-  .setting { flex-wrap: wrap; }
-  .setting .seg, .setting select { margin-left: auto; }
   .results { grid-template-columns: minmax(0, 1fr); }
 }
 </style>
@@ -221,8 +222,8 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
         <div id="resumeRow" style="margin-top:10px" hidden><button class="btn small" id="resumeBtn">Go back to the schedule</button></div>
         <div class="setting" style="margin-top:10px"><div><b>Allow searching</b><small>Off = kids only see your Picks</small></div>
           <label class="switch"><input type="checkbox" data-rule="search_enabled"><span></span></label></div>
-        <div class="setting"><div><b>What can they find?</b><small id="modeHelp"></small></div>
-          <div class="seg" id="modeSeg"><button data-mode="blocklist" title="Anything on YouTube except what your rules hide">Filtered</button><button data-mode="allowlist" title="Only channels you've allowed, plus your Picks">Approved</button></div></div>
+        <div class="setting"><div><b>Approved channels only</b><small id="modeHelp"></small></div>
+          <label class="switch" title="On: only channels you've allowed, plus your Picks. Off: anything not blocked."><input type="checkbox" id="modeSwitch"><span></span></label></div>
       </div>
 
       <div class="card">
@@ -884,10 +885,10 @@ function renderHome() {
   renderSchedules(); renderParents();
   $$('[data-rule]').forEach(el => el.checked = !!r[el.dataset.rule]);
   $$('[data-rule-num]').forEach(el => { if (document.activeElement !== el) el.value = r[el.dataset.ruleNum]; });
-  $$('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === r.mode));
+  $('#modeSwitch').checked = r.mode === 'allowlist';
   $('#modeHelp').textContent = r.mode === 'allowlist'
-    ? `Approved: only your ${r.allowed_channels.length} allowed channel(s) and your Picks can be watched.`
-    : 'Filtered: anything on YouTube except what your rules hide.';
+    ? `On (Approved): only your ${r.allowed_channels.length} allowed channel(s) and your Picks can be watched.`
+    : 'Off (Filtered): anything on YouTube except what your rules hide.';
   $('#code').textContent = S.family_code;
   if (!S.addresses.some(a => a.addr === pairAddr)) pairAddr = S.addresses.length ? S.addresses[0].addr : '';
   $('#addrs').innerHTML = S.addresses.map(a => `<label class="row" style="gap:8px; cursor:pointer">
@@ -1093,7 +1094,6 @@ document.addEventListener('click', async e => {
     if (b.dataset.removeDevice && confirm('Remove this device? It will need the family code to get back in.')) {
       await api('/admin/api/devices/remove', { id: b.dataset.removeDevice }); await load();
     }
-    if (b.dataset.mode) await setRule({ mode: b.dataset.mode });
     if (b.dataset.renameDevice) startRename(b.dataset.renameDevice);
     if (b.dataset.renameCancel !== undefined) { renaming = null; renderDevices(); }
     if (b.dataset.allow) {
@@ -1127,6 +1127,7 @@ document.addEventListener('click', async e => {
 for (const id of ['watchTop', 'watchMain']) $('#' + id).onchange = e => flipWatching(e.target.checked);
 $('#resumeBtn').onclick = async () => { S = await api('/admin/api/watching/resume', {}); renderAll(); toast('Back on the schedule'); };
 $$('[data-rule]').forEach(el => el.onchange = () => setRule({ [el.dataset.rule]: el.checked }));
+$('#modeSwitch').onchange = e => setRule({ mode: e.target.checked ? 'allowlist' : 'blocklist' });
 $$('[data-rule-num]').forEach(el => el.onchange = () => setRule({ [el.dataset.ruleNum]: Math.max(0, parseInt(el.value || '0', 10)) }).then(() => toast('Saved')));
 $('#newCode').onclick = async () => {
   if (!confirm('Make a new family code? Devices already set up keep working.')) return;
