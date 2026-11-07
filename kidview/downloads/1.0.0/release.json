@@ -1,15 +1,15 @@
 {
   "version": "1.0.0",
-  "date": "2026-11-06",
+  "date": "2026-11-07",
   "notes": "The first public version.\n\n- A kids' app for Android that only shows what your rules allow: no ads, comments or \"up next\".\n- Block videos, channels, words and whole topics (Roblox, scary games, brainrot memes, pranks).\n- Filtered mode (anything not blocked) or Approved mode (only channels you allow).\n- Schedules for when watching is on or off, with \"allow for 30 minutes\" when you need it.\n- Different restrictions for each child's device.\n- An offline library that saves videos onto the kids' devices for car trips and flights.\n- Recommendations that start with funny and educational picks, then follow what each child likes.\n- Activity for the past week (or longer, if you choose), with filters.\n- The KidView Parent app for your phone, with parent accounts and a change log.\n- Set up a device by scanning a QR code.\n- The apps tell you when a new version is out, and you choose when to update.",
   "kids_apk": "1.0.0/KidView-1.0.0.apk",
   "parent_apk": "1.0.0/KidView-Parent-1.0.0.apk",
   "windows": "1.0.0/KidView-Server-Windows-1.0.0.zip",
   "server": "1.0.0/kidview-server-1.0.0.tar.gz",
   "sha256": {
-    "1.0.0/KidView-1.0.0.apk": "1ac65ecd3c1055e80ecd7698c9c80f77d9d5841ade6a31e371af460f7cd6afab",
-    "1.0.0/KidView-Parent-1.0.0.apk": "9eaf7d5e77d24df466826ac7e433a51cdc24075c33bca9e3622623e365087b1a",
-    "1.0.0/KidView-Server-Windows-1.0.0.zip": "6814b9868ba08b1becb1448f21b690e1c3649268f7b3f81f809dec0ccfd82efe",
-    "1.0.0/kidview-server-1.0.0.tar.gz": "040d9bac625f773ab49c78032179f7660478bed00eaeffe520ef46f01e53e758"
+    "1.0.0/KidView-1.0.0.apk": "d5fc98006745ce978c8e96d15bb34e4a544942ed4618cfe2d86660768f2a9737",
+    "1.0.0/KidView-Parent-1.0.0.apk": "a672b79707af14d5fee466e436437b030624deb3b0256c6b1e0db922e8ece0e9",
+    "1.0.0/KidView-Server-Windows-1.0.0.zip": "7ecd1c31bbb3deead0561498283569400ed94e2362349f0dae4cb5c3848e0983",
+    "1.0.0/kidview-server-1.0.0.tar.gz": "8640e2d67291bd52ca9d3425559beda97131387da1cb0c3347df7053be18fa6f"
   }
 }
