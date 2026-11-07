@@ -138,6 +138,12 @@ def video(video_id: str, max_height: int = 720, fresh: bool = False) -> dict:
     return data
 
 
+def cached(video_id: str) -> dict | None:
+    """Details we already looked up for a video (at any quality), without asking YouTube again."""
+    with _lock:
+        return next((hit[1] for k, hit in _video_cache.items() if k.startswith(video_id + ":")), None)
+
+
 def forget(video_id: str) -> None:
     with _lock:
         for k in [k for k in _video_cache if k.startswith(video_id + ":")]:

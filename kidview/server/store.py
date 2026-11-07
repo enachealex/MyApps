@@ -245,6 +245,38 @@ def remove_device(device_id: str) -> None:
         _save()
 
 
+# ---- videos a kid saved (the heart in the player) and what they watched ----
+
+SAVED_MAX = 500
+# Kept with each saved video so it can be checked against the rules again later.
+SAVED_FIELDS = ("id", "title", "channel", "channel_id", "duration", "short", "age_limit", "tags")
+
+
+def saved_videos(device_id: str) -> list[dict]:
+    """The videos this device saved, newest first."""
+    with _lock:
+        d = _by_id(device_id) or {}
+        return json.loads(json.dumps(d.get("saved") or []))
+
+
+def set_saved(device_id: str, video: dict, saved: bool) -> None:
+    with _lock:
+        d = _by_id(device_id)
+        if not d:
+            raise KeyError(device_id)
+        rest = [v for v in d.get("saved") or [] if v["id"] != video["id"]]
+        if saved:
+            rest.insert(0, {**{k: video.get(k) for k in SAVED_FIELDS}, "saved_at": time.time()})
+        d["saved"] = rest[:SAVED_MAX]
+        _save()
+
+
+def is_saved(device_id: str, video_id: str) -> bool:
+    with _lock:
+        d = _by_id(device_id) or {}
+        return any(v["id"] == video_id for v in d.get("saved") or [])
+
+
 # ---- per-child restrictions (on top of the family rules) ----
 
 # None means "use the family setting".
@@ -568,6 +600,18 @@ def activity(limit: int = 300, device_id: str | None = None, who: str | None = N
     sql = "SELECT * FROM events" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY ts DESC LIMIT ?"
     with _db() as con:
         rows = con.execute(sql, (*args, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def history(device_id: str, limit: int = 200) -> list[dict]:
+    """Videos this device watched, each once, most recently watched first. Only as far back as the
+    "keep activity for" setting, like the rest of the activity."""
+    clause, args = _device_where(device_id)
+    with _db() as con:
+        rows = con.execute(
+            f"""SELECT video_id AS id, MAX(ts) AS watched_at, title, channel, MAX(channel_id) AS channel_id
+                FROM events WHERE {clause} AND kind IN ('watch', 'watch_saved') AND video_id != '' AND ts >= ?
+                GROUP BY video_id ORDER BY watched_at DESC LIMIT ?""", (*args, _cutoff(), limit)).fetchall()
     return [dict(r) for r in rows]
 
 

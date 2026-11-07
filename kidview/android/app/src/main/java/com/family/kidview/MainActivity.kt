@@ -53,13 +53,15 @@ import coil3.compose.AsyncImage
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private val Purple = Color(0xFF6C4BF4)
-private val PurpleDark = Color(0xFF3B2A8C)
-private val Lavender = Color(0xFFF7F2FF)
-private val Sunny = Color(0xFFFFC93C)
+internal val Purple = Color(0xFF6C4BF4)
+internal val PurpleDark = Color(0xFF3B2A8C)
+internal val Lavender = Color(0xFFF7F2FF)
+internal val Sunny = Color(0xFFFFC93C)
 
 /** What the setup QR code holds: kidview://pair?server=192.168.1.20:8765&code=123456 */
 data class PairInfo(val server: String, val code: String)
@@ -134,7 +136,14 @@ class KidViewModel(app: Application) : AndroidViewModel(app) {
     var searchedFor by mutableStateOf("")
     var loading by mutableStateOf(false)
     var message by mutableStateOf<String?>(null)
-    var saved by mutableStateOf(Library.saved(app))
+    /** Videos kept on this device for watching without internet (the Offline tab). */
+    var onDevice by mutableStateOf(Library.saved(app))
+    var tab by mutableStateOf(Tab.Home)
+    /** The Saved tab: videos saved with the heart, and History. Null until loaded. */
+    var savedVideos by mutableStateOf<List<Video>?>(null)
+    var history by mutableStateOf<List<Watched>?>(null)
+    var showHistory by mutableStateOf(false)
+    private var savedJob: Job? = null
     var recommended by mutableStateOf<List<Pair<String, List<Video>>>>(emptyList())
     var offline by mutableStateOf(false)
     private var job: Job? = null
@@ -144,7 +153,7 @@ class KidViewModel(app: Application) : AndroidViewModel(app) {
         val wm = WorkManager.getInstance(app)
         for (name in listOf(Library.SYNC_NOW, Library.SYNC_PERIODIC)) {
             viewModelScope.launch {
-                wm.getWorkInfosForUniqueWorkFlow(name).collect { saved = Library.saved(app) }
+                wm.getWorkInfosForUniqueWorkFlow(name).collect { onDevice = Library.saved(app) }
             }
         }
     }
@@ -152,7 +161,8 @@ class KidViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshHome() {
         val a = api ?: return
         val ctx = getApplication<Application>()
-        saved = Library.saved(ctx)
+        onDevice = Library.saved(ctx)
+        if (tab == Tab.Saved) refreshSaved()
         viewModelScope.launch {
             try {
                 home = a.home()
@@ -163,7 +173,7 @@ class KidViewModel(app: Application) : AndroidViewModel(app) {
                 if (results == null) message = null
                 // Drop anything that was removed or blocked, then fetch new videos in the background.
                 runCatching { Library.refresh(ctx, a) }
-                saved = Library.saved(ctx)
+                onDevice = Library.saved(ctx)
                 Library.syncSoon(ctx)
                 // Recommended videos: a funny + educational mix at first, then based on what they watch.
                 runCatching { a.recommended() }.onSuccess { recommended = it }
@@ -195,6 +205,7 @@ class KidViewModel(app: Application) : AndroidViewModel(app) {
                 val rev = h.raw.optString("rules_rev")
                 if (rulesRev != null && rev != rulesRev && !h.paused) {
                     if (results != null && searchedFor.isNotEmpty()) search(searchedFor, quiet = true)
+                    if (savedVideos != null || history != null) refreshSaved()
                     runCatching { a.recommended() }.onSuccess { recommended = it }
                     Library.syncSoon(ctx)
                 }
@@ -210,6 +221,34 @@ class KidViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private var rulesRev: String? = null
+
+    /** Loads the Saved tab: saved videos and History, both without anything blocked since. */
+    fun refreshSaved() {
+        val a = api ?: return
+        val ctx = getApplication<Application>()
+        savedJob?.cancel()
+        savedJob = viewModelScope.launch {
+            try {
+                // Both at once; if either fails, the catch below handles it.
+                val (saved, watched) = coroutineScope {
+                    val s = async { a.saved() }
+                    val h = async { a.history() }
+                    s.await() to h.await()
+                }
+                if (saved == null || watched == null) {
+                    home = home?.copy(paused = true)
+                } else {
+                    savedVideos = saved
+                    history = watched
+                    prefs.savedIds = saved.map { it.id }.toSet()
+                }
+                if (offline) refreshHome()
+            } catch (e: ApiException) {
+                if (e.code == 401) showSetup = true
+                else { offline = true; message = e.message; home = home ?: Home(Watching.pausedNow(ctx), false, emptyList(), Watching.backAt(ctx)) }
+            }
+        }
+    }
 
     /** [quiet] = refresh the results in place (after a rules change) without a loading spinner. */
     fun search(q: String, quiet: Boolean = false) {
@@ -269,135 +308,10 @@ fun App(vm: KidViewModel = viewModel()) {
     if (vm.showSetup) {
         SetupScreen(vm, canCancel = vm.api != null)
     } else {
-        HomeScreen(vm)
+        KidsScreen(vm)
     }
     // Silent check; it only shows something when there's a new version (or after "Check for updates").
     UpdatePrompt(vm.updateCheck) { vm.updateNote = "KidView is up to date." }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun HomeScreen(vm: KidViewModel) {
-    val context = LocalContext.current
-    val focus = LocalFocusManager.current
-    var query by rememberSaveable { mutableStateOf("") }
-    val home = vm.home
-    val api = vm.api ?: return
-
-    BackHandler(enabled = vm.results != null) { vm.clearSearch(); query = "" }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(30_000)
-            vm.recheck()
-        }
-    }
-
-    val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        val heard = r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (!heard.isNullOrBlank()) { query = heard; vm.search(heard) }
-    }
-    val voiceIntent = remember {
-        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_PROMPT, "What do you want to watch?")
-    }
-    val canVoice = remember { voiceIntent.resolveActivity(context.packageManager) != null }
-
-    fun open(v: Video) {
-        context.startActivity(Intent(context, PlayerActivity::class.java)
-            .putExtra("id", v.id).putExtra("title", v.title).putExtra("channel", v.channel))
-    }
-
-    Column(Modifier.fillMaxSize().systemBarsPadding()) {
-        // Header. A grown-up can long-press the name to change the server or re-pair.
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(Purple), contentAlignment = Alignment.Center) {
-                Text("▶", color = Color.White, fontSize = 16.sp)
-            }
-            Spacer(Modifier.width(10.dp))
-            Text("KidView", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = PurpleDark,
-                modifier = Modifier.combinedClickable(
-                    interactionSource = remember { MutableInteractionSource() }, indication = null,
-                    onClick = {}, onLongClick = { vm.showSetup = true }))
-        }
-
-        if (home?.paused != true && home?.searchEnabled != false) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Search for videos", fontSize = 18.sp) },
-                    singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(fontSize = 18.sp),
-                    shape = RoundedCornerShape(30.dp),
-                    leadingIcon = { Icon(painterResource(R.drawable.ic_search), null, tint = Purple) },
-                    trailingIcon = if (query.isNotEmpty() || vm.results != null) {
-                        { IconButton(onClick = { query = ""; vm.clearSearch() }) { Icon(painterResource(R.drawable.ic_close), "Clear") } }
-                    } else null,
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.White, unfocusedContainerColor = Color.White,
-                        focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); vm.search(query) }),
-                )
-                if (canVoice) {
-                    Spacer(Modifier.width(10.dp))
-                    FilledIconButton(
-                        onClick = { try { voice.launch(voiceIntent) } catch (_: ActivityNotFoundException) {} },
-                        modifier = Modifier.size(56.dp),
-                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = Sunny, contentColor = PurpleDark),
-                    ) { Icon(painterResource(R.drawable.ic_mic), "Talk to search", Modifier.size(28.dp)) }
-                }
-            }
-        } else {
-            Spacer(Modifier.height(12.dp))
-        }
-
-        Box(Modifier.fillMaxSize()) {
-            val savedSection = "Saved on this device 📥" to vm.saved
-            when {
-                home?.paused == true -> BigMessage("🌙", "Video time is over for now", Watching.backText(home?.backAt))
-                vm.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = Purple)
-                vm.results != null && vm.results!!.isEmpty() -> BigMessage("🔍", vm.message ?: "Nothing found", "")
-                vm.results != null -> VideoGrid(listOf("Videos for “${vm.searchedFor}”" to vm.results!!), api, ::open)
-                home == null -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = Purple)
-                vm.offline && vm.saved.isNotEmpty() -> VideoGrid(listOf(savedSection), api, ::open,
-                    banner = "No internet right now, but you can watch your saved videos!")
-                vm.offline -> BigMessage("📡", "Can't connect", vm.message ?: "")
-                home.picks.isNotEmpty() || vm.saved.isNotEmpty() || vm.recommended.isNotEmpty() -> VideoGrid(
-                    (listOf("Picks from your grown-up 💜" to home.picks) + vm.recommended + listOf(savedSection))
-                        .filter { it.second.isNotEmpty() }, api, ::open)
-                home.searchEnabled -> BigMessage("🎈", "What do you want to watch?", "Type or tap the microphone to search.")
-                else -> BigMessage("⭐", "No videos yet", "Ask a grown-up to pick some videos for you.")
-            }
-        }
-    }
-}
-
-@Composable
-fun VideoGrid(sections: List<Pair<String, List<Video>>>, api: Api, onOpen: (Video) -> Unit, banner: String? = null) {
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(240.dp),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        if (banner != null) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Text(banner, color = PurpleDark, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.background(Sunny.copy(alpha = 0.35f), RoundedCornerShape(14.dp)).padding(14.dp).fillMaxWidth())
-            }
-        }
-        sections.forEach { (title, videos) ->
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = PurpleDark, modifier = Modifier.padding(top = 4.dp, bottom = 2.dp))
-            }
-            items(videos, key = { title + it.id }) { v -> VideoCard(v, api) { onOpen(v) } }
-        }
-    }
 }
 
 @Composable
@@ -430,7 +344,7 @@ fun VideoCard(v: Video, api: Api, onClick: () -> Unit) {
 }
 
 @Composable
-fun BigMessage(emoji: String, title: String, sub: String) {
+fun BigMessage(emoji: String, title: String, sub: String, action: Pair<String, () -> Unit>? = null) {
     Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(emoji, fontSize = 64.sp)
         Spacer(Modifier.height(12.dp))
@@ -438,6 +352,13 @@ fun BigMessage(emoji: String, title: String, sub: String) {
         if (sub.isNotBlank()) {
             Spacer(Modifier.height(6.dp))
             Text(sub, fontSize = 16.sp, color = Color(0xFF6B6880), textAlign = TextAlign.Center)
+        }
+        if (action != null) {
+            Spacer(Modifier.height(20.dp))
+            Button(onClick = action.second, shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = Sunny, contentColor = PurpleDark)) {
+                Text(action.first, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+            }
         }
     }
 }

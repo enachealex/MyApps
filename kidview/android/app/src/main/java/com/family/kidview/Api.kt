@@ -22,7 +22,9 @@ data class Home(
     val raw: JSONObject = JSONObject(),
 )
 data class SearchResult(val paused: Boolean, val blocked: Boolean, val results: List<Video>)
-data class Play(val allowed: Boolean, val paused: Boolean, val title: String, val streams: List<String>)
+data class Play(val allowed: Boolean, val paused: Boolean, val title: String, val streams: List<String>, val saved: Boolean)
+/** A video in History, with when it was last watched (epoch seconds). */
+data class Watched(val video: Video, val at: Long)
 
 class ApiException(message: String, val code: Int = 0) : Exception(message)
 
@@ -108,7 +110,28 @@ class Api(val base: String, val token: String?) {
         val o = call(get("/api/play/$id"))
         val streams = o.optJSONObject("streams")
         val urls = buildList { streams?.keys()?.forEach { add(base + streams.getString(it)) } }
-        return Play(o.optBoolean("allowed"), o.optBoolean("paused"), o.optString("title"), urls)
+        return Play(o.optBoolean("allowed"), o.optBoolean("paused"), o.optString("title"), urls, o.optBoolean("saved"))
+    }
+
+    /** Videos saved with the heart button that are still allowed. Null while watching time is off. */
+    suspend fun saved(): List<Video>? {
+        val o = call(get("/api/saved"))
+        return if (o.optBoolean("paused")) null else videos(o.optJSONArray("items"))
+    }
+
+    /** Videos watched lately, newest first, without any that have been blocked since. Null while watching time is off. */
+    suspend fun history(): List<Watched>? {
+        val o = call(get("/api/history"))
+        if (o.optBoolean("paused")) return null
+        val arr = o.optJSONArray("items") ?: return emptyList()
+        val list = videos(arr)
+        return list.mapIndexed { i, v -> Watched(v, arr.getJSONObject(i).optDouble("watched_at", 0.0).toLong()) }
+    }
+
+    suspend fun setSaved(id: String, saved: Boolean) {
+        val json = JSONObject().put("saved", saved).toString()
+        call(Request.Builder().url("$base/api/saved/$id").header("Authorization", "Bearer $token")
+            .post(json.toRequestBody("application/json".toMediaType())).build())
     }
 
     /** Home-screen sections, e.g. "Recommended for you ⭐" or the funny + educational starter mix. */
@@ -154,4 +177,8 @@ class Prefs(context: Context) {
     var periodsUntil: Long
         get() = sp.getLong("periods_until", 0)
         set(v) = sp.edit().putLong("periods_until", v).apply()
+    /** Ids of the videos saved with the heart, as last heard from the server (so the heart is right offline too). */
+    var savedIds: Set<String>
+        get() = sp.getStringSet("saved_ids", null).orEmpty()
+        set(v) = sp.edit().putStringSet("saved_ids", v).apply()
 }

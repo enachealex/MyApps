@@ -53,7 +53,10 @@ every family, who each choose when to install it.
   Picks), allowed and blocked channels, blocked videos.
 - **Per child**: Recommended (funny and educational at first, then what they like) and extra Restrictions.
 - **Activity** for 7 days by default (older is deleted), filterable by device, type, date and text.
-- **Offline library**: channels and videos downloaded by the server and copied to devices on home Wi-Fi.
+- **Offline library**: channels and videos downloaded by the server and copied to devices on home Wi-Fi
+  (the kids' **Offline** tab).
+- **Kids' app**: Home, Saved and Offline tabs. Kids save videos with the heart in the player; Saved also
+  has their **History**. Anything blocked since it was saved or watched drops out of both.
 - **Parent accounts** with PINs, and a log of who changed what.
 - **Setup by QR code**, live refresh when rules change, and update prompts that the parent accepts.
 - **On iPhone**, the dashboard installs as an app from Safari (Add to Home Screen), with tabs along the

@@ -316,7 +316,7 @@ body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-ins
         <form class="filters" id="actFilters" autocomplete="off">
           <label><small>Who</small><select id="fWho"></select></label>
           <label><small>Type</small><select id="fKind">
-            <option value="">All activity</option><option value="watch">Watched</option><option value="saved">Watched saved videos</option>
+            <option value="">All activity</option><option value="watch">Watched</option><option value="saved">Watched offline videos</option>
             <option value="search">Searched</option><option value="blocked">Blocked</option><option value="change">Changes by parents</option></select></label>
           <label><small>When</small><div class="seg" id="fRange">
             <button type="button" data-range="today">Today</button><button type="button" data-range="24h">24 hours</button>
@@ -949,7 +949,7 @@ function activityRows(rows) {
     } else {
       const blocked = e.kind === 'blocked_watch';
       what = `<div class="row" style="flex-wrap:nowrap"><img class="thumb" src="${thumb(e.video_id)}" loading="lazy" alt="">
-        <div style="min-width:0">${blocked ? '<span class="badge bad">Stopped</span> ' : ''}${e.kind === 'watch_saved' ? '<span class="badge ok">Saved video</span> ' : ''}<a href="${ytLink(e.video_id)}" target="_blank" rel="noopener">${esc(e.title)}</a>
+        <div style="min-width:0">${blocked ? '<span class="badge bad">Stopped</span> ' : ''}${e.kind === 'watch_saved' ? '<span class="badge ok">Offline video</span> ' : ''}<a href="${ytLink(e.video_id)}" target="_blank" rel="noopener">${esc(e.title)}</a>
         <br><small class="muted">${esc(e.channel)}${blocked ? ' · ' + esc(e.reason) : ''}</small></div></div>`;
       acts = blocked
         ? `<button class="btn small" data-act="pick" data-d="${d}">Allow this video</button>`
@@ -1253,7 +1253,7 @@ function renderKidLimits() {
   const L = kidData.limits, n = esc(kidName());
   $('#kidBody').innerHTML = `<div class="kid-grid">
     <div class="card"><h2>Limits for ${n}</h2><p class="sub">These add to your family rules. "Family setting" follows the Rules tab.</p>
-      <div class="setting"><div><b>Watching on this device</b><small>Off = ${n} can't watch anything, even saved videos</small></div>
+      <div class="setting"><div><b>Watching on this device</b><small>Off = ${n} can't watch anything, even offline videos</small></div>
         <label class="switch"><input type="checkbox" data-kid-watching ${L.watching ? 'checked' : ''}><span></span></label></div>
       <div class="setting"><div><b>Searching</b></div>${limitSelect('search_enabled', [[true, 'On'], [false, 'Off']])}</div>
       <div class="setting"><div><b>What can they find?</b></div>${limitSelect('mode', [['blocklist', 'Filtered'], ['allowlist', 'Approved']])}</div>

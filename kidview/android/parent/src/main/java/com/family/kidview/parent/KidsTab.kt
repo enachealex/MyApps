@@ -54,7 +54,7 @@ fun KidsTab(vm: ParentViewModel) {
 
 // ------------------------------------------------------------------ everyone, with filters
 
-private val KINDS = listOf("" to "All", "watch" to "Watched", "saved" to "Saved videos", "search" to "Searches",
+private val KINDS = listOf("" to "All", "watch" to "Watched", "saved" to "Offline videos", "search" to "Searches",
     "blocked" to "Blocked", "change" to "Changes")
 private val RANGES = listOf("today" to "Today", "24h" to "24 hours", "week" to "7 days", "all" to "All kept")
 
@@ -140,7 +140,7 @@ fun ActivityRow(vm: ParentViewModel, e: JSONObject) {
                         Text(e.str("title"), maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         Text(e.str("channel"), color = Muted, fontSize = 12.sp, maxLines = 1)
                         if (kind == "blocked_watch") Tag("Stopped · ${e.str("reason")}", Tone.Bad)
-                        if (kind == "watch_saved") Tag("Saved video", Tone.Ok)
+                        if (kind == "watch_saved") Tag("Offline video", Tone.Ok)
                     }
                 }
                 Text("${e.str("device")} · ${agoText(e.optDouble("ts"))}", color = Muted, fontSize = 12.sp)
@@ -261,7 +261,7 @@ private fun LazyListScope.restrictions(vm: ParentViewModel, k: JSONObject) {
     val name = vm.kidName
     item {
         Section("Limits for $name", "These add to your family rules. \"Family setting\" follows the Rules tab.") {
-            SwitchRow("Watching on this device", "Off = $name can't watch anything, even saved videos", lim.optBoolean("watching", true)) {
+            SwitchRow("Watching on this device", "Off = $name can't watch anything, even offline videos", lim.optBoolean("watching", true)) {
                 vm.setKidLimit("watching", it)
             }
             OptionRow("Searching", lim.opt("search_enabled"), familyOption(fam.optBoolean("search_enabled", true).let { if (it) "On" else "Off" }),

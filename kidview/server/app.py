@@ -180,6 +180,7 @@ def api_play(vid: str, dev: dict = Depends(kid)):
         "allowed": True,
         "title": info["title"],
         "channel": info["channel"],
+        "saved": store.is_saved(dev["id"], vid),
         "streams": {kind: f"/media/{vid}/{kind}" for kind in info["streams"]},
     }
 
@@ -285,6 +286,59 @@ async def api_watched(request: Request, dev: dict = Depends(kid)):
             store.log("watch_saved", dev["name"], ts=min(ts, time.time()), device_id=dev["id"], video_id=vid,
                       title=str(e.get("title", ""))[:300], channel=str(e.get("channel", ""))[:200], channel_id="")
     return {"ok": True}
+
+
+def _known(v: dict) -> dict:
+    """Everything we know about a video, without asking YouTube, for checking it against the rules."""
+    known = youtube.cached(v["id"]) or library._meta.get(v["id"]) or {}
+    return {**known, **{k: val for k, val in v.items() if val not in (None, "", [])}}
+
+
+def _still_allowed(videos: list[dict], r: dict) -> list[dict]:
+    """Drops videos the rules don't allow any more, e.g. a channel blocked since the kid saved or watched it."""
+    return [v for v in videos if not filters.check_video(_known(v), r)]
+
+
+@app.get("/api/saved")
+def api_saved(dev: dict = Depends(kid)):
+    """The videos this kid saved with the heart button that are still allowed."""
+    r = store.rules_for(dev["id"])
+    if not schedule.effective(r):
+        return {"paused": True, "items": []}
+    return {"items": [_card(v) for v in _still_allowed(store.saved_videos(dev["id"]), r)]}
+
+
+@app.post("/api/saved/{vid}")
+async def api_save(vid: str, request: Request, dev: dict = Depends(kid)):
+    """Saves a video ({"saved": true}) or takes it out of Saved ({"saved": false})."""
+    if not youtube.is_video_id(vid):
+        raise HTTPException(404)
+    body = await request.json()
+    if not body.get("saved", True):
+        store.set_saved(dev["id"], {"id": vid}, False)
+        return {"saved": False}
+    r = store.rules_for(dev["id"])
+    info = youtube.cached(vid) or library._meta.get(vid)
+    if not info:
+        try:
+            info = await run_in_threadpool(youtube.video, vid, r["max_quality"])
+        except Exception as e:
+            print("video lookup failed:", e)
+            raise HTTPException(502, "Couldn't save that video right now")
+    if filters.check_video(info, r):
+        raise HTTPException(403, "That video can't be saved")
+    store.set_saved(dev["id"], info, True)
+    return {"saved": True}
+
+
+@app.get("/api/history")
+def api_history(dev: dict = Depends(kid)):
+    """Videos this kid watched, newest first, leaving out any that have been blocked since."""
+    r = store.rules_for(dev["id"])
+    if not schedule.effective(r):
+        return {"paused": True, "items": []}
+    return {"items": [{**_card(_known(v)), "watched_at": v["watched_at"]}
+                      for v in _still_allowed(store.history(dev["id"]), r)][:100]}
 
 
 @app.get("/api/recommended")

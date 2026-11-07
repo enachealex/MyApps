@@ -1,10 +1,14 @@
 package com.family.kidview
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.OptIn
@@ -56,9 +60,11 @@ import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import kotlin.math.abs
 
 /**
  * Full-screen player. Plays one video and stops: no autoplay, no links out to YouTube. Everything
@@ -76,6 +82,24 @@ class PlayerActivity : ComponentActivity() {
     private val state = mutableStateOf<UiState>(UiState.Loading)
     private val controlsVisible = mutableStateOf(false)
     private val more = mutableStateOf<List<Video>>(emptyList())
+    /** Whether this video is in the Saved tab (the heart, top right). */
+    private val saved = mutableStateOf(false)
+    /** The "⏩ 20 seconds" bubble while skipping with taps. */
+    private val seekBubble = mutableStateOf<SeekBubble?>(null)
+
+    // Taps on the video: one shows/hides the controls; a double tap on the left or right half skips
+    // 10 seconds back or forward, and each further tap on that side within a second skips 10 more.
+    private var downAt = 0L
+    private var downX = 0f
+    private var downY = 0f
+    private var lastTapAt = 0L
+    private var lastTapSide = 0
+    private var seekSide = 0
+    private var lastSeekAt = 0L
+    private var pendingToggle: Job? = null
+    private var bubbleJob: Job? = null
+
+    data class SeekBubble(val side: Int, val seconds: Int)
 
     sealed interface UiState {
         data object Loading : UiState
@@ -93,6 +117,7 @@ class PlayerActivity : ComponentActivity() {
         val api = Api.from(this) ?: return finish()
         val id = intent.getStringExtra("id") ?: return finish()
         val exo = ExoPlayer.Builder(this).build().also { player = it }
+        saved.value = id in Prefs(this).savedIds
 
         exo.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(s: Int) {
@@ -122,8 +147,12 @@ class PlayerActivity : ComponentActivity() {
                     controlsVisible = controlsVisible.value,
                     more = more.value,
                     api = api,
+                    seekBubble = seekBubble.value,
+                    saved = saved.value,
+                    onToggleSaved = { toggleSaved(api, id) },
                     onPlayerView = { view ->
                         playerView = view
+                        view.setOnTouchListener(::onPlayerTouch)
                         view.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
                             val visible = visibility == View.VISIBLE
                             controlsVisible.value = visible
@@ -161,8 +190,8 @@ class PlayerActivity : ComponentActivity() {
             }
         }
 
-        val saved = Library.videoFile(this, id)
-        if (saved.exists()) {
+        val onDevice = Library.videoFile(this, id)
+        if (onDevice.exists()) {
             // A saved video: play it from this device. Still respect watching time.
             lifecycleScope.launch {
                 val paused = try {
@@ -173,7 +202,7 @@ class PlayerActivity : ComponentActivity() {
                 if (paused) {
                     state.value = timeIsOver()
                 } else {
-                    exo.setMediaItem(MediaItem.fromUri(Uri.fromFile(saved)))
+                    exo.setMediaItem(MediaItem.fromUri(Uri.fromFile(onDevice)))
                     exo.prepare()
                     exo.playWhenReady = true
                     Library.recordWatched(this@PlayerActivity,
@@ -194,12 +223,85 @@ class PlayerActivity : ComponentActivity() {
                     }
                     !play.allowed || play.streams.isEmpty() ->
                         state.value = UiState.Message("🙈", "This one isn't available", "Let's pick a different video.")
-                    else -> start(exo, api, play)
+                    else -> {
+                        saved.value = play.saved
+                        start(exo, api, play)
+                    }
                 }
             } catch (e: ApiException) {
                 state.value = UiState.Message("📡", "Can't connect", e.message ?: "")
             }
         }
+    }
+
+    /** The heart: adds the video to the Saved tab, or takes it out. */
+    private fun toggleSaved(api: Api, id: String) {
+        val want = !saved.value
+        saved.value = want
+        playerView?.showController()   // keep the controls up a little longer
+        lifecycleScope.launch {
+            try {
+                api.setSaved(id, want)
+                val prefs = Prefs(this@PlayerActivity)
+                prefs.savedIds = if (want) prefs.savedIds + id else prefs.savedIds - id
+            } catch (e: ApiException) {
+                saved.value = !want
+                Toast.makeText(this@PlayerActivity,
+                    if (e.code == 0) "Can't reach home right now. Try again on home Wi-Fi." else e.message, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Taps on the video itself (the control buttons and the row of videos handle their own). */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun onPlayerTouch(v: View, e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { downAt = e.eventTime; downX = e.x; downY = e.y }
+            MotionEvent.ACTION_UP -> {
+                val slop = ViewConfiguration.get(this).scaledTouchSlop * 2
+                val isTap = e.eventTime - downAt < ViewConfiguration.getLongPressTimeout() &&
+                    abs(e.x - downX) < slop && abs(e.y - downY) < slop
+                if (isTap) onTap(side = if (e.x < v.width / 2f) -1 else 1, now = e.eventTime)
+            }
+        }
+        return true
+    }
+
+    private fun onTap(side: Int, now: Long) {
+        val doubleTapMs = ViewConfiguration.getDoubleTapTimeout()
+        if (state.value != UiState.Playing) { toggleControls(); return }
+        // Already skipping on this side, and this tap came within a second: skip again.
+        if (seekSide == side && now - lastSeekAt <= SEEK_CHAIN_MS) { seekBy(side, now); return }
+        // The second tap of a double tap on the same side: start skipping (and don't toggle the controls).
+        if (pendingToggle?.isActive == true && side == lastTapSide && now - lastTapAt <= doubleTapMs) {
+            pendingToggle?.cancel()
+            seekSide = side
+            seekBy(side, now)
+            return
+        }
+        // A single tap, unless a second one follows quickly: show or hide the controls.
+        seekSide = 0
+        lastTapAt = now
+        lastTapSide = side
+        pendingToggle?.cancel()
+        pendingToggle = lifecycleScope.launch { delay(doubleTapMs.toLong()); toggleControls() }
+    }
+
+    private fun seekBy(side: Int, now: Long) {
+        val exo = player ?: return
+        val continuing = now - lastSeekAt <= SEEK_CHAIN_MS && seekBubble.value?.side == side
+        lastSeekAt = now
+        val end = exo.duration.takeIf { it > 0 }
+        var target = exo.currentPosition + side * SEEK_STEP_MS
+        if (end != null) target = target.coerceAtMost(end - 500)
+        exo.seekTo(target.coerceAtLeast(0))
+        seekBubble.value = SeekBubble(side, if (continuing) (seekBubble.value?.seconds ?: 0) + 10 else 10)
+        bubbleJob?.cancel()
+        bubbleJob = lifecycleScope.launch { delay(SEEK_CHAIN_MS); seekBubble.value = null }
+    }
+
+    private fun toggleControls() {
+        playerView?.let { if (it.isControllerFullyVisible) it.hideController() else it.showController() }
     }
 
     private fun showSystemBars(show: Boolean) {
@@ -246,6 +348,9 @@ class PlayerActivity : ComponentActivity() {
 
     companion object {
         const val CONTROLS_TIMEOUT_MS = 3000
+        const val SEEK_STEP_MS = 10_000L
+        /** How soon the next tap must come to keep skipping. */
+        const val SEEK_CHAIN_MS = 1000L
     }
 }
 
@@ -267,6 +372,9 @@ private fun PlayerScreen(
     controlsVisible: Boolean,
     more: List<Video>,
     api: Api,
+    seekBubble: PlayerActivity.SeekBubble?,
+    saved: Boolean,
+    onToggleSaved: () -> Unit,
     onPlayerView: (PlayerView) -> Unit,
     onKeepControls: (Boolean) -> Unit,
     onPlay: (Video) -> Unit,
@@ -330,6 +438,23 @@ private fun PlayerScreen(
             PlayerActivity.UiState.Playing -> {}
         }
 
+        // "⏩ 20 seconds" on the side being tapped.
+        if (seekBubble != null) {
+            Box(
+                Modifier.fillMaxHeight().fillMaxWidth(0.5f)
+                    .align(if (seekBubble.side > 0) Alignment.CenterEnd else Alignment.CenterStart),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    Modifier.size(150.dp).clip(CircleShape).background(Color(0x77000000)),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(if (seekBubble.side > 0) "⏩" else "⏪", fontSize = 34.sp)
+                    Text("${seekBubble.seconds} seconds", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
         // The close button: only with the other controls (and while the video is loading).
         AnimatedVisibility(
             visible = state == PlayerActivity.UiState.Loading || (controlsVisible && state == PlayerActivity.UiState.Playing),
@@ -341,6 +466,32 @@ private fun PlayerScreen(
                 modifier = Modifier.padding(16.dp).size(48.dp),
                 colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0x66000000), contentColor = Color.White),
             ) { Icon(painterResource(R.drawable.ic_close), "Close") }
+        }
+
+        // Save it to the Saved tab: top right, with the other controls.
+        AnimatedVisibility(
+            visible = controlsVisible && state == PlayerActivity.UiState.Playing,
+            enter = fadeIn(), exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(bars),
+        ) {
+            Surface(
+                onClick = onToggleSaved,
+                modifier = Modifier.padding(16.dp).height(48.dp),
+                shape = CircleShape,
+                color = Color(0x66000000),
+                contentColor = Color.White,
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        painterResource(if (saved) R.drawable.ic_heart else R.drawable.ic_heart_outline),
+                        contentDescription = null,
+                        tint = if (saved) Color(0xFFFF5C7C) else Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (saved) "Saved" else "Save", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
 
         // Other videos, peeking up from the bottom.
