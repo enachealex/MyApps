@@ -283,6 +283,7 @@ footer a{color:var(--accent);text-decoration:none;}
       <li><a href="puttcount/" style="color:#4C8DFF">Putt Count</a></li>
       <li><a href="oncall/" style="color:#4C8DFF">OnCall Schedule</a></li>
       <li><a href="my-tasks/" style="color:#4C8DFF">My Tasks</a></li>
+      <li><a href="kidview/" style="color:#4C8DFF">KidView</a></li>
     </ul>
   </noscript>
 
@@ -339,6 +340,8 @@ footer a{color:var(--accent);text-decoration:none;}
      repo      "owner/name" — enables the download button, which reads the
                repo's latest GitHub Release
      asset     file extension to look for in that release (default ".apk")
+     getPage   url is a page of downloads rather than a web app: the sheet
+               shows one "Get the apps" button instead of Open + Download
    Descriptions marked TODO are placeholders — replace them.             */
 const APPS = [
   { name:"Putt Count", category:"Scorekeeping", url:"puttcount/", color:"#3DDC91", offline:true,
@@ -351,6 +354,9 @@ const APPS = [
   { name:"My Tasks", category:"Productivity", url:"my-tasks/", color:"#2564CF", offline:true,
     icon:"my-tasks/icons/icon-192.png", demo:"demos/my-tasks/",
     description:"A Microsoft To Do-style checklist and to-do app. Plan your day with My Day, star what's important, add steps, due dates and repeats. Installs to your home screen and works offline." },
+
+  { name:"KidView", category:"Family", url:"kidview/", color:"#6C4BF4", getPage:true,
+    description:"A safer YouTube for kids, run from your own home computer. Parents choose what's allowed — topics, words, channels and watching times — from the parent app or dashboard. Apps for Android; the dashboard installs on iPhone." },
 
   { name:"Chillist",          category:"Music",     url:"#", color:"#4C8DFF", description:"TODO — one line about Chillist." },
   { name:"Maintenance Tracker", category:"Home",      url:"https://maintenance.thejumpvault.com/", color:"#FFB84C", description:"TODO — one line about Maintenance Tracker." },
@@ -625,7 +631,7 @@ function openSheet(app, fromEl){
   const openBtn = document.getElementById("sheet-open");
   const real = app.url && app.url !== "#";
   openBtn.href = real ? app.url : "#";
-  openBtn.textContent = real ? "Open app" : "Not published yet";
+  openBtn.textContent = !real ? "Not published yet" : app.getPage ? "Get the apps" : "Open app";
   openBtn.classList.toggle("btn-primary", !!real);
   openBtn.setAttribute("aria-disabled", real ? "false" : "true");
 
@@ -642,7 +648,11 @@ function openSheet(app, fromEl){
   const slot = document.getElementById("sheet-dl-slot");
   const note = document.getElementById("sheet-note");
 
-  if (!app.repo){
+  if (app.getPage){
+    slot.replaceChildren();                      // the button above already leads to the downloads
+    delete note.dataset.tone;
+    note.textContent = "";
+  } else if (!app.repo){
     slot.replaceChildren(downloadControl({ label:"Download", disabled:true }));
     note.dataset.tone = "soon";
     note.textContent = "Release version coming soon.";
