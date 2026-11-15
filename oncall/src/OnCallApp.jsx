@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useContext, createContext } from "react";
 import { signIn, signOutNow, changePassword, sendReset, isRealAuth } from "./auth";
+import { generateRotation, spreadByRole } from "./rotation";
 import {
   Home,
   CalendarDays,
@@ -1540,6 +1541,13 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
     say(active ? "Account reactivated." : "Account deactivated. They can no longer sign in.");
   }
 
+  /* Publishing a generated block replaces only the shifts it produced; any
+     slot or day outside it is left exactly as it was. */
+  const applyRotation = (generated) => {
+    const ids = new Set(generated.map((g) => g.id));
+    setDb((d) => ({ ...d, shifts: [...d.shifts.filter((x) => !ids.has(x.id)), ...generated] }));
+    say(`Rotation published — ${generated.length} shifts.`);
+  };
   const toggleSick = (shiftId) => patchShift(shiftId, { outSick: !shiftById(shiftId).outSick });
   const reassign = (shiftId, personId) => {
     patchShift(shiftId, { personId });
@@ -1695,7 +1703,7 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
           <RequestsView db={db} viewerId={viewerId} isSup={isSup} inbox={inbox} shiftById={shiftById} onRespond={respondToOffer} onRetract={retract} />
         )}
         {tab === "approvals" && <ApprovalsView db={db} queue={approvalQueue} shiftById={shiftById} onOpen={setApproveSheet} />}
-        {tab === "manage" && <ManageView db={db} onReassign={reassign} onToggleSick={toggleSick} onOfferUp={offerUp} openReqFor={openReqFor} />}
+        {tab === "manage" && <ManageView db={db} onReassign={reassign} onToggleSick={toggleSick} onOfferUp={offerUp} openReqFor={openReqFor} onApplyRotation={applyRotation} />}
         {tab === "people" && <PeopleAdminView db={db} viewerId={viewerId} onSave={savePerson} onSetActive={setPersonActive} say={say} />}
         {tab === "phones" && <PhoneListView db={db} />}
             </div>
@@ -2543,8 +2551,12 @@ function ScheduleView({ db, onOpenShift }) {
 /* Shift · Role · Name · Phone · Status */
 const CALL_GRID = "170px 130px minmax(0, 1fr) auto minmax(0, 260px)";
 
-function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
+function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApplyRotation }) {
   const org = useOrg();
+  const [generating, setGenerating] = useState(false);
+  /* Generation never reaches behind today: who was on call last Tuesday is a
+     record, and a generator that rewrites it would quietly falsify one. */
+  const todayKey = keyOf(new Date());
   const desktop = useIsDesktop();
   const [dateKey, setDateKey] = useState(() => keyOf(new Date()));
   const [span, setSpan] = useState("daily");
@@ -2553,10 +2565,34 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
   const sort = (a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time);
   const rows = db.shifts.filter((s) => s.date === dateKey).sort(sort);
   const days = blockOf(dateKey, db.shifts, sort);
+  const genDays = days.filter((d) => d.key >= todayKey);
 
   return (
     <div>
       <SpanHeader span={span} setSpan={setSpan} dateKey={dateKey} setDateKey={setDateKey} days={days} />
+
+      <div className="oncall-no-print flex items-center justify-between gap-3 border-b bg-white px-3 py-2" style={{ borderColor: C.line }}>
+        <div className="text-xs" style={{ color: C.sub }}>
+          {genDays.length === 0
+            ? "This block is in the past. Move forward to generate a rotation."
+            : genDays.length < days.length
+            ? `Fill the rest of this block, from today, shared out evenly.`
+            : `Fill this ${BLOCK_WEEKS}-week block from the call template, shared out evenly.`}
+        </div>
+        <Btn size="sm" icon={CalendarDays} disabled={genDays.length === 0} onClick={() => setGenerating(true)}>Generate rotation</Btn>
+      </div>
+      <RotationSheet
+        open={generating}
+        onClose={() => setGenerating(false)}
+        db={db}
+        startKey={genDays.length ? genDays[0].key : days[0].key}
+        dayCount={genDays.length}
+        onPublish={(shifts) => {
+          onApplyRotation(shifts);
+          setGenerating(false);
+          setSpan("weekly");
+        }}
+      />
 
       {weekly ? (
         <BlockCalendar days={days} onPickDay={(k) => { setDateKey(k); setSpan("daily"); }} />
@@ -2677,6 +2713,161 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor }) {
         </>
       )}
     </div>
+  );
+}
+
+/* Generates a block from the org's call template and shows what it would do
+   before anything changes. The tally is the point of the screen: an admin
+   should be able to see that the spread is even, and who is carrying what,
+   before publishing — and to argue with it, by leaving people out or asking
+   for a different arrangement. */
+function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish }) {
+  const org = useOrg();
+  const allRoles = useMemo(() => [...new Set(org.slots.map((x) => x.role))], [org]);
+  const [roles, setRoles] = useState(() => new Set(allRoles));
+  const [excluded, setExcluded] = useState(() => new Set());
+  const [offset, setOffset] = useState(0);
+  const [showPeople, setShowPeople] = useState(false);
+
+  const toggle = (set, setter, value) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    setter(next);
+  };
+
+  const lockedIds = useMemo(
+    () => new Set(db.requests.filter((r) => r.status === "submitted").map((r) => r.shiftId)),
+    [db.requests]
+  );
+
+  const result = useMemo(() => {
+    if (!open) return null;
+    const slotIndexes = org.slots.map((x, i) => (roles.has(x.role) ? i : -1)).filter((i) => i >= 0);
+    /* A shift someone has already offered up or traded is mid-conversation.
+       Moving it would strand the request, so it stays put and is counted. */
+    const locked = {};
+    db.shifts.forEach((x) => {
+      if (lockedIds.has(x.id)) locked[x.id] = x;
+    });
+    return generateRotation({
+      slots: org.slots,
+      slotIndexes,
+      poolFor: (slot) => staffInRole(org, slot.role),
+      startKey,
+      days: dayCount,
+      excluded,
+      locked,
+      offset,
+    });
+  }, [open, org, db.shifts, lockedIds, roles, excluded, offset, startKey, dayCount]);
+
+  if (!open || !result) return null;
+
+  const person = (id) => user(org, id);
+  const roleOf = (id) => (person(id) || {}).role || "Unknown";
+  const spread = spreadByRole(result.tally, roleOf);
+  const lockedCount = result.shifts.filter((x) => lockedIds.has(x.id)).length;
+  const candidates = org.people.filter(
+    (p) => p.kind === "staff" && p.active !== false && [...roles].some((r) => staffInRole(org, r).includes(p))
+  );
+
+  return (
+    <Sheet open={open} onClose={onClose} title="Generate rotation">
+      <div className="text-sm" style={{ color: C.sub }}>
+        From {shortDate(startKey)}, for {dayCount} days. Call is shared so everyone in a role carries about the same, with weekends evened out first.
+      </div>
+
+      <div className="mt-4 text-xs font-semibold uppercase tracking-wide" style={{ color: C.faint }}>Roles to fill</div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {allRoles.map((r) => (
+          <button
+            key={r}
+            onClick={() => toggle(roles, setRoles, r)}
+            aria-pressed={roles.has(r)}
+            className="rounded-full px-3 py-1 text-xs font-medium"
+            style={roles.has(r) ? { backgroundColor: org.brand, color: "#fff" } : { backgroundColor: org.chip, color: org.deep }}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+
+      <button onClick={() => setShowPeople((v) => !v)} className="mt-4 flex w-full items-center justify-between text-left">
+        <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.faint }}>
+          Leave out of this block{excluded.size ? ` (${excluded.size})` : ""}
+        </div>
+        <ChevronDown size={16} style={{ color: C.faint, transform: showPeople ? "rotate(180deg)" : "none" }} />
+      </button>
+      {showPeople ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {candidates.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => toggle(excluded, setExcluded, p.id)}
+              aria-pressed={excluded.has(p.id)}
+              className="rounded-full px-3 py-1 text-xs font-medium"
+              style={
+                excluded.has(p.id)
+                  ? { backgroundColor: C.warnBg, color: C.warn, border: `1px solid ${C.warnBorder}` }
+                  : { backgroundColor: C.surface, color: C.ink, border: `1px solid ${C.line}` }
+              }
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {result.warnings.length ? (
+        <div className="mt-4 rounded-md px-3 py-2 text-xs" style={{ backgroundColor: C.warnBg, color: C.warn }}>
+          <div className="font-semibold">
+            {result.warnings.length} {result.warnings.length === 1 ? "problem" : "problems"} to look at
+          </div>
+          {result.warnings.slice(0, 4).map((w, i) => (
+            <div key={i} className="mt-0.5">{w.text}</div>
+          ))}
+          {result.warnings.length > 4 ? <div className="mt-0.5">and {result.warnings.length - 4} more</div> : null}
+        </div>
+      ) : null}
+
+      <div className="mt-4 text-xs font-semibold uppercase tracking-wide" style={{ color: C.faint }}>How even it is</div>
+      <div className="mt-2 overflow-hidden rounded-lg border" style={{ borderColor: C.line }}>
+        {spread.length === 0 ? (
+          <div className="px-3 py-3 text-xs" style={{ color: C.sub }}>Pick at least one role.</div>
+        ) : (
+          spread.map((g, i) => (
+            <div key={g.role} className="px-3 py-2" style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}>
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">{g.role}</div>
+                <div className="text-xs" style={{ color: g.people === 1 || g.gap <= 1.5 ? C.ok : C.warn }}>
+                  {g.people === 1 ? "one person covers this" : g.gap <= 1.5 ? "even" : `uneven by ${g.gap}`}
+                </div>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs" style={{ color: C.sub, fontVariantNumeric: "tabular-nums" }}>
+                {result.tally
+                  .filter((t) => roleOf(t.personId) === g.role)
+                  .map((t) => (
+                    <span key={t.personId}>
+                      {(person(t.personId) || {}).name || "Unknown"}: {t.shifts} shifts, {t.weekends} weekend
+                    </span>
+                  ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-3 text-xs" style={{ color: C.sub }}>
+        Publishing replaces {result.shifts.length - lockedCount} shifts in this block.
+        {lockedCount ? ` ${lockedCount} with an open request stay as they are.` : ""} You can still change any shift by hand afterwards.
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <Btn tone="ghost" full onClick={() => setOffset((v) => v + 1)}>Try another arrangement</Btn>
+        <Btn full icon={Check} disabled={result.shifts.length === 0} onClick={() => onPublish(result.shifts)}>Publish</Btn>
+      </div>
+    </Sheet>
   );
 }
 
