@@ -200,6 +200,26 @@ Watch for: Alarm.com may cap concurrent live streams per account.
 - Because the adapter contract is the same, mixing an Alarm.com doorbell with
   a Reolink in the driveway just works.
 
+### Phase 7 — Z-Wave and home devices
+
+Details in `docs/zwave.md`.
+
+- **Through Alarm.com first, no new hardware.** Every Z-Wave device paired to
+  your panel (locks, lights, switches, thermostats, garage doors, valves) and
+  every panel sensor is in the same API the camera adapter already uses, with
+  live state changes on the same event websocket. Show lock and door state on
+  the matching camera tile, record door-open events with a snapshot, add a
+  Devices tab with controls.
+- **Local Z-Wave later, optional.** An 800-series USB stick on the host plus
+  the `zwave-js` Node library, running inside our server. Fully local and
+  instant, but a device can only belong to one Z-Wave network, so this is for
+  new devices or ones you deliberately move off Alarm.com.
+- **Local panel sensors (Qolsys IQ Panel 2).** The panel's Control4 "3rd
+  Party Connections" interface (firmware 2.5.3+) pushes zone changes over the
+  LAN instantly. Use it as the primary trigger for door and motion events,
+  with Alarm.com as the fallback. Read-only: no arm or disarm.
+- Arming and disarming stays in the Alarm.com app.
+
 ### Later
 
 Person/vehicle filtering with YOLOv8n on event snapshots, Web Push from the
