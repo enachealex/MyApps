@@ -28,7 +28,10 @@ const addDays = (d, n) => {
 };
 const isWeekend = (d) => d.getDay() === 0 || d.getDay() === 6;
 
-export const shiftId = (dateKey, slotIndex) => `${dateKey}~${slotIndex}`;
+/* A shift is identified by its day and its slot. Slots carry an id once the
+   template has been edited in the app; before that, position in the list. */
+export const shiftId = (dateKey, slotKey) => `${dateKey}~${slotKey}`;
+const keyOfSlot = (slots, si) => (slots[si] && slots[si].id !== undefined && slots[si].id !== null ? slots[si].id : si);
 
 /**
  * @param {object}   o
@@ -67,7 +70,7 @@ function buildOnce({ slots, slotIndexes, poolFor, startKey, days, excluded = new
     /* Locked shifts first, so the people already committed today are known
        before anyone else is placed around them. */
     slotIndexes.forEach((si) => {
-      const keep = locked[shiftId(dateKey, si)];
+      const keep = locked[shiftId(dateKey, keyOfSlot(slots, si))];
       if (keep) {
         takenToday.add(keep.personId);
         bump(keep.personId, date, i);
@@ -76,7 +79,7 @@ function buildOnce({ slots, slotIndexes, poolFor, startKey, days, excluded = new
 
     slotIndexes.forEach((si) => {
       const slot = slots[si];
-      const id = shiftId(dateKey, si);
+      const id = shiftId(dateKey, keyOfSlot(slots, si));
       if (locked[id]) {
         shifts.push({ ...locked[id] });
         return;

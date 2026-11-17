@@ -185,6 +185,19 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      match /settings/{settingId} {
+        /* The Admin's edits to the call template and the phone-button
+           settings. Kept apart from the organization record above so that
+           record — name, billing identity — stays the operator's alone.
+           Everyone reads it, because it decides what their screens show. */
+        allow read: if isMember(orgId);
+        allow create, update: if isManager(orgId)
+                              && settingId == 'call'
+                              && request.resource.data.roles is list
+                              && request.resource.data.slots is list;
+        allow delete: if false;
+      }
+
       match /timeOff/{entryId} {
         /* The scheduler needs everyone's days to generate around them. */
         allow read: if isMember(orgId);

@@ -17,8 +17,9 @@ appears nowhere in their screens, so it is not a toggle — it is gone. The UI,
 the handlers, the prop threading and the `checkIn` field on the shift record
 have all been removed.
 
-### 1b. Call button — TODO
+### 1b. Call button — DONE (on `revamp`)
 
+Set by the Admin in **Call Management → Call settings → Phone buttons**.
 Three independent controls:
 
 1. **Enabled on desktop** — on/off
@@ -287,8 +288,9 @@ one-template-per-organization model does not yet support.
 | Rotation generator in Call Management | DONE |
 | Time off by date, respected by the generator | DONE |
 | Staff messaging with patient-information guard-rails | DONE (local only) |
-| Departments: own roles, call template and admins per department | TODO — needs Valley Medical's real structure |
-| Call template editable in the app | TODO |
+| Call template editable in the app (roles, department per role, call slots) | DONE |
+| Call-button settings (§1b) | DONE |
+| Departments with their own admins, so one department's manager cannot edit another's call | TODO — needs Valley Medical's real structure |
 | Firestore data layer, live sign-in and operator tool | DONE — tested on emulators, not yet on a real project |
 
 **Rotation generator.** Not an optimiser. Fills from today to the end of the
@@ -297,6 +299,18 @@ in a day and consecutive days where the pool allows, shares weekends before
 total load, never moves a shift with an open request, never touches a day
 before today. Logic in `src/rotation.js`; `node scripts/check-rotation.mjs`
 checks it.
+
+**Call settings.** Call Management → Call settings. An Admin adds and removes
+roles, sets each role's department (the Phone List heading), and adds, removes
+or retimes the call slots filled each day. Saving brings the coming schedule
+into line: shifts on a removed slot are taken off, changed hours carry through,
+new slots stay empty until a rotation is generated. Days before today never
+change, and a shift with an open request is left in place. A role cannot be
+removed while staff hold it. The edits are stored as one settings record in
+the tenant's own data and laid over the template the organization was created
+with; the operator's organization record is never edited from the app. Slots
+carry a stable id so editing the list does not re-point existing shifts.
+Logic in `src/template.js`; `npm run test:template` checks it.
 
 **Time off.** Staff tap days they cannot take call (My Shifts → Time off). It
 is availability, not approved leave, and it changes nothing already published.

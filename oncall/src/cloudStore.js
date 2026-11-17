@@ -20,10 +20,11 @@
  *   orgs/{org}                         the tenant's configuration
  *   orgs/{org}/members/{email}         -> { personId, kind, active }
  *   orgs/{org}/people|shifts|requests|timeOff|messages/{id}
+ *   orgs/{org}/settings/call           the Admin's edits to the call template
  */
 import { ensureCloud } from "./firebase";
 
-const COLLECTIONS = ["people", "shifts", "requests", "timeOff", "messages"];
+const COLLECTIONS = ["people", "shifts", "requests", "timeOff", "messages", "settings"];
 
 /* Time off has no id of its own; a person can only be off once per day. */
 const keyFor = (name, item) => (name === "timeOff" ? `${item.personId}_${item.date}` : item.id);
@@ -62,7 +63,7 @@ export async function subscribeOrg({ orgId, personId, isManager }, onData, onErr
   const { fs, db } = cloud;
   const col = (name) => fs.collection(db, "orgs", orgId, name);
 
-  const state = { people: null, shifts: null, requests: null, timeOff: null };
+  const state = { people: null, shifts: null, requests: null, timeOff: null, settings: null };
   /* Messages are three queries because the rules only let you read your own
      conversations (plus reported ones, for an Admin) — a plain read of the
      collection is refused outright. */

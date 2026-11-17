@@ -167,6 +167,19 @@ await expect("admin deletes a reported message", true, () => deleteDoc(doc(admin
 await expect("admin deletes an unreported message", false, () => deleteDoc(doc(admin, `orgs/${A}/messages/m3`)));
 await expect("sender deletes their own message", true, () => deleteDoc(doc(ann, `orgs/${A}/messages/m3`)));
 
+/* ------------------------------ call settings ------------------------------ */
+const tpl = { id: "call", roles: ["OR RN"], slots: [{ id: "0", role: "OR RN", kind: "first", time: "1900-0700" }], depts: {}, callButton: { desktop: true, mobile: true, who: "everyone" } };
+await expect("admin saves the call template", true, () => setDoc(doc(admin, `orgs/${A}/settings/call`), tpl));
+await expect("staff reads the call template", true, () => getDoc(doc(ann, `orgs/${A}/settings/call`)));
+await expect("staff edits the call template", false, () => setDoc(doc(ann, `orgs/${A}/settings/call`), { ...tpl, roles: [] }));
+await expect("supervisor edits the call template", false, () => setDoc(doc(sup, `orgs/${A}/settings/call`), tpl));
+await expect("another tenant's admin edits this tenant's template", false, () => setDoc(doc(otherAdmin, `orgs/${A}/settings/call`), tpl));
+await expect("another tenant's admin reads this tenant's template", false, () => getDoc(doc(otherAdmin, `orgs/${A}/settings/call`)));
+await expect("admin writes a settings record under another name", false, () => setDoc(doc(admin, `orgs/${A}/settings/billing`), tpl));
+await expect("a template with no slot list", false, () => setDoc(doc(admin, `orgs/${A}/settings/call`), { id: "call", roles: ["OR RN"] }));
+await expect("admin deletes the call template", false, () => deleteDoc(doc(admin, `orgs/${A}/settings/call`)));
+await expect("admin still cannot edit the organization record itself", false, () => updateDoc(doc(admin, `orgs/${A}`), { name: "Renamed" }));
+
 /* --------------------------------- operator --------------------------------- */
 await expect("operator creates an organization", true, () => setDoc(doc(owner, "orgs/valley"), { name: "Valley Medical" }));
 await expect("operator seats its first admin", true, () => setDoc(doc(owner, "orgs/valley/members/first@valley.test"), { personId: "v-1", kind: "manager", active: true }));

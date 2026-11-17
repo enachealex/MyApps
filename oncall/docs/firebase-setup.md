@@ -149,6 +149,7 @@ and uses **Generate rotation** to fill the first block.
 | `userIndex/{email}` | which organization an address belongs to | that organization's Admin, or the operator |
 | `orgs/{org}` | name, colours, roles, call template | the operator |
 | `orgs/{org}/members/{email}` | roster id, access level, active or not | that organization's Admin (never their own entry) |
+| `orgs/{org}/settings/call` | the Admin's edits to the call template and phone buttons | that organization's Admin |
 | `orgs/{org}/people`, `shifts`, `requests`, `timeOff`, `messages` | the working data | see `firestore.rules` |
 
 Access is keyed on email and counts only once Firebase has **verified** that
@@ -166,7 +167,7 @@ immediately.
 npm run test:rules
 ```
 
-Runs 83 cases against a local Firestore emulator — who may read and write what,
+Runs 93 cases against a local Firestore emulator — who may read and write what,
 weighted towards the refusals. Needs Java 11 or newer; the script pins an older
 Firebase CLI because the newest one requires Java 21.
 
@@ -175,6 +176,12 @@ npm run test:rotation
 ```
 
 Checks the rotation generator.
+
+```bash
+npm run test:template
+```
+
+Checks the call-template editing logic.
 
 ## Not done yet
 

@@ -12,6 +12,7 @@
     "android": "npm run sync && npx cap open android",
     "ios": "npm run sync && npx cap open ios",
     "test:rotation": "node scripts/check-rotation.mjs",
+    "test:template": "node scripts/check-template.mjs",
     "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project demo-oncall \"node scripts/rules.test.mjs\""
   },
   "dependencies": {

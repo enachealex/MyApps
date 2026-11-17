@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useContext, createContext 
 import { signIn, signOutNow, changePassword, sendReset, isRealAuth, watchAuth, cloudSignIn, cloudSignUp, resendVerification, refreshUser } from "./auth";
 import { findMembership, loadOrg, loadMember, subscribeOrg, pushChanges } from "./cloudStore";
 import { generateRotation, spreadByRole } from "./rotation";
+import { SETTINGS_ID, KINDS, settingsOf, effectiveOrg, validateTemplate, reconcileShifts, unfilledSlots, callButtonAllowed, newSlotId } from "./template";
 import {
   Home,
   CalendarDays,
@@ -37,6 +38,8 @@ import {
   Sun,
   Moon,
   Monitor,
+  Settings,
+  Plus,
 } from "lucide-react";
 
 /* ==================================================================
@@ -693,6 +696,7 @@ const PRINT_CSS = `
 const AppCtx = createContext({ org: ORGS[0], say: () => {} });
 const useOrg = () => useContext(AppCtx).org;
 const useSay = () => useContext(AppCtx).say || (() => {});
+const useViewerKind = () => useContext(AppCtx).viewerKind || "staff";
 /* Sticky offset: on a phone the brand header floats above the content at 56px;
    inside the desktop card the header scrolls with it, so the offset is 0. */
 const useStickyTop = () => (useContext(AppCtx).desktop ? 0 : 56);
@@ -1796,7 +1800,10 @@ function NoOrganization({ email, onSignOut, onRetry }) {
 }
 
 /* ============================== SHELL ============================= */
-function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode }) {
+function Shell({ org: createdOrg, db, setDb, viewerId, onSignOut, themeMode, setThemeMode }) {
+  /* The organization as it was created, with whatever its Admin has since
+     changed in Call settings laid over it. Everything below reads this one. */
+  const org = effectiveOrg(createdOrg, settingsOf(db));
   const [tab, setTab] = useState("home");
   const [accountOpen, setAccountOpen] = useState(false);
   const [shiftSheet, setShiftSheet] = useState(null);
@@ -1958,6 +1965,24 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
     setDb((d) => ({ ...d, shifts: [...d.shifts.filter((x) => !ids.has(x.id)), ...generated] }));
     say(`Rotation published — ${generated.length} shifts.`);
   };
+  /* Saving the template also brings the coming schedule into line with it:
+     shifts on a removed slot go, changed hours carry through. Past days and
+     shifts with an open request are left alone — see reconcileShifts. */
+  const saveCallSettings = (next) => {
+    const today = keyOf(new Date());
+    const locked = new Set(db.requests.filter((r) => r.status === "submitted").map((r) => r.shiftId));
+    const result = reconcileShifts(db.shifts, next.slots, today, locked);
+    setDb((d) => ({
+      ...d,
+      shifts: reconcileShifts(d.shifts, next.slots, today, locked).shifts,
+      settings: [...(d.settings || []).filter((s) => s.id !== SETTINGS_ID), { id: SETTINGS_ID, ...next }],
+    }));
+    const parts = ["Call settings saved."];
+    if (result.removed) parts.push(`${result.removed} coming ${result.removed === 1 ? "shift" : "shifts"} removed.`);
+    if (result.updated) parts.push(`${result.updated} updated.`);
+    if (result.kept) parts.push(`${result.kept} with an open request left in place.`);
+    say(parts.join(" "));
+  };
   const toggleSick = (shiftId) => patchShift(shiftId, { outSick: !shiftById(shiftId).outSick });
   const reassign = (shiftId, personId) => {
     patchShift(shiftId, { personId });
@@ -2021,7 +2046,7 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
   const section = (tabs.find((t) => t.id === tab) || {}).label || "";
 
   return (
-    <AppCtx.Provider value={{ org, say, desktop }}>
+    <AppCtx.Provider value={{ org, say, desktop, viewerKind: viewer.kind }}>
       <style>{THEME_CSS}</style>
       <style>{PRINT_CSS}</style>
       <style>{DESKTOP_TYPE_CSS}</style>
@@ -2128,7 +2153,7 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
           <RequestsView db={db} viewerId={viewerId} isSup={isSup} inbox={inbox} shiftById={shiftById} onRespond={respondToOffer} onRetract={retract} />
         )}
         {tab === "approvals" && <ApprovalsView db={db} queue={approvalQueue} shiftById={shiftById} onOpen={setApproveSheet} />}
-        {tab === "manage" && <ManageView db={{ ...db, timeOff }} onReassign={reassign} onToggleSick={toggleSick} onOfferUp={offerUp} openReqFor={openReqFor} onApplyRotation={applyRotation} />}
+        {tab === "manage" && <ManageView db={{ ...db, timeOff }} onReassign={reassign} onToggleSick={toggleSick} onOfferUp={offerUp} openReqFor={openReqFor} onApplyRotation={applyRotation} onSaveSettings={saveCallSettings} />}
         {tab === "people" && <PeopleAdminView db={db} viewerId={viewerId} onSave={savePerson} onSetActive={setPersonActive} say={say} />}
         {tab === "phones" && <PhoneListView db={db} />}
             </div>
@@ -3046,9 +3071,10 @@ function ScheduleView({ db, onOpenShift }) {
 /* Shift · Role · Name · Phone · Status */
 const CALL_GRID = "170px 130px minmax(0, 1fr) auto minmax(0, 260px)";
 
-function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApplyRotation }) {
+function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApplyRotation, onSaveSettings }) {
   const org = useOrg();
   const [generating, setGenerating] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   /* Generation never reaches behind today: who was on call last Tuesday is a
      record, and a generator that rewrites it would quietly falsify one. */
   const todayKey = keyOf(new Date());
@@ -3061,21 +3087,37 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApp
   const rows = db.shifts.filter((s) => s.date === dateKey).sort(sort);
   const days = blockOf(dateKey, db.shifts, sort);
   const genDays = days.filter((d) => d.key >= todayKey);
+  const empty = unfilledSlots(db.shifts, org.slots, todayKey);
 
   return (
     <div>
       <SpanHeader span={span} setSpan={setSpan} dateKey={dateKey} setDateKey={setDateKey} days={days} />
 
-      <div className="oncall-no-print flex items-center justify-between gap-3 border-b bg-white px-3 py-2" style={{ borderColor: C.line }}>
-        <div className="text-xs" style={{ color: C.sub }}>
-          {genDays.length === 0
+      <div className="oncall-no-print flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b bg-white px-3 py-2" style={{ borderColor: C.line }}>
+        <div className="min-w-0 flex-1 text-xs" style={{ color: empty.length ? C.warn : C.sub, minWidth: 180 }}>
+          {empty.length
+            ? `${empty.length} call ${empty.length === 1 ? "slot has" : "slots have"} nothing scheduled yet (${[...new Set(empty.map((x) => x.role))].join(", ")}). Generate a rotation to fill ${empty.length === 1 ? "it" : "them"}.`
+            : genDays.length === 0
             ? "This block is in the past. Move forward to generate a rotation."
             : genDays.length < days.length
             ? `Fill the rest of this block, from today, shared out evenly.`
             : `Fill this ${BLOCK_WEEKS}-week block from the call template, shared out evenly.`}
         </div>
-        <Btn size="sm" icon={CalendarDays} disabled={genDays.length === 0} onClick={() => setGenerating(true)}>Generate rotation</Btn>
+        <div className="flex shrink-0 items-center gap-2">
+          <Btn size="sm" tone="ghost" icon={Settings} onClick={() => setSettingsOpen(true)}>Call settings</Btn>
+          <Btn size="sm" icon={CalendarDays} disabled={genDays.length === 0} onClick={() => setGenerating(true)}>Generate rotation</Btn>
+        </div>
       </div>
+      {settingsOpen ? (
+        <CallSettingsSheet
+          db={db}
+          onClose={() => setSettingsOpen(false)}
+          onSave={(next) => {
+            onSaveSettings(next);
+            setSettingsOpen(false);
+          }}
+        />
+      ) : null}
       <RotationSheet
         open={generating}
         onClose={() => setGenerating(false)}
@@ -3323,10 +3365,23 @@ function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish }) {
           <div className="font-semibold">
             {result.warnings.length} {result.warnings.length === 1 ? "problem" : "problems"} to look at
           </div>
-          {result.warnings.slice(0, 4).map((w, i) => (
-            <div key={i} className="mt-0.5">{w.text}</div>
-          ))}
-          {result.warnings.length > 4 ? <div className="mt-0.5">and {result.warnings.length - 4} more</div> : null}
+          {/* A slot nobody can cover fails the same way every day of the block,
+              so say it once with a count rather than fill the box with it. */}
+          {(() => {
+            const groups = new Map();
+            result.warnings.forEach((w) => {
+              groups.set(w.text, (groups.get(w.text) || 0) + 1);
+            });
+            const lines = [...groups.entries()];
+            return (
+              <>
+                {lines.slice(0, 4).map(([text, n]) => (
+                  <div key={text} className="mt-0.5">{text}{n > 1 ? ` (${n} days)` : ""}</div>
+                ))}
+                {lines.length > 4 ? <div className="mt-0.5">and {lines.length - 4} more</div> : null}
+              </>
+            );
+          })()}
         </div>
       ) : null}
 
@@ -3366,6 +3421,192 @@ function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish }) {
       <div className="mt-4 flex gap-2">
         <Btn tone="ghost" full onClick={() => setOffset((v) => v + 1)}>Try another arrangement</Btn>
         <Btn full icon={Check} disabled={result.shifts.length === 0} onClick={() => onPublish(result.shifts)}>Publish</Btn>
+      </div>
+    </Sheet>
+  );
+}
+
+/* Where an Admin shapes their own call: which roles exist and which department
+   each sits in, which slots are filled every day, and how the phone buttons
+   behave. Nothing is written until Save, and Save says first what it will do
+   to the schedule that is already out. */
+function CallSettingsSheet({ db, onClose, onSave }) {
+  const org = useOrg();
+  const todayKey = keyOf(new Date());
+  const [roles, setRoles] = useState(() => org.roles.map((name) => ({ name, dept: org.depts[name] || "", existing: true })));
+  const [slots, setSlots] = useState(() => org.slots.map((s) => ({ ...s })));
+  const [callButton, setCallButton] = useState(() => ({ ...org.callButton }));
+  const [newRole, setNewRole] = useState("");
+  const [newDept, setNewDept] = useState("");
+
+  const input = "rounded-md border px-2 py-1.5 text-sm";
+  const inputStyle = { borderColor: C.line, backgroundColor: C.surface, color: C.ink };
+  const heading = "mt-5 text-xs font-semibold uppercase tracking-wide";
+
+  const holders = (name) => db.people.filter((p) => p.kind === "staff" && p.role === name).length;
+  const coveredBy = (name) => (org.aliases && org.aliases[name]) || "";
+  const departments = [...new Set(roles.map((r) => r.dept.trim()).filter(Boolean))];
+
+  const addRole = () => {
+    const name = newRole.trim();
+    if (!name || roles.some((r) => r.name.toLowerCase() === name.toLowerCase())) return;
+    setRoles((list) => [...list, { name, dept: newDept.trim(), existing: false }]);
+    setNewRole("");
+  };
+  const removeRole = (name) => {
+    setRoles((list) => list.filter((r) => r.name !== name));
+    setSlots((list) => list.filter((s) => s.role !== name));
+  };
+  const patchSlot = (id, patch) => setSlots((list) => list.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  const addSlot = (role) => setSlots((list) => [...list, { id: newSlotId(), role, kind: "first", time: "1900-0700" }]);
+
+  const next = {
+    roles: roles.map((r) => r.name.trim()),
+    depts: Object.fromEntries(roles.filter((r) => r.dept.trim()).map((r) => [r.name.trim(), r.dept.trim()])),
+    slots: slots.map((s) => ({ id: s.id, role: s.role, kind: s.kind, time: String(s.time).trim() })),
+    callButton,
+  };
+  const problems = validateTemplate({ ...next, aliases: org.aliases || {} }, db.people);
+  const locked = new Set(db.requests.filter((r) => r.status === "submitted").map((r) => r.shiftId));
+  const effect = reconcileShifts(db.shifts, next.slots, todayKey, locked);
+  const added = next.slots.filter((s) => !org.slots.some((o) => o.id === s.id)).length;
+  /* What the form held when it opened, so Save is offered only for a change. */
+  const opened = useRef(null);
+  if (opened.current === null) opened.current = JSON.stringify(next);
+  const changed = JSON.stringify(next) !== opened.current;
+
+  const toggle = ({ on, onChange, label, hint }) => (
+    <button onClick={() => onChange(!on)} role="switch" aria-checked={on} className="flex w-full items-center justify-between gap-3 py-2 text-left">
+      <span className="min-w-0">
+        <span className="block text-sm font-medium" style={{ color: C.ink }}>{label}</span>
+        {hint ? <span className="block text-xs" style={{ color: C.sub }}>{hint}</span> : null}
+      </span>
+      <span className="relative h-6 w-10 shrink-0 rounded-full transition" style={{ backgroundColor: on ? org.brand : C.disabledBg }}>
+        <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all" style={{ left: on ? 18 : 2 }} />
+      </span>
+    </button>
+  );
+
+  return (
+    <Sheet open onClose={onClose} title="Call settings" side>
+      <div className="text-sm" style={{ color: C.sub }}>
+        The roles your staff hold, and the call slots filled every day. Generate rotation works from this.
+      </div>
+
+      <div className={heading} style={{ color: C.faint, marginTop: 16 }}>Roles and call slots</div>
+      <datalist id="oncall-departments">
+        {departments.map((d) => (
+          <option key={d} value={d} />
+        ))}
+      </datalist>
+
+      {roles.map((r) => {
+        const count = holders(r.name);
+        const mine = slots.filter((s) => s.role === r.name);
+        return (
+          <div key={r.name} className="mt-2 rounded-lg border p-3" style={{ borderColor: C.line }}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold" style={{ color: C.ink }}>{r.name}</div>
+                <div className="text-xs" style={{ color: C.sub }}>
+                  {coveredBy(r.name) ? `Covered by the ${coveredBy(r.name)} staff` : count ? `${count} ${count === 1 ? "person" : "people"}` : "Nobody in this role yet — add them in People"}
+                </div>
+              </div>
+              {count === 0 ? (
+                <button onClick={() => removeRole(r.name)} aria-label={`Remove the ${r.name} role`} className="shrink-0 rounded p-1" style={{ color: C.danger }}>
+                  <Trash2 size={16} />
+                </button>
+              ) : null}
+            </div>
+            <label className="mt-2 block text-xs" style={{ color: C.sub }}>
+              Department
+              <input
+                list="oncall-departments"
+                value={r.dept}
+                onChange={(e) => setRoles((list) => list.map((x) => (x.name === r.name ? { ...x, dept: e.target.value } : x)))}
+                placeholder="Shown as the heading on the Phone List"
+                className={`${input} mt-1 block w-full`}
+                style={inputStyle}
+              />
+            </label>
+
+            {mine.map((s) => (
+              <div key={s.id} className="mt-2 flex items-center gap-2">
+                <select value={s.kind} onChange={(e) => patchSlot(s.id, { kind: e.target.value })} aria-label={`${r.name} call level`} className={`${input} min-w-0 flex-1`} style={inputStyle}>
+                  {KINDS.map((k) => (
+                    <option key={k} value={k}>{KIND[k].label}</option>
+                  ))}
+                </select>
+                <input
+                  value={s.time}
+                  onChange={(e) => patchSlot(s.id, { time: e.target.value })}
+                  aria-label={`${r.name} hours`}
+                  placeholder="1900-0700"
+                  inputMode="numeric"
+                  className={input}
+                  style={{ ...inputStyle, width: 112, fontVariantNumeric: "tabular-nums" }}
+                />
+                <button onClick={() => setSlots((list) => list.filter((x) => x.id !== s.id))} aria-label={`Remove the ${r.name} ${s.time} slot`} className="shrink-0 rounded p-1" style={{ color: C.sub }}>
+                  <X size={16} />
+                </button>
+              </div>
+            ))}
+            <button onClick={() => addSlot(r.name)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold" style={{ color: org.link }}>
+              <Plus size={13} /> Add a call slot
+            </button>
+          </div>
+        );
+      })}
+
+      <div className="mt-2 rounded-lg border border-dashed p-3" style={{ borderColor: C.line }}>
+        <div className="text-xs font-semibold" style={{ color: C.sub }}>Add a role</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input value={newRole} onChange={(e) => setNewRole(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRole()} placeholder="Role, e.g. Cath Lab RN" aria-label="New role name" className={`${input} min-w-0 flex-1`} style={{ ...inputStyle, minWidth: 140 }} />
+          <input list="oncall-departments" value={newDept} onChange={(e) => setNewDept(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRole()} placeholder="Department" aria-label="New role department" className={`${input} min-w-0 flex-1`} style={{ ...inputStyle, minWidth: 120 }} />
+          <Btn size="sm" tone="ghost" icon={Plus} disabled={!newRole.trim()} onClick={addRole}>Add</Btn>
+        </div>
+      </div>
+
+      <div className={heading} style={{ color: C.faint }}>Phone buttons</div>
+      <div className="mt-1 rounded-lg border px-3 py-1" style={{ borderColor: C.line }}>
+        {toggle({ on: callButton.mobile, onChange: (v) => setCallButton((c) => ({ ...c, mobile: v })), label: "Tap to call on phones", hint: "Opens the keypad with the number filled in." })}
+        <div style={{ borderTop: `1px solid ${C.line}` }} />
+        {toggle({ on: callButton.desktop, onChange: (v) => setCallButton((c) => ({ ...c, desktop: v })), label: "Click to copy on computers", hint: "A computer cannot place the call, so the number is copied." })}
+        <div style={{ borderTop: `1px solid ${C.line}` }} />
+        {toggle({
+          on: callButton.who === "managers",
+          onChange: (v) => setCallButton((c) => ({ ...c, who: v ? "managers" : "everyone" })),
+          label: "Supervisors and admins only",
+          hint: "Staff still see every number, as plain text.",
+        })}
+      </div>
+
+      {problems.length ? (
+        <div role="alert" className="mt-4 rounded-md px-3 py-2 text-xs" style={{ backgroundColor: C.warnBg, color: C.warn }}>
+          <div className="font-semibold">Fix before saving</div>
+          {problems.map((p) => (
+            <div key={p} className="mt-0.5">{p}</div>
+          ))}
+        </div>
+      ) : changed ? (
+        <div className="mt-4 text-xs" style={{ color: C.sub }}>
+          {effect.removed || effect.updated || effect.kept || added
+            ? [
+                effect.removed ? `${effect.removed} coming ${effect.removed === 1 ? "shift" : "shifts"} on removed slots will be taken off the schedule.` : "",
+                effect.updated ? `${effect.updated} coming ${effect.updated === 1 ? "shift" : "shifts"} will take the new hours.` : "",
+                effect.kept ? `${effect.kept} with an open request ${effect.kept === 1 ? "stays" : "stay"} as ${effect.kept === 1 ? "it is" : "they are"}.` : "",
+                added ? `New slots stay empty until you generate a rotation.` : "",
+              ]
+                .filter(Boolean)
+                .join(" ")
+            : "The schedule already out is not affected."}{" "}
+          Days before today never change.
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex gap-2">
+        <Btn tone="ghost" full onClick={onClose}>Cancel</Btn>
+        <Btn full icon={Check} disabled={!changed || problems.length > 0} onClick={() => onSave(next)}>Save</Btn>
       </div>
     </Sheet>
   );
@@ -3656,6 +3897,7 @@ const canDial = (() => {
 function DialButton({ person, variant = "chip" }) {
   const org = useOrg();
   const say = useSay();
+  const viewerKind = useViewerKind();
   if (!person) return null;
   if (!person.phone && !person.alt) {
     return <span className="text-xs" style={{ color: C.faint }}>No number on file</span>;
@@ -3663,6 +3905,20 @@ function DialButton({ person, variant = "chip" }) {
 
   const primary = person.phone || person.alt;
   const second = person.phone && person.alt ? person.alt : "";
+
+  /* Where the Admin has turned the button off for this kind of device, or
+     for this viewer, the number is still shown as text that can be selected
+     and read off. Hiding it would leave staff unable to reach whoever is on
+     call, which is the one thing this app must never do. */
+  if (!callButtonAllowed(org.callButton, { canDial, viewerKind })) {
+    const text = { userSelect: "text", WebkitUserSelect: "text", WebkitTouchCallout: "default", fontVariantNumeric: "tabular-nums" };
+    return (
+      <div className={variant === "bar" ? "flex flex-1 flex-col items-center justify-center py-2" : "flex shrink-0 flex-col items-end gap-0.5"}>
+        <span className="text-sm font-semibold" style={{ color: C.ink, ...text }}>{primary}</span>
+        {second ? <span className="text-xs" style={{ color: C.sub, ...text }}>2nd {second}</span> : null}
+      </div>
+    );
+  }
 
   const dial = async (e, value) => {
     if (canDial) return; // let the anchor open the keypad
@@ -3743,6 +3999,9 @@ function DialButton({ person, variant = "chip" }) {
 }
 
 function TapToCallHint() {
+  const org = useOrg();
+  const viewerKind = useViewerKind();
+  if (!callButtonAllowed(org.callButton, { canDial, viewerKind })) return null;
   return (
     <div className="flex items-center gap-1.5 px-3 py-2 text-xs" style={{ color: C.faint }}>
       <Phone size={12} /> {canDial ? "Tap a phone number to call." : "Click a phone number to copy it."}
@@ -4066,7 +4325,7 @@ function PhoneListView({ db }) {
   const [dept, setDept] = useState("All");
   const today = keyOf(new Date());
   const onCallToday = new Set(db.shifts.filter((s) => s.date === today).map((s) => s.personId));
-  const deptOf = (p) => org.depts[p.role] || "Management";
+  const deptOf = (p) => org.depts[p.role] || (p.kind === "staff" ? "Other" : "Management");
   const depts = ["All", ...Array.from(new Set(org.people.map(deptOf)))];
 
   const filtered = org.people.filter(
