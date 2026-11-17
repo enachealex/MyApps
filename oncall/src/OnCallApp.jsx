@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useContext, createContext 
 import { signIn, signOutNow, changePassword, sendReset, isRealAuth, watchAuth, cloudSignIn, cloudSignUp, resendVerification, refreshUser } from "./auth";
 import { findMembership, loadOrg, loadMember, subscribeOrg, pushChanges } from "./cloudStore";
 import { generateRotation, spreadByRole } from "./rotation";
-import { SETTINGS_ID, KINDS, settingsOf, effectiveOrg, validateTemplate, reconcileShifts, unfilledSlots, callButtonAllowed, newSlotId } from "./template";
+import { SETTINGS_ID, KINDS, settingsOf, effectiveOrg, validateTemplate, reconcileShifts, unfilledSlots, callButtonAllowed, newSlotId, ALL_DEPTS, departmentsOf, rolesInDept, inDept, moved } from "./template";
 import {
   Home,
   CalendarDays,
@@ -697,6 +697,12 @@ const AppCtx = createContext({ org: ORGS[0], say: () => {} });
 const useOrg = () => useContext(AppCtx).org;
 const useSay = () => useContext(AppCtx).say || (() => {});
 const useViewerKind = () => useContext(AppCtx).viewerKind || "staff";
+/* The department the viewer has narrowed the schedule to, shared by every
+   screen so Home, Calendar and Call Management agree. */
+const useDept = () => {
+  const c = useContext(AppCtx);
+  return { dept: c.dept || ALL_DEPTS, setDept: c.setDept || (() => {}), depts: c.depts || [] };
+};
 /* Sticky offset: on a phone the brand header floats above the content at 56px;
    inside the desktop card the header scrolls with it, so the offset is 0. */
 const useStickyTop = () => (useContext(AppCtx).desktop ? 0 : 56);
@@ -781,6 +787,26 @@ function Btn({ children, onClick, tone = "primary", disabled, full, size = "md",
       {Icon ? <Icon size={size === "sm" ? 14 : 16} /> : null}
       {children}
     </button>
+  );
+}
+
+/* Shown only where there is more than one department to choose between. */
+function DeptPicker({ full }) {
+  const { dept, setDept, depts } = useDept();
+  if (depts.length < 2) return null;
+  return (
+    <select
+      value={dept}
+      onChange={(e) => setDept(e.target.value)}
+      aria-label="Department"
+      className={`oncall-no-print rounded-full border px-3 py-1 text-xs font-semibold ${full ? "w-full" : ""}`}
+      style={{ borderColor: C.line, backgroundColor: C.surface, color: C.ink, maxWidth: full ? "none" : 220 }}
+    >
+      <option value={ALL_DEPTS}>All departments</option>
+      {depts.map((d) => (
+        <option key={d} value={d}>{d}</option>
+      ))}
+    </select>
   );
 }
 
@@ -1805,6 +1831,28 @@ function Shell({ org: createdOrg, db, setDb, viewerId, onSignOut, themeMode, set
      changed in Call settings laid over it. Everything below reads this one. */
   const org = effectiveOrg(createdOrg, settingsOf(db));
   const [tab, setTab] = useState("home");
+
+  /* With every department on one schedule, a day is too long to read. The
+     choice is remembered on this device; it is a view, not a permission —
+     everyone can still look at any department. */
+  const depts = departmentsOf(org);
+  const deptKey = `oncall_dept_${org.id}`;
+  const [deptChoice, setDeptChoice] = useState(() => {
+    try {
+      return window.localStorage.getItem(deptKey) || ALL_DEPTS;
+    } catch (e) {
+      return ALL_DEPTS;
+    }
+  });
+  const dept = depts.length > 1 && depts.includes(deptChoice) ? deptChoice : ALL_DEPTS;
+  const setDept = (d) => {
+    setDeptChoice(d);
+    try {
+      window.localStorage.setItem(deptKey, d);
+    } catch (e) {
+      /* remembered for this visit only */
+    }
+  };
   const [accountOpen, setAccountOpen] = useState(false);
   const [shiftSheet, setShiftSheet] = useState(null);
   const [approveSheet, setApproveSheet] = useState(null);
@@ -2046,7 +2094,7 @@ function Shell({ org: createdOrg, db, setDb, viewerId, onSignOut, themeMode, set
   const section = (tabs.find((t) => t.id === tab) || {}).label || "";
 
   return (
-    <AppCtx.Provider value={{ org, say, desktop, viewerKind: viewer.kind }}>
+    <AppCtx.Provider value={{ org, say, desktop, viewerKind: viewer.kind, dept, setDept, depts }}>
       <style>{THEME_CSS}</style>
       <style>{PRINT_CSS}</style>
       <style>{DESKTOP_TYPE_CSS}</style>
@@ -2360,14 +2408,19 @@ function TodayView({ db, viewer, isStaff, onOpenShift, say }) {
   const stickyTop = useStickyTop();
   const desktop = useIsDesktop();
   const [dateKey, setDateKey] = useState(() => keyOf(new Date()));
-  const [role, setRole] = useState("All");
+  const [pickedRole, setRole] = useState("All");
+  const { dept } = useDept();
+  const visible = inDept(org, dept);
+  const roleOptions = ["All", ...rolesInDept(org, dept)];
+  /* A role picked in one department means nothing in the next. */
+  const role = roleOptions.includes(pickedRole) ? pickedRole : "All";
   const isToday = dateKey === keyOf(new Date());
 
   const rows = db.shifts
-    .filter((s) => s.date === dateKey && (role === "All" || s.role === role))
+    .filter((s) => s.date === dateKey && visible(s) && (role === "All" || s.role === role))
     .sort((a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time));
 
-  const dayShifts = db.shifts.filter((s) => s.date === dateKey);
+  const dayShifts = db.shifts.filter((s) => s.date === dateKey && visible(s));
   const myShiftToday = db.shifts.find((s) => s.date === keyOf(new Date()) && s.personId === viewer.id);
 
   const copyList = async () => {
@@ -2386,7 +2439,6 @@ function TodayView({ db, viewer, isStaff, onOpenShift, say }) {
     }
   };
 
-  const roleOptions = ["All", ...org.roles];
   /* Same control, two shapes: a row of chips that scrolls sideways on a
      phone, a stacked column beside the list on a desktop. */
   const roleButton = (r, stacked) => (
@@ -2418,9 +2470,12 @@ function TodayView({ db, viewer, isStaff, onOpenShift, say }) {
           </button>
         </div>
         {desktop ? null : (
-          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
-            {roleOptions.map((r) => roleButton(r, false))}
-          </div>
+          <>
+            <div className="mt-2 flex justify-center empty:hidden"><DeptPicker /></div>
+            <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+              {roleOptions.map((r) => roleButton(r, false))}
+            </div>
+          </>
         )}
       </div>
 
@@ -2462,6 +2517,7 @@ function TodayView({ db, viewer, isStaff, onOpenShift, say }) {
         style={{ width: 288, borderColor: C.line }}
       >
         <div className="text-lg font-bold leading-tight">Today's Call Schedule</div>
+        <div className="mt-4 empty:hidden"><DeptPicker full /></div>
         <div className="mt-6 text-center text-xs font-semibold" style={{ color: C.sub }}>
           Filter by specific role
         </div>
@@ -3016,7 +3072,7 @@ function SpanHeader({ span, setSpan, dateKey, setDateKey, days }) {
           <ChevronRight size={20} />
         </button>
       </div>
-      <div className="mt-2 flex justify-center gap-1">
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
         {[
           { id: "daily", label: "Daily" },
           { id: "weekly", label: "Weekly" },
@@ -3031,6 +3087,7 @@ function SpanHeader({ span, setSpan, dateKey, setDateKey, days }) {
             {o.label}
           </button>
         ))}
+        <span className="ml-2 empty:hidden"><DeptPicker /></span>
       </div>
     </div>
   );
@@ -3043,8 +3100,10 @@ function ScheduleView({ db, onOpenShift }) {
   const [span, setSpan] = useState("weekly");
 
   const sort = (a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time);
-  const days = blockOf(dateKey, db.shifts, sort);
-  const rows = db.shifts.filter((s) => s.date === dateKey).sort(sort);
+  const { dept } = useDept();
+  const shifts = db.shifts.filter(inDept(org, dept));
+  const days = blockOf(dateKey, shifts, sort);
+  const rows = shifts.filter((s) => s.date === dateKey).sort(sort);
 
   return (
     <div>
@@ -3084,8 +3143,10 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApp
   const weekly = span === "weekly";
 
   const sort = (a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time);
-  const rows = db.shifts.filter((s) => s.date === dateKey).sort(sort);
-  const days = blockOf(dateKey, db.shifts, sort);
+  const { dept } = useDept();
+  const shifts = db.shifts.filter(inDept(org, dept));
+  const rows = shifts.filter((s) => s.date === dateKey).sort(sort);
+  const days = blockOf(dateKey, shifts, sort);
   const genDays = days.filter((d) => d.key >= todayKey);
   const empty = unfilledSlots(db.shifts, org.slots, todayKey);
 
@@ -3118,18 +3179,23 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApp
           }}
         />
       ) : null}
-      <RotationSheet
-        open={generating}
-        onClose={() => setGenerating(false)}
-        db={db}
-        startKey={genDays.length ? genDays[0].key : days[0].key}
-        dayCount={genDays.length}
-        onPublish={(shifts) => {
-          onApplyRotation(shifts);
-          setGenerating(false);
-          setSpan("weekly");
-        }}
-      />
+      {/* Mounted only while open, so it starts from the template and the
+          department as they are now rather than as they were at first paint. */}
+      {generating ? (
+        <RotationSheet
+          open
+          onClose={() => setGenerating(false)}
+          db={db}
+          startKey={genDays.length ? genDays[0].key : days[0].key}
+          dayCount={genDays.length}
+          initialRoles={rolesInDept(org, dept)}
+          onPublish={(generated) => {
+            onApplyRotation(generated);
+            setGenerating(false);
+            setSpan("weekly");
+          }}
+        />
+      ) : null}
 
       {weekly ? (
         <BlockCalendar days={days} onPickDay={(k) => { setDateKey(k); setSpan("daily"); }} />
@@ -3258,10 +3324,11 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApp
    should be able to see that the spread is even, and who is carrying what,
    before publishing — and to argue with it, by leaving people out or asking
    for a different arrangement. */
-function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish }) {
+function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish, initialRoles }) {
   const org = useOrg();
-  const allRoles = useMemo(() => [...new Set(org.slots.map((x) => x.role))], [org]);
-  const [roles, setRoles] = useState(() => new Set(allRoles));
+  const allRoles = [...new Set(org.slots.map((x) => x.role))];
+  /* Starts on the department being looked at; the rest are a tap away. */
+  const [roles, setRoles] = useState(() => new Set(initialRoles ? allRoles.filter((r) => initialRoles.includes(r)) : allRoles));
   const [excluded, setExcluded] = useState(() => new Set());
   const [offset, setOffset] = useState(0);
   const [showPeople, setShowPeople] = useState(false);
@@ -3500,7 +3567,7 @@ function CallSettingsSheet({ db, onClose, onSave }) {
         ))}
       </datalist>
 
-      {roles.map((r) => {
+      {roles.map((r, index) => {
         const count = holders(r.name);
         const mine = slots.filter((s) => s.role === r.name);
         return (
@@ -3512,11 +3579,20 @@ function CallSettingsSheet({ db, onClose, onSave }) {
                   {coveredBy(r.name) ? `Covered by the ${coveredBy(r.name)} staff` : count ? `${count} ${count === 1 ? "person" : "people"}` : "Nobody in this role yet — add them in People"}
                 </div>
               </div>
-              {count === 0 ? (
-                <button onClick={() => removeRole(r.name)} aria-label={`Remove the ${r.name} role`} className="shrink-0 rounded p-1" style={{ color: C.danger }}>
-                  <Trash2 size={16} />
+              <div className="flex shrink-0 items-center">
+                {/* Order here is the order roles are listed everywhere else. */}
+                <button onClick={() => setRoles((list) => moved(list, index, -1))} disabled={index === 0} aria-label={`Move ${r.name} up`} className="rounded p-1" style={{ color: index === 0 ? C.disabledFg : C.sub }}>
+                  <ChevronDown size={16} style={{ transform: "rotate(180deg)" }} />
                 </button>
-              ) : null}
+                <button onClick={() => setRoles((list) => moved(list, index, 1))} disabled={index === roles.length - 1} aria-label={`Move ${r.name} down`} className="rounded p-1" style={{ color: index === roles.length - 1 ? C.disabledFg : C.sub }}>
+                  <ChevronDown size={16} />
+                </button>
+                {count === 0 ? (
+                  <button onClick={() => removeRole(r.name)} aria-label={`Remove the ${r.name} role`} className="rounded p-1" style={{ color: C.danger }}>
+                    <Trash2 size={16} />
+                  </button>
+                ) : null}
+              </div>
             </div>
             <label className="mt-2 block text-xs" style={{ color: C.sub }}>
               Department

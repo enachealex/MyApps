@@ -157,3 +157,40 @@ export function callButtonAllowed(callButton, { canDial, viewerKind }) {
   if (cb.who === "managers" && viewerKind !== "manager" && viewerKind !== "supervisor") return false;
   return true;
 }
+
+/* ---- departments ---- */
+
+export const ALL_DEPTS = "All";
+const NO_DEPT = "Other";
+
+export const deptOfRole = (org, role) => (org.depts && org.depts[role]) || NO_DEPT;
+
+/* Departments in the order their first role appears, so the list reads the
+   way the Admin laid the roles out. "Other" only when some role has none. */
+export function departmentsOf(org) {
+  const seen = [];
+  (org.roles || []).forEach((r) => {
+    const d = deptOfRole(org, r);
+    if (!seen.includes(d)) seen.push(d);
+  });
+  return seen;
+}
+
+/* The roles a department filter leaves in view. A shift whose role has since
+   been removed from the template still belongs somewhere, so it is matched by
+   its own role rather than dropped. */
+export function rolesInDept(org, dept) {
+  if (!dept || dept === ALL_DEPTS) return org.roles || [];
+  return (org.roles || []).filter((r) => deptOfRole(org, r) === dept);
+}
+
+export const inDept = (org, dept) => (shift) => !dept || dept === ALL_DEPTS || deptOfRole(org, shift.role) === dept;
+
+/* Moves one item of a list a place up or down; out-of-range leaves it alone. */
+export function moved(list, index, by) {
+  const to = index + by;
+  if (index < 0 || to < 0 || to >= list.length) return list;
+  const next = [...list];
+  [next[index], next[to]] = [next[to], next[index]];
+  return next;
+}

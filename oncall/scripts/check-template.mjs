@@ -4,7 +4,7 @@
  *
  *   node scripts/check-template.mjs      (npm run test:template)
  */
-import { withSlotIds, effectiveOrg, validateTemplate, reconcileShifts, unfilledSlots, callButtonAllowed, slotIdOf } from "../src/template.js";
+import { departmentsOf, rolesInDept, inDept, moved, withSlotIds, effectiveOrg, validateTemplate, reconcileShifts, unfilledSlots, callButtonAllowed, slotIdOf } from "../src/template.js";
 import { generateRotation } from "../src/rotation.js";
 
 let failed = 0;
@@ -109,6 +109,14 @@ check("off on desktop leaves phones alone", !cb({ desktop: false }, false, "staf
 check("off on mobile leaves desktop alone", !cb({ mobile: false }, true, "manager") && cb({ mobile: false }, false, "manager"));
 check("managers-only hides it from staff", !cb({ who: "managers" }, true, "staff"));
 check("managers-only keeps it for supervisors and admins", cb({ who: "managers" }, true, "supervisor") && cb({ who: "managers" }, true, "manager"));
+
+/* ---- departments ---- */
+check("departments come out in role order, once each", departmentsOf(base).join() === "OR,PACU");
+check("a role with no department is filed under Other", departmentsOf({ roles: ["A", "B"], depts: { A: "X" } }).join() === "X,Other");
+check("a department narrows the roles", rolesInDept(base, "OR").join() === "OR RN,Scrub Tech" && rolesInDept(base, "All").length === 3);
+check("a department narrows the shifts", shifts.filter(inDept(base, "OR")).length === 5 && shifts.filter(inDept(base, "PACU")).length === 0 && shifts.filter(inDept(base, "All")).length === 5);
+check("moving a role up swaps it with its neighbour", moved(["a", "b", "c"], 2, -1).join() === "a,c,b");
+check("moving past either end changes nothing", moved(["a", "b"], 0, -1).join() === "a,b" && moved(["a", "b"], 1, 1).join() === "a,b");
 
 console.log(`\n${count - failed} of ${count} checks passed`);
 process.exit(failed ? 1 : 0);

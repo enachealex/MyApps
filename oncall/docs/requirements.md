@@ -290,6 +290,7 @@ one-template-per-organization model does not yet support.
 | Staff messaging with patient-information guard-rails | DONE (local only) |
 | Call template editable in the app (roles, department per role, call slots) | DONE |
 | Call-button settings (§1b) | DONE |
+| Department filter on Home, Calendar and Call Management; role order editable | DONE |
 | Departments with their own admins, so one department's manager cannot edit another's call | TODO — needs Valley Medical's real structure |
 | Firestore data layer, live sign-in and operator tool | DONE — tested on emulators, not yet on a real project |
 
@@ -311,6 +312,13 @@ the tenant's own data and laid over the template the organization was created
 with; the operator's organization record is never edited from the app. Slots
 carry a stable id so editing the list does not re-point existing shifts.
 Logic in `src/template.js`; `npm run test:template` checks it.
+
+**Department filter.** Where an organization has more than one department, a
+picker on Home, Calendar and Call Management narrows the schedule to one. It
+is a view, not a permission: anyone can still look at any department, because
+staff need to reach whoever is on call elsewhere. The choice is remembered per
+device. Generate rotation starts on the department being viewed. Organizations
+with a single department never see the picker.
 
 **Time off.** Staff tap days they cannot take call (My Shifts → Time off). It
 is availability, not approved leave, and it changes nothing already published.
