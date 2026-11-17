@@ -74,4 +74,11 @@ check("an empty pool is reported, not silently skipped", none.warnings.filter((w
 const tiny = generateRotation({ ...base, excluded: new Set(["rn1", "rn2", "rn3", "rn4"]) });
 check("a pool too small to avoid doubling says so", tiny.warnings.some((w) => w.type === "double"));
 
+const off = new Set(["rn2|2026-11-21", "rn2|2026-11-22", "rn2|2026-11-28", "rn3|2026-11-18"]);
+const un = generateRotation({ ...base, unavailable: off });
+check("nobody is scheduled on a day they marked unavailable", !un.shifts.some((s) => off.has(`${s.personId}|${s.date}`)));
+check("days off do not leave slots empty", un.shifts.length === 28 * 4 && un.warnings.length === 0);
+const onlyPacuOff = generateRotation({ ...base, unavailable: new Set(["pacu0|2026-11-20"]) });
+check("a sole cover's day off is reported as unfilled", onlyPacuOff.warnings.some((w) => w.type === "unfilled" && w.dateKey === "2026-11-20"));
+
 process.exit(failed ? 1 : 0);

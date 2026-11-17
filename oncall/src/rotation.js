@@ -38,11 +38,12 @@ export const shiftId = (dateKey, slotIndex) => `${dateKey}~${slotIndex}`;
  * @param {string}   o.startKey    first day, YYYY-MM-DD
  * @param {number}   o.days        how many days to fill
  * @param {Set}      [o.excluded]  person ids left out of this block entirely
+ * @param {Set}      [o.unavailable] "personId|YYYY-MM-DD" days someone cannot take call
  * @param {object}   [o.locked]    shiftId -> existing shift that must not move
  *                                 (it has an open request); still counted
  * @param {number}   [o.offset]    rotates who goes first; "regenerate" bumps it
  */
-function buildOnce({ slots, slotIndexes, poolFor, startKey, days, excluded = new Set(), locked = {}, offset = 0 }) {
+function buildOnce({ slots, slotIndexes, poolFor, startKey, days, excluded = new Set(), unavailable = new Set(), locked = {}, offset = 0 }) {
   const tally = new Map(); // personId -> { shifts, weekends, points, last }
   const bump = (id, date, dayIndex) => {
     const t = tally.get(id) || { shifts: 0, weekends: 0, points: 0, last: -Infinity };
@@ -81,7 +82,7 @@ function buildOnce({ slots, slotIndexes, poolFor, startKey, days, excluded = new
         return;
       }
 
-      const pool = poolFor(slot).filter((p) => !excluded.has(p.id) && p.active !== false);
+      const pool = poolFor(slot).filter((p) => !excluded.has(p.id) && p.active !== false && !unavailable.has(`${p.id}|${dateKey}`));
       if (pool.length === 0) {
         warnings.push({ type: "unfilled", dateKey, slotIndex: si, text: `${slot.role} ${slot.time}: nobody available` });
         return;
@@ -183,7 +184,7 @@ function tallyOf(shifts) {
    days, and shifts with an open request stay where they are. Plain hill
    climbing — it stops at the first arrangement no single trade improves. */
 function repair(result, options) {
-  const { locked = {} } = options;
+  const { locked = {}, unavailable = new Set() } = options;
   const shifts = result.shifts.map((s) => ({ ...s }));
   const dayNumber = (k) => Math.round(fromKey(k).getTime() / 86400000);
 
@@ -199,6 +200,8 @@ function repair(result, options) {
         const y = shifts[b];
         if (x.role !== y.role || x.personId === y.personId || locked[x.id] || locked[y.id]) continue;
         if (clashes(y.personId, x, y) || clashes(x.personId, y, x)) continue;
+        /* A trade must not walk someone onto a day they said they cannot do. */
+        if (unavailable.has(`${y.personId}|${x.date}`) || unavailable.has(`${x.personId}|${y.date}`)) continue;
         [x.personId, y.personId] = [y.personId, x.personId];
         const next = unevenness({ tally: tallyOf(shifts), warnings: result.warnings }, options);
         if (next < score - 1e-9) {

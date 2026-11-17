@@ -30,6 +30,9 @@ import {
   Eye,
   EyeOff,
   ArrowLeft,
+  MessageSquare,
+  Flag,
+  Trash2,
   Sun,
   Moon,
   Monitor,
@@ -1445,6 +1448,38 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
   const addReq = (r) => setDb((d) => ({ ...d, requests: [...d.requests, r] }));
   const newId = () => `r${Math.random().toString(36).slice(2, 9)}`;
 
+  /* Both collections arrived after the first stored databases, so every read
+     goes through a default rather than assuming the key exists. */
+  const timeOff = db.timeOff || [];
+  const messages = db.messages || [];
+
+  /* A day someone cannot take call. No reason is stored, on purpose: the
+     reason is very often medical, and that is not ours to hold. */
+  const toggleTimeOff = (personId, date) =>
+    setDb((d) => {
+      const cur = d.timeOff || [];
+      const has = cur.some((t) => t.personId === personId && t.date === date);
+      return { ...d, timeOff: has ? cur.filter((t) => !(t.personId === personId && t.date === date)) : [...cur, { personId, date }] };
+    });
+
+  const sendMessage = (toId, body) =>
+    setDb((d) => ({
+      ...d,
+      messages: [...(d.messages || []), { id: `m${Math.random().toString(36).slice(2, 10)}`, fromId: viewerId, toId, body, at: new Date().toISOString(), readAt: null, reported: false }],
+    }));
+  const patchMessages = (test, patch) =>
+    setDb((d) => ({ ...d, messages: (d.messages || []).map((m) => (test(m) ? { ...m, ...patch } : m)) }));
+  const markThreadRead = (otherId) =>
+    patchMessages((m) => m.fromId === otherId && m.toId === viewerId && !m.readAt, { readAt: new Date().toISOString() });
+  const reportMessage = (id) => {
+    patchMessages((m) => m.id === id, { reported: true });
+    say("Reported to your admin.");
+  };
+  const deleteMessage = (id) => setDb((d) => ({ ...d, messages: (d.messages || []).filter((m) => m.id !== id) }));
+  const unreadCount = messages.filter((m) => m.toId === viewerId && !m.readAt).length;
+  const reportedCount = messages.filter((m) => m.reported).length;
+  const [messagesOpen, setMessagesOpen] = useState(false);
+
   function offerUp(shiftId, notes, partial) {
     const s = shiftById(shiftId);
     patchShift(shiftId, { posted: true });
@@ -1660,6 +1695,19 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => setMessagesOpen(true)}
+                    aria-label={unreadCount ? `Messages, ${unreadCount} unread` : "Messages"}
+                    className="oncall-no-print relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                    style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
+                  >
+                    <MessageSquare size={16} color="#fff" />
+                    {unreadCount || (isMgr && reportedCount) ? (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-xs font-bold text-white" style={{ backgroundColor: C.danger }}>
+                        {unreadCount || reportedCount}
+                      </span>
+                    ) : null}
+                  </button>
                   {desktop && PRINTABLE_TABS.includes(tab) ? (
                     <button
                       onClick={() => window.print()}
@@ -1697,13 +1745,15 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
             openReqFor={openReqFor}
             onOpenShift={setShiftSheet}
             onPickUp={pickUp}
+            timeOff={timeOff}
+            onToggleTimeOff={toggleTimeOff}
           />
         )}
         {tab === "requests" && (
           <RequestsView db={db} viewerId={viewerId} isSup={isSup} inbox={inbox} shiftById={shiftById} onRespond={respondToOffer} onRetract={retract} />
         )}
         {tab === "approvals" && <ApprovalsView db={db} queue={approvalQueue} shiftById={shiftById} onOpen={setApproveSheet} />}
-        {tab === "manage" && <ManageView db={db} onReassign={reassign} onToggleSick={toggleSick} onOfferUp={offerUp} openReqFor={openReqFor} onApplyRotation={applyRotation} />}
+        {tab === "manage" && <ManageView db={{ ...db, timeOff }} onReassign={reassign} onToggleSick={toggleSick} onOfferUp={offerUp} openReqFor={openReqFor} onApplyRotation={applyRotation} />}
         {tab === "people" && <PeopleAdminView db={db} viewerId={viewerId} onSave={savePerson} onSetActive={setPersonActive} say={say} />}
         {tab === "phones" && <PhoneListView db={db} />}
             </div>
@@ -1760,6 +1810,17 @@ function Shell({ org, db, setDb, viewerId, onSignOut, themeMode, setThemeMode })
         onClose={() => setApproveSheet(null)}
         onDecide={decide}
         onSetCoworker={(id, answer) => patchReq(id, { coworker: answer, respondedAt: new Date().toISOString() })}
+      />
+      <MessagesSheet
+        open={messagesOpen}
+        onClose={() => setMessagesOpen(false)}
+        messages={messages}
+        viewerId={viewerId}
+        isMgr={isMgr}
+        onSend={sendMessage}
+        onRead={markThreadRead}
+        onReport={reportMessage}
+        onDelete={deleteMessage}
       />
       <AccountSheet
         themeMode={themeMode}
@@ -2058,7 +2119,7 @@ function CallRow({ shift, first, onOpen }) {
 }
 
 /* ============================ MY SHIFTS =========================== */
-function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onOpenShift, onPickUp }) {
+function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onOpenShift, onPickUp, timeOff = [], onToggleTimeOff }) {
   const org = useOrg();
   const stickyTop = useStickyTop();
   const [sub, setSub] = useState("mine");
@@ -2108,6 +2169,7 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
         <SubTab id="available" label="Available Shifts" count={avail.length} />
         <SubTab id="approved" label="Approved" count={approved.length} />
         <SubTab id="pending" label="Pending" count={pending.length} />
+        <SubTab id="off" label="Time off" count={timeOff.filter((t) => t.personId === viewerId && t.date >= keyOf(new Date())).length} />
       </div>
 
       {sub === "mine" && (
@@ -2184,6 +2246,64 @@ function MyShiftsView({ db, viewerId, myShifts, availableShifts, openReqFor, onO
 
       {sub === "approved" && <RequestList db={db} list={approved} emptyTitle="Nothing approved yet" />}
       {sub === "pending" && <RequestList db={db} list={pending} emptyTitle="Nothing pending" />}
+      {sub === "off" && <TimeOffGrid viewerId={viewerId} myShifts={myShifts} timeOff={timeOff} onToggle={onToggleTimeOff} />}
+    </div>
+  );
+}
+
+/* Eight weeks of days to tap. This is availability, not approved leave: it
+   tells the scheduler which days to route around when the next rotation is
+   generated, and changes nothing already published. */
+function TimeOffGrid({ viewerId, myShifts, timeOff, onToggle }) {
+  const org = useOrg();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = addDays(today, -today.getDay());
+  const days = Array.from({ length: 56 }, (_, i) => addDays(start, i));
+  const todayKey = keyOf(today);
+  const mine = new Set(timeOff.filter((t) => t.personId === viewerId).map((t) => t.date));
+  const working = new Set(myShifts.map((s) => s.date));
+
+  return (
+    <div className="px-3 py-3">
+      <div className="text-sm" style={{ color: C.sub }}>
+        Tap the days you can't take call. Your scheduler's next rotation will work around them. Shifts you already hold are not changed — offer those up from Mine.
+      </div>
+      <div className="mt-3 grid gap-1" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
+        {DOW.map((d) => (
+          <div key={d} className="text-center text-xs font-semibold" style={{ color: C.faint }}>{d}</div>
+        ))}
+        {days.map((d) => {
+          const k = keyOf(d);
+          const past = k < todayKey;
+          const off = mine.has(k);
+          const has = working.has(k);
+          return (
+            <button
+              key={k}
+              disabled={past}
+              onClick={() => onToggle(viewerId, k)}
+              aria-pressed={off}
+              aria-label={`${longDate(k)}${off ? ", unavailable" : ""}${has ? ", you have a shift" : ""}`}
+              className="rounded-md border py-1.5 text-center"
+              style={{
+                borderColor: off ? C.warnBorder : C.line,
+                backgroundColor: off ? C.warnBg : C.surface,
+                color: past ? C.disabledFg : off ? C.warn : C.ink,
+                opacity: past ? 0.5 : 1,
+              }}
+            >
+              <div className="text-xs" style={{ color: past ? C.disabledFg : C.faint }}>{d.getDate() === 1 || k === keyOf(start) ? MON_S[d.getMonth()] : "\u00a0"}</div>
+              <div className="text-sm font-semibold">{d.getDate()}</div>
+              <div className="mx-auto mt-0.5 h-1 w-1 rounded-full" style={{ backgroundColor: has ? org.brand : "transparent" }} />
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: C.sub }}>
+        <span><span className="mr-1 inline-block h-2 w-2 rounded-sm align-middle" style={{ backgroundColor: C.warnBg, border: `1px solid ${C.warnBorder}` }} />Unavailable</span>
+        <span><span className="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" style={{ backgroundColor: org.brand }} />You have a shift</span>
+      </div>
     </div>
   );
 }
@@ -2741,6 +2861,9 @@ function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish }) {
     [db.requests]
   );
 
+  const unavailable = useMemo(() => new Set((db.timeOff || []).map((t) => `${t.personId}|${t.date}`)), [db.timeOff]);
+  const daysOffInBlock = (db.timeOff || []).filter((t) => t.date >= startKey).length;
+
   const result = useMemo(() => {
     if (!open) return null;
     const slotIndexes = org.slots.map((x, i) => (roles.has(x.role) ? i : -1)).filter((i) => i >= 0);
@@ -2757,10 +2880,11 @@ function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish }) {
       startKey,
       days: dayCount,
       excluded,
+      unavailable,
       locked,
       offset,
     });
-  }, [open, org, db.shifts, lockedIds, roles, excluded, offset, startKey, dayCount]);
+  }, [open, org, db.shifts, lockedIds, roles, excluded, unavailable, offset, startKey, dayCount]);
 
   if (!open || !result) return null;
 
@@ -2860,13 +2984,250 @@ function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish }) {
 
       <div className="mt-3 text-xs" style={{ color: C.sub }}>
         Publishing replaces {result.shifts.length - lockedCount} shifts in this block.
-        {lockedCount ? ` ${lockedCount} with an open request stay as they are.` : ""} You can still change any shift by hand afterwards.
+        {lockedCount ? ` ${lockedCount} with an open request stay as they are.` : ""}
+        {daysOffInBlock ? ` ${daysOffInBlock} requested ${daysOffInBlock === 1 ? "day" : "days"} off worked around.` : ""} You can still change any shift by hand afterwards.
       </div>
 
       <div className="mt-4 flex gap-2">
         <Btn tone="ghost" full onClick={() => setOffset((v) => v + 1)}>Try another arrangement</Btn>
         <Btn full icon={Check} disabled={result.shifts.length === 0} onClick={() => onPublish(result.shifts)}>Publish</Btn>
       </div>
+    </Sheet>
+  );
+}
+
+/* Looks for the shapes patient details usually take. It cannot recognise a
+   name, and is not presented as if it could — it catches the careless case and
+   makes the sender stop, which is all a text check can honestly do. The
+   standing notice above the composer does the rest. */
+const PATIENT_HINT = /\b(patient|pt\.?|mrn|dob|d\.o\.b|diagnos\w*|room\s*#?\d+|bed\s*#?\d+)\b|\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b|\b\d{6,}\b/i;
+
+function MessagesSheet({ open, onClose, messages, viewerId, isMgr, onSend, onRead, onReport, onDelete }) {
+  const org = useOrg();
+  const [otherId, setOtherId] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    if (open && otherId) onRead(otherId);
+  }, [open, otherId, messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!open) {
+      setOtherId(null);
+      setDraft("");
+      setConfirming(false);
+      setPicking(false);
+      setReviewing(false);
+      setQ("");
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const mine = messages.filter((m) => m.fromId === viewerId || m.toId === viewerId);
+  const threads = [];
+  mine
+    .slice()
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .forEach((m) => {
+      const other = m.fromId === viewerId ? m.toId : m.fromId;
+      let t = threads.find((x) => x.otherId === other);
+      if (!t) threads.push((t = { otherId: other, last: m, unread: 0 }));
+      if (m.toId === viewerId && !m.readAt) t.unread += 1;
+    });
+  const reported = messages.filter((m) => m.reported);
+  const name = (id) => (user(org, id) || {}).name || "Former staff";
+
+  const send = (force) => {
+    const body = draft.trim();
+    if (!body) return;
+    if (!force && PATIENT_HINT.test(body)) {
+      setConfirming(true);
+      return;
+    }
+    onSend(otherId, body);
+    setDraft("");
+    setConfirming(false);
+  };
+
+  const notice = (
+    <div className="rounded-md px-3 py-2 text-xs" style={{ backgroundColor: C.warnBg, color: C.warn }}>
+      No patient information here — no names, record numbers, rooms or diagnoses. This is for scheduling and coverage only.
+    </div>
+  );
+
+  /* ---- admin review of reported messages ---- */
+  if (reviewing) {
+    return (
+      <Sheet open={open} onClose={onClose} title="Reported messages">
+        <button onClick={() => setReviewing(false)} className="mb-3 flex items-center gap-1 text-xs font-medium" style={{ color: C.sub }}>
+          <ArrowLeft size={14} /> Messages
+        </button>
+        <div className="text-xs" style={{ color: C.sub }}>
+          Only messages someone has reported appear here. Deleting removes it for both people.
+        </div>
+        {reported.length === 0 ? (
+          <Empty icon={Flag} title="Nothing reported" />
+        ) : (
+          <div className="mt-3 space-y-2">
+            {reported.map((m) => (
+              <div key={m.id} className="rounded-lg border p-3" style={{ borderColor: C.line }}>
+                <div className="text-xs" style={{ color: C.sub }}>{name(m.fromId)} to {name(m.toId)} · {stamp(m.at)}</div>
+                <div className="mt-1 whitespace-pre-wrap break-words text-sm">{m.body}</div>
+                <div className="mt-2">
+                  <Btn size="sm" tone="danger" icon={Trash2} onClick={() => onDelete(m.id)}>Delete message</Btn>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Sheet>
+    );
+  }
+
+  /* ---- choosing who to write to ---- */
+  if (picking) {
+    const list = org.people.filter((p) => p.id !== viewerId && p.active !== false && (q.trim() === "" || p.name.toLowerCase().includes(q.toLowerCase()) || p.role.toLowerCase().includes(q.toLowerCase())));
+    return (
+      <Sheet open={open} onClose={onClose} title="New message">
+        <button onClick={() => setPicking(false)} className="mb-3 flex items-center gap-1 text-xs font-medium" style={{ color: C.sub }}>
+          <ArrowLeft size={14} /> Messages
+        </button>
+        <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
+          <Search size={16} style={{ color: C.faint }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or role" className="w-full bg-transparent text-sm outline-none" />
+        </div>
+        <div className="mt-3 overflow-hidden rounded-lg border" style={{ borderColor: C.line }}>
+          {list.map((p, i) => (
+            <button
+              key={p.id}
+              onClick={() => {
+                setOtherId(p.id);
+                setPicking(false);
+              }}
+              className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+              style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{p.name}</div>
+                <div className="text-xs" style={{ color: C.sub }}>{p.role}</div>
+              </div>
+              <ChevronRight size={16} style={{ color: C.chevron }} />
+            </button>
+          ))}
+          {list.length === 0 ? <div className="px-3 py-3 text-xs" style={{ color: C.sub }}>No one matches.</div> : null}
+        </div>
+      </Sheet>
+    );
+  }
+
+  /* ---- one conversation ---- */
+  if (otherId) {
+    const thread = mine.filter((m) => m.fromId === otherId || m.toId === otherId).sort((a, b) => a.at.localeCompare(b.at));
+    return (
+      <Sheet open={open} onClose={onClose} title={name(otherId)}>
+        <button onClick={() => setOtherId(null)} className="mb-3 flex items-center gap-1 text-xs font-medium" style={{ color: C.sub }}>
+          <ArrowLeft size={14} /> Messages
+        </button>
+        {notice}
+        <div className="mt-3 space-y-2">
+          {thread.length === 0 ? <div className="py-4 text-center text-xs" style={{ color: C.faint }}>No messages yet.</div> : null}
+          {thread.map((m) => {
+            const sent = m.fromId === viewerId;
+            return (
+              <div key={m.id} className={`flex ${sent ? "justify-end" : "justify-start"}`}>
+                <div style={{ maxWidth: "85%" }}>
+                  <div
+                    className="whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm"
+                    style={sent ? { backgroundColor: org.brand, color: "#fff" } : { backgroundColor: C.surfaceAlt, color: C.ink }}
+                  >
+                    {m.body}
+                  </div>
+                  <div className={`mt-0.5 flex items-center gap-3 text-xs ${sent ? "justify-end" : ""}`} style={{ color: C.faint }}>
+                    <span>{stamp(m.at)}</span>
+                    {sent ? (
+                      <button onClick={() => onDelete(m.id)} className="underline">Delete</button>
+                    ) : m.reported ? (
+                      <span>Reported</span>
+                    ) : (
+                      <button onClick={() => onReport(m.id)} className="underline">Report</button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {confirming ? (
+          <div className="mt-3 rounded-lg border p-3" style={{ borderColor: C.warnBorder, backgroundColor: C.warnBg }}>
+            <div className="text-sm font-semibold" style={{ color: C.warn }}>This looks like it may mention a patient</div>
+            <div className="mt-1 text-xs" style={{ color: C.sub }}>
+              Messages here must not carry patient details. If it doesn't, send it; if it does, take that part out.
+            </div>
+            <div className="mt-2 flex gap-2">
+              <Btn size="sm" tone="ghost" onClick={() => setConfirming(false)}>Edit</Btn>
+              <Btn size="sm" onClick={() => send(true)}>No patient details — send</Btn>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="mt-3 flex items-end gap-2">
+          <textarea
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value.slice(0, 500));
+              setConfirming(false);
+            }}
+            rows={2}
+            placeholder="Message about coverage or the schedule"
+            className="min-w-0 flex-1 resize-none rounded-md border px-3 py-2 text-sm outline-none"
+            style={{ borderColor: C.line, backgroundColor: C.surface, color: C.ink }}
+          />
+          <Btn icon={Send} disabled={!draft.trim()} onClick={() => send(false)}>Send</Btn>
+        </div>
+      </Sheet>
+    );
+  }
+
+  /* ---- inbox ---- */
+  return (
+    <Sheet open={open} onClose={onClose} title="Messages">
+      {notice}
+      <div className="mt-3 flex gap-2">
+        <Btn full icon={MessageSquare} onClick={() => setPicking(true)}>New message</Btn>
+        {isMgr ? (
+          <Btn full tone="ghost" icon={Flag} onClick={() => setReviewing(true)}>
+            Reported{reported.length ? ` (${reported.length})` : ""}
+          </Btn>
+        ) : null}
+      </div>
+      {threads.length === 0 ? (
+        <Empty icon={MessageSquare} title="No messages yet" hint="Ask a colleague about cover without swapping phone numbers." />
+      ) : (
+        <div className="mt-3 overflow-hidden rounded-lg border" style={{ borderColor: C.line }}>
+          {threads.map((t, i) => (
+            <button key={t.otherId} onClick={() => setOtherId(t.otherId)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left" style={{ borderTop: i ? `1px solid ${C.line}` : "none" }}>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate text-sm font-semibold">{name(t.otherId)}</div>
+                  <div className="shrink-0 text-xs" style={{ color: C.faint }}>{stamp(t.last.at)}</div>
+                </div>
+                <div className="truncate text-xs" style={{ color: C.sub }}>
+                  {t.last.fromId === viewerId ? "You: " : ""}{t.last.body}
+                </div>
+              </div>
+              {t.unread ? (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold text-white" style={{ backgroundColor: C.danger }}>{t.unread}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      )}
     </Sheet>
   );
 }

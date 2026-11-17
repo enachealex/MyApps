@@ -112,6 +112,49 @@ service cloud.firestore {
         /* History is not the client's to erase — retracting sets a status. */
         allow delete: if false;
       }
+
+      match /timeOff/{entryId} {
+        /* The scheduler needs everyone's days to generate around them. */
+        allow read: if memberOf(orgId) && passwordSettled();
+
+        /* Your own availability only. No reason field exists and none should
+           be added: the reason is usually medical. */
+        allow create: if memberOf(orgId) && passwordSettled()
+                      && request.resource.data.personId == request.auth.uid
+                      && request.resource.data.keys().hasOnly(['personId', 'date']);
+        allow delete: if memberOf(orgId) && passwordSettled()
+                      && resource.data.personId == request.auth.uid;
+        allow update: if false;
+      }
+
+      match /messages/{messageId} {
+        /* Two people can read a message: the one who sent it and the one it
+           was sent to. An Admin is not a third reader — they see a message
+           only once somebody has reported it, which is what lets patient
+           details be purged without making every conversation supervised. */
+        allow read: if passwordSettled() && memberOf(orgId) && (
+                      resource.data.fromId == request.auth.uid
+                      || resource.data.toId == request.auth.uid
+                      || (isManager(orgId) && resource.data.reported == true)
+                    );
+
+        allow create: if memberOf(orgId) && passwordSettled()
+                      && request.resource.data.fromId == request.auth.uid
+                      && request.resource.data.reported == false
+                      && request.resource.data.body is string
+                      && request.resource.data.body.size() <= 500;
+
+        /* The recipient may mark it read or report it, and nothing else —
+           in particular nobody edits what was said after the fact. */
+        allow update: if memberOf(orgId) && passwordSettled()
+                      && resource.data.toId == request.auth.uid
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'reported']);
+
+        allow delete: if memberOf(orgId) && passwordSettled() && (
+                        resource.data.fromId == request.auth.uid
+                        || (isManager(orgId) && resource.data.reported == true)
+                      );
+      }
     }
 
     /* Requests to join the platform. A company reaches the operator by email

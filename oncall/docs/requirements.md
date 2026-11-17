@@ -269,3 +269,48 @@ owner called out as the better answer — keep it.
 Screenshots and videos live in a Google Drive folder shared by the owner. They
 had not been readable from a working session yet — the connector was not bound
 and the folder requires sign-in. Reconcile the UI against them once available.
+
+---
+
+## 7. Revamp for other medical professionals — WIP, on the `revamp` branch
+
+Direction set 2026-11-14 after a research pass on hospital scheduling software
+(report kept locally, not in the repo). Work happens on `revamp`; `main` and
+the live demo stay frozen as the client's review copy until it is merged.
+
+**First target:** Valley Medical — more than 30 staff so far, every department
+with nurses and specialists. That makes it multi-department, which the current
+one-template-per-organization model does not yet support.
+
+| Piece | Status |
+| --- | --- |
+| Rotation generator in Call Management | DONE |
+| Time off by date, respected by the generator | DONE |
+| Staff messaging with patient-information guard-rails | DONE (local only) |
+| Departments: own roles, call template and admins per department | TODO — needs Valley Medical's real structure |
+| Call template editable in the app | TODO |
+| Firestore data layer and account provisioning | TODO |
+
+**Rotation generator.** Not an optimiser. Fills from today to the end of the
+block, gives each slot to whoever in its pool carries least, avoids two slots
+in a day and consecutive days where the pool allows, shares weekends before
+total load, never moves a shift with an open request, never touches a day
+before today. Logic in `src/rotation.js`; `node scripts/check-rotation.mjs`
+checks it.
+
+**Time off.** Staff tap days they cannot take call (My Shifts → Time off). It
+is availability, not approved leave, and it changes nothing already published.
+No reason is stored, deliberately — the reason is usually medical.
+
+**Messaging.** Free text between two people, chosen by the owner over a
+structured-only design. Guard-rails: a standing "no patient information"
+notice, a check that stops the sender when the text looks like it mentions a
+patient, a 500-character limit, Report on any received message, and an Admin
+view that shows *only reported* messages and can delete them. Admins cannot
+read other people's conversations. The text check cannot recognise a name and
+must not be described as preventing patient information.
+
+Two things to settle before this is used with real staff: a lawyer's read on
+whether these guard-rails keep the product outside HIPAA business-associate
+status, and terms of use that prohibit patient information. Until the
+Firestore layer exists, messages live in one browser and reach nobody else.
