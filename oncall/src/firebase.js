@@ -19,6 +19,8 @@
  */
 const RAW = (import.meta.env || {}).VITE_FIREBASE_CONFIG;
 
+const EMULATOR = (import.meta.env || {}).VITE_FIREBASE_EMULATOR === "1";
+
 const REQUIRED = ["apiKey", "authDomain", "projectId", "appId"];
 
 function parseConfig(raw) {
@@ -48,7 +50,7 @@ let bundle = null;
 let loading = null;
 
 /**
- * Resolves to { app, auth, db, sdk } once, or null when the build has no
+ * Resolves to { app, auth, db, sdk, fs } once, or null when the build has no
  * config. Callers await this instead of reaching for a module-level instance.
  */
 export function ensureCloud() {
@@ -58,13 +60,21 @@ export function ensureCloud() {
 
   loading = (async () => {
     try {
-      const [{ initializeApp, getApp, getApps }, authSdk, { getFirestore }] = await Promise.all([
+      const [{ initializeApp, getApp, getApps }, authSdk, fsSdk] = await Promise.all([
         import("firebase/app"),
         import("firebase/auth"),
         import("firebase/firestore"),
       ]);
       const app = getApps().length ? getApp() : initializeApp(config);
-      bundle = { app, auth: authSdk.getAuth(app), db: getFirestore(app), sdk: authSdk };
+      const auth = authSdk.getAuth(app);
+      const db = fsSdk.getFirestore(app);
+      /* Development and tests only: point at the local emulators instead of a
+         real project. Set by scripts/e2e, never by the deploy workflow. */
+      if (EMULATOR) {
+        authSdk.connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+        fsSdk.connectFirestoreEmulator(db, "127.0.0.1", 8787);
+      }
+      bundle = { app, auth, db, sdk: authSdk, fs: fsSdk };
       return bundle;
     } catch (e) {
       /* A blocked network or bad project must not take the whole app down. */

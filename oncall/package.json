@@ -10,7 +10,9 @@
     "build:app": "cross-env CAP_BUILD=1 vite build",
     "sync": "npm run build:app && npx cap sync",
     "android": "npm run sync && npx cap open android",
-    "ios": "npm run sync && npx cap open ios"
+    "ios": "npm run sync && npx cap open ios",
+    "test:rotation": "node scripts/check-rotation.mjs",
+    "test:rules": "npx --yes firebase-tools@13 emulators:exec --only firestore --project demo-oncall \"node scripts/rules.test.mjs\""
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.2",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
     "cross-env": "^7.0.3",

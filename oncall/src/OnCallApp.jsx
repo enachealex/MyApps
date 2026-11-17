@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useContext, createContext } from "react";
-import { signIn, signOutNow, changePassword, sendReset, isRealAuth } from "./auth";
+import { signIn, signOutNow, changePassword, sendReset, isRealAuth, watchAuth, cloudSignIn, cloudSignUp, resendVerification, refreshUser } from "./auth";
+import { findMembership, loadOrg, loadMember, subscribeOrg, pushChanges } from "./cloudStore";
 import { generateRotation, spreadByRole } from "./rotation";
 import {
   Home,
@@ -831,7 +832,17 @@ function OrgTile({ org, size = 44 }) {
 }
 
 /* ============================== ROOT ============================== */
+/* Two apps behind one door. With no Firebase config this is the demo it has
+   always been — seeded tenants, localStorage, nothing leaves the browser. With
+   one, it is the live build: real accounts, one shared database, and the
+   security rules deciding who sees what. They share every screen past sign-in
+   and nothing before it, so each gets its own root rather than one root full
+   of branches. */
 export default function OnCallApp() {
+  return isRealAuth() ? <CloudApp /> : <LocalApp />;
+}
+
+function LocalApp() {
   const { mode: themeMode, setMode: setThemeMode, dark } = useThemeMode();
   const [booted, setBooted] = useState(false);
   const [orgId, setOrgId] = useState(null);
@@ -1416,6 +1427,370 @@ function SignIn({ org, onBack, onSignIn, prefill = "" }) {
 
         <div className="pb-10" />
       </div>
+    </AuthShell>
+  );
+}
+
+/* ============================ CLOUD ROOT ========================== */
+/* Stands in for a tenant before anyone has signed in, when there is no way to
+   know which tenant's colours to wear. */
+const PLATFORM = {
+  id: "platform",
+  name: "OnCall Schedule",
+  unit: "",
+  city: "",
+  brand: "#5B5FC7",
+  deep: "#4448A0",
+  link: "#4F52B2",
+  soft: "#EDEDF9",
+  chip: "#EDEDF6",
+  roles: [],
+  slots: [],
+  depts: {},
+  people: [],
+};
+
+function CloudApp() {
+  const { mode: themeMode, setMode: setThemeMode, dark } = useThemeMode();
+  /* loading | signedOut | unverified | noOrg | ready */
+  const [phase, setPhase] = useState("loading");
+  const [account, setAccount] = useState(null);
+  const [member, setMember] = useState(null);
+  const [orgConfig, setOrgConfig] = useState(null);
+  const [db, setDb] = useState(null);
+  const [problem, setProblem] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  /* The last version of the tenant known to match the server. A change to
+     `db` that is not this object is a local edit waiting to be written. */
+  const serverRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    let stop = () => {};
+    watchAuth((u) => {
+      if (!alive) return;
+      if (!u) {
+        serverRef.current = null;
+        setAccount(null);
+        setMember(null);
+        setDb(null);
+        setPhase("signedOut");
+        return;
+      }
+      setAccount({ email: (u.email || "").toLowerCase(), verified: !!u.emailVerified });
+    }).then((unsubscribe) => {
+      stop = unsubscribe;
+      if (!alive) unsubscribe();
+    });
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, []);
+
+  const email = account ? account.email : null;
+  const verified = account ? account.verified : false;
+
+  useEffect(() => {
+    if (!email) return undefined;
+    if (!verified) {
+      setPhase("unverified");
+      return undefined;
+    }
+    let alive = true;
+    let stop = () => {};
+    setPhase("loading");
+    (async () => {
+      try {
+        const found = await findMembership(email);
+        const config = found ? await loadOrg(found.orgId) : null;
+        const entry = config ? await loadMember(found.orgId, email) : null;
+        if (!alive) return;
+        if (!found || !config || !entry) {
+          setPhase("noOrg");
+          return;
+        }
+        setMember(found);
+        setOrgConfig(config);
+        const unsubscribe = await subscribeOrg(
+          { orgId: found.orgId, personId: found.personId, isManager: entry.kind === "manager" },
+          (data) => {
+            if (!alive) return;
+            serverRef.current = data;
+            setDb(data);
+            setPhase("ready");
+          },
+          () => {
+            /* Usually access being withdrawn while signed in. */
+            if (alive) setPhase("noOrg");
+          }
+        );
+        stop = unsubscribe;
+        if (!alive) unsubscribe();
+      } catch (e) {
+        /* A deactivated account can find its index entry but is refused the
+           tenant itself, which lands here. */
+        if (alive) setPhase("noOrg");
+      }
+    })();
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [email, verified, attempt]);
+
+  useEffect(() => {
+    if (!db || !member || db === serverRef.current) return;
+    const before = serverRef.current;
+    serverRef.current = db;
+    pushChanges(member.orgId, before, db).catch((e) => {
+      /* Firestore drops the refused write from its own cache and re-sends the
+         true state, so the screen corrects itself; if nothing has arrived yet,
+         put back what we had. */
+      if (serverRef.current === db) {
+        serverRef.current = before;
+        setDb(before);
+      }
+      setProblem(
+        e && e.code === "permission-denied"
+          ? "You don't have permission to make that change, so it was not saved."
+          : "That change could not be saved. Check your connection and try again."
+      );
+    });
+  }, [db, member]);
+
+  const platform = themedOrg(PLATFORM, dark);
+  const leave = async () => {
+    await signOutNow();
+  };
+
+  if (phase === "loading") {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center" style={{ backgroundColor: C.bg }}>
+        <style>{THEME_CSS}</style>
+        <div className="text-sm" style={{ color: C.sub }}>Loading…</div>
+      </div>
+    );
+  }
+
+  if (phase === "signedOut" || phase === "unverified" || phase === "noOrg") {
+    return (
+      <AppCtx.Provider value={{ org: platform }}>
+        <style>{THEME_CSS}</style>
+        {phase === "signedOut" ? <CloudSignIn /> : null}
+        {phase === "unverified" ? (
+          <VerifyEmail
+            email={email}
+            onSignOut={leave}
+            onCheck={async () => {
+              const u = await refreshUser();
+              if (u && u.emailVerified) setAccount({ email: (u.email || "").toLowerCase(), verified: true });
+              return !!(u && u.emailVerified);
+            }}
+          />
+        ) : null}
+        {phase === "noOrg" ? <NoOrganization email={email} onSignOut={leave} onRetry={() => setAttempt((n) => n + 1)} /> : null}
+      </AppCtx.Provider>
+    );
+  }
+
+  const org = themedOrg({ roles: [], slots: [], depts: {}, aliases: {}, ...orgConfig, people: db.people }, dark);
+  if (!user(org, member.personId)) {
+    return (
+      <AppCtx.Provider value={{ org: platform }}>
+        <style>{THEME_CSS}</style>
+        <NoOrganization email={email} onSignOut={leave} onRetry={() => setAttempt((n) => n + 1)} />
+      </AppCtx.Provider>
+    );
+  }
+
+  return (
+    <AppCtx.Provider value={{ org }}>
+      {problem ? (
+        <div
+          role="alert"
+          className="oncall-no-print fixed left-0 right-0 top-0 z-50 flex items-center justify-between gap-3 px-4 py-2 text-sm text-white"
+          style={{ backgroundColor: C.danger }}
+        >
+          <span>{problem}</span>
+          <button onClick={() => setProblem("")} className="shrink-0 font-semibold underline">Dismiss</button>
+        </div>
+      ) : null}
+      <Shell
+        themeMode={themeMode}
+        setThemeMode={setThemeMode}
+        org={org}
+        db={db}
+        setDb={setDb}
+        viewerId={member.personId}
+        onSignOut={leave}
+      />
+    </AppCtx.Provider>
+  );
+}
+
+/* One screen for both arriving and returning. Setting up an account is the
+   same two fields plus an emailed link, so it is a mode of this screen rather
+   than a second one to find. */
+function CloudSignIn() {
+  const desktop = useIsDesktop();
+  const [mode, setMode] = useState("in");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const creating = mode === "up";
+
+  const run = async (work) => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await work();
+      if (!res.ok) setError(res.error);
+      return res;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submit = () => run(() => (creating ? cloudSignUp(email, pw) : cloudSignIn(email, pw)));
+
+  const reset = () =>
+    run(async () => {
+      const address = email.trim().toLowerCase();
+      if (!address) return { ok: false, error: "Enter your work email first." };
+      const res = await sendReset(address);
+      /* Same words whether or not the account exists, so the screen cannot be
+         used to find out which of a hospital's staff have accounts. */
+      if (res.ok) setNotice(`If ${address} has an account, a reset link is on its way.`);
+      return res;
+    });
+
+  const field = (label, value, set, props) => (
+    <div>
+      <div className="mb-1 text-xs font-semibold" style={{ color: C.sub }}>{label}</div>
+      <input
+        value={value}
+        onChange={(e) => {
+          set(e.target.value);
+          setError("");
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        autoCapitalize="none"
+        spellCheck={false}
+        className="w-full rounded-md border bg-white px-3 py-2.5 text-sm outline-none"
+        style={{ borderColor: error ? C.danger : C.line }}
+        {...props}
+      />
+    </div>
+  );
+
+  return (
+    <AuthShell>
+      <div className="px-5 pb-4" style={{ paddingTop: desktop ? "1.75rem" : "calc(3rem + env(safe-area-inset-top))" }}>
+        <div className="text-2xl font-bold">OnCall Schedule</div>
+        <div className="mt-1 text-sm" style={{ color: C.sub }}>
+          {creating ? "Set up your account with the work email your scheduler has on file." : "Sign in with your work email."}
+        </div>
+      </div>
+      <div className="space-y-3 px-5">
+        {field("Work email", email, setEmail, { id: "oncall-email", type: "email", inputMode: "email", autoComplete: "username", placeholder: "you@hospital.org" })}
+        {field(creating ? "Choose a password" : "Password", pw, setPw, { id: "oncall-password", type: "password", autoComplete: creating ? "new-password" : "current-password", placeholder: creating ? "At least 8 characters" : "••••••••" })}
+        {error ? (
+          <div className="flex items-center gap-1 text-xs" style={{ color: C.danger }}>
+            <AlertCircle size={12} /> {error}
+          </div>
+        ) : null}
+        {notice ? (
+          <div className="rounded-md px-3 py-2 text-xs" style={{ backgroundColor: C.okBg, color: C.ok }}>{notice}</div>
+        ) : null}
+        <Btn full onClick={submit} disabled={busy}>
+          {busy ? "One moment…" : creating ? "Create account" : "Sign in"}
+        </Btn>
+        <div className="flex items-center justify-between text-xs font-semibold">
+          <button onClick={() => { setMode(creating ? "in" : "up"); setError(""); setNotice(""); }} className="underline" style={{ color: C.ink }}>
+            {creating ? "I already have an account" : "First time here? Set up your account"}
+          </button>
+          {creating ? null : (
+            <button onClick={reset} disabled={busy} className="underline" style={{ color: C.ink }}>Forgot password?</button>
+          )}
+        </div>
+      </div>
+      <div className={desktop ? "pb-6" : "pb-10"} />
+    </AuthShell>
+  );
+}
+
+function VerifyEmail({ email, onCheck, onSignOut }) {
+  const desktop = useIsDesktop();
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <AuthShell>
+      <div className="px-5" style={{ paddingTop: desktop ? "1.75rem" : "calc(3rem + env(safe-area-inset-top))" }}>
+        <div className="text-2xl font-bold">Check your email</div>
+        <div className="mt-2 text-sm" style={{ color: C.sub }}>
+          We sent a link to <span className="font-semibold" style={{ color: C.ink }}>{email}</span>. Open it to confirm the address is yours, then come back here.
+        </div>
+        {note ? <div className="mt-3 rounded-md px-3 py-2 text-xs" style={{ backgroundColor: C.note, color: C.sub }}>{note}</div> : null}
+        <div className="mt-4 space-y-2">
+          <Btn
+            full
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              const ok = await onCheck();
+              setBusy(false);
+              if (!ok) setNote("Not confirmed yet. Open the link in the email, then try again.");
+            }}
+          >
+            I've confirmed it
+          </Btn>
+          <Btn
+            full
+            tone="ghost"
+            icon={Mail}
+            onClick={async () => {
+              const res = await resendVerification();
+              setNote(res.ok ? "Sent again. It can take a minute, and may land in junk." : res.error);
+            }}
+          >
+            Send the link again
+          </Btn>
+          <Btn full tone="ghost" icon={LogOut} onClick={onSignOut}>Sign out</Btn>
+        </div>
+      </div>
+      <div className={desktop ? "pb-6" : "pb-10"} />
+    </AuthShell>
+  );
+}
+
+/* A confirmed address that no organization has on its roster. Organizations
+   are added by arrangement, so this is a dead end with someone to write to. */
+function NoOrganization({ email, onSignOut, onRetry }) {
+  const desktop = useIsDesktop();
+  return (
+    <AuthShell>
+      <div className="px-5" style={{ paddingTop: desktop ? "1.75rem" : "calc(3rem + env(safe-area-inset-top))" }}>
+        <div className="text-2xl font-bold">No schedule for this address</div>
+        <div className="mt-2 text-sm" style={{ color: C.sub }}>
+          <span className="font-semibold" style={{ color: C.ink }}>{email}</span> isn't on any organization's roster. If you expected to be, ask your scheduler to add this exact address. To bring a new organization on, email{" "}
+          <a href={`mailto:${OPERATOR_EMAIL}?subject=OnCall access`} className="font-semibold underline" style={{ color: C.ink }}>{OPERATOR_EMAIL}</a>.
+        </div>
+        <div className="mt-4 space-y-2">
+          <Btn full onClick={onRetry}>Try again</Btn>
+          <Btn full tone="ghost" icon={LogOut} onClick={onSignOut}>Sign out</Btn>
+        </div>
+      </div>
+      <div className={desktop ? "pb-6" : "pb-10"} />
     </AuthShell>
   );
 }

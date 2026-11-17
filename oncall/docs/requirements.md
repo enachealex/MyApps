@@ -289,7 +289,7 @@ one-template-per-organization model does not yet support.
 | Staff messaging with patient-information guard-rails | DONE (local only) |
 | Departments: own roles, call template and admins per department | TODO — needs Valley Medical's real structure |
 | Call template editable in the app | TODO |
-| Firestore data layer and account provisioning | TODO |
+| Firestore data layer, live sign-in and operator tool | DONE — tested on emulators, not yet on a real project |
 
 **Rotation generator.** Not an optimiser. Fills from today to the end of the
 block, gives each slot to whoever in its pool carries least, avoids two slots
@@ -314,3 +314,13 @@ Two things to settle before this is used with real staff: a lawyer's read on
 whether these guard-rails keep the product outside HIPAA business-associate
 status, and terms of use that prohibit patient information. Until the
 Firestore layer exists, messages live in one browser and reach nobody else.
+
+**Live build.** With a Firebase config the app uses real accounts and one
+shared database; without one it is the unchanged demo. Access is decided by
+documents keyed on verified email (`operators`, `userIndex`,
+`orgs/{org}/members`) rather than custom claims, so no Cloud Function is
+needed: the operator creates organizations with `scripts/operator.mjs`, an
+Admin adds staff on the People screen, and each person sets their own password
+and confirms their address by emailed link. This supersedes the earlier notes
+in section 3 about a provisioning function and custom claims. Full steps and
+the list of what is still untested are in `firebase-setup.md`.

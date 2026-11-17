@@ -8,105 +8,177 @@ rules_version = '2';
  * reach directly, without going through the app. Deny by default and open only
  * what a signed-in member of that one organization needs.
  *
- * Membership and role live in custom claims set server-side when an account is
- * provisioned, never in a document the client could edit into a promotion.
+ * Who someone is comes from documents the client cannot write for itself:
  *
+ *   /operators/{email}                 the platform operator. No client can
+ *                                      write here at all, so nobody can be
+ *                                      promoted to it from inside the app.
+ *   /orgs/{org}/members/{email}        { personId, kind, active } — membership
+ *                                      and access level in one tenant, written
+ *                                      by that tenant's Admin or the operator.
+ *   /userIndex/{email}                 { orgId, personId } — how a signed-in
+ *                                      person finds their tenant.
+ *
+ * These are keyed by email and trusted only when Firebase has VERIFIED that
+ * email. Anyone can create an account under any address; without the
+ * verification check they could claim a colleague's membership by registering
+ * that colleague's email first.
+ *
+ * Earlier drafts used custom claims. Claims need a server to set them; this
+ * arrangement needs none, so an Admin can run their roster with no Cloud
+ * Function in the path.
+ *
+ * Tested by scripts/rules.test.mjs against the emulator:  npm run test:rules
  * Deploy with:  firebase deploy --only firestore:rules
  */
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
-      return request.auth != null;
+    function verified() {
+      return request.auth != null
+          && request.auth.token.email != null
+          && request.auth.token.email_verified == true;
     }
 
-    /* The platform operator, above any tenant. Onboarding runs through them:
-       a company asks for an organization, the operator creates it and names
-       their first Admin, and that Admin runs their own roster from there.
-       Deliberately not grantable from inside the app — see the people rules. */
+    function email() {
+      return request.auth.token.email;
+    }
+
     function isOwner() {
-      return signedIn() && request.auth.token.owner == true;
+      return verified() && exists(/databases/$(database)/documents/operators/$(email()));
     }
 
-    /* Which tenant this token belongs to. */
-    function memberOf(orgId) {
-      return signedIn() && request.auth.token.orgId == orgId;
+    function memberPath(orgId) {
+      return /databases/$(database)/documents/orgs/$(orgId)/members/$(email());
     }
 
-    function roleIn(orgId, roles) {
-      return memberOf(orgId) && request.auth.token.role in roles;
+    function isMember(orgId) {
+      return verified() && exists(memberPath(orgId)) && get(memberPath(orgId)).data.active != false;
+    }
+
+    function kind(orgId) {
+      return get(memberPath(orgId)).data.kind;
+    }
+
+    /* The roster id this signed-in person answers to in this tenant. */
+    function me(orgId) {
+      return get(memberPath(orgId)).data.personId;
     }
 
     function isManager(orgId) {
-      return roleIn(orgId, ['manager']);
+      return isMember(orgId) && kind(orgId) == 'manager';
     }
 
     function isSupervisor(orgId) {
-      return roleIn(orgId, ['manager', 'supervisor']);
+      return isMember(orgId) && kind(orgId) in ['manager', 'supervisor'];
     }
 
-    /* Someone still holding a temp password gets to change it and nothing
-       else — no reading the roster on the way past. */
-    function passwordSettled() {
-      return signedIn() && request.auth.token.mustChangePassword != true;
+    /* ---- platform level ---- */
+
+    match /operators/{entry} {
+      /* You may learn whether you are an operator; nobody may become one. */
+      allow get: if verified() && entry == email();
+      allow list, write: if false;
     }
+
+    match /userIndex/{entry} {
+      allow get: if verified() && entry == email();
+      allow list: if false;
+
+      /* An Admin files an entry when they add someone, pointing at their own
+         tenant only, and may not repoint an address that already belongs to a
+         different tenant — that would be a way to pull someone else's staff
+         into yours. */
+      allow create: if isOwner() || isManager(request.resource.data.orgId);
+      allow update: if isOwner()
+                    || (isManager(resource.data.orgId) && request.resource.data.orgId == resource.data.orgId);
+      allow delete: if isOwner() || isManager(resource.data.orgId);
+    }
+
+    /* Requests to join the platform. Create-only for the public, readable only
+       by the operator — otherwise the list of who is evaluating the product
+       would be public. */
+    match /joinRequests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isOwner();
+    }
+
+    /* ---- one tenant ---- */
 
     match /orgs/{orgId} {
       /* An organization exists because the operator created it after the
-         company asked to join. Nobody self-registers, and an Admin cannot mint
-         a second tenant — that is the billing boundary as much as the security
-         one. Members read their own org's branding and unit name. */
-      allow read: if memberOf(orgId) && passwordSettled();
-      allow create, delete: if isOwner();
-      /* The operator owns the tenancy record. Anything an Admin should be able
-         to change about their own org belongs in a settings subcollection with
-         its own rule, not in this document. */
-      allow update: if isOwner();
+         company asked to join. An Admin cannot mint a second tenant — that is
+         the billing boundary as much as the security one. */
+      allow get: if isMember(orgId) || isOwner();
+      allow list: if isOwner();
+      allow create, update, delete: if isOwner();
+
+      match /members/{entry} {
+        /* Your own entry, so the app can learn your access level; Admins see
+           the lot. */
+        allow get: if (verified() && entry == email()) || isManager(orgId) || isOwner();
+        allow list: if isManager(orgId) || isOwner();
+
+        /* An Admin sets access levels in their own tenant, never their own —
+           it is the first thing an attacker would reach for and there is no
+           honest reason to change it yourself — and only to the three levels
+           that exist. There is no value of `kind` that means operator. */
+        allow create, update: if isOwner() || (
+                                isManager(orgId)
+                                && entry != email()
+                                && request.resource.data.kind in ['staff', 'supervisor', 'manager']
+                              );
+        allow delete: if isOwner() || (isManager(orgId) && entry != email());
+      }
 
       match /people/{personId} {
         /* Everyone in the org needs the phone list. */
-        allow read: if memberOf(orgId) && passwordSettled();
+        allow read: if isMember(orgId);
 
-        /* Running the roster is the Admin's job, and the whole point of the
-           model: the operator seats the first Admin, they take it from there.
-           Nobody edits their own record — access level and active status are
-           exactly what an attacker would reach for, and the fields worth
-           self-serving (password, email) belong to Firebase Auth, not us. */
-        allow create, update, delete: if isManager(orgId)
-                                      && passwordSettled()
-                                      && personId != request.auth.uid;
-
-        /* An Admin promoting someone here changes a roster document, not what
-           that person can actually do. Real privileges live in custom claims,
-           which only the provisioning function sets — and it must refuse to
-           grant `owner` from a tenant request, or an Admin could write
-           themselves a document that promotes them off their own tenant. */
+        /* The roster is the Admin's. Nobody edits their own record. */
+        allow create, update, delete: if isManager(orgId) && personId != me(orgId);
       }
 
       match /shifts/{shiftId} {
-        allow read: if memberOf(orgId) && passwordSettled();
+        allow read: if isMember(orgId);
 
-        /* Laying out the schedule is management. Staff move shifts by
-           requesting, which is a write to /requests, not to the shift. */
-        allow create, delete: if isSupervisor(orgId) && passwordSettled();
-        allow update: if isSupervisor(orgId) && passwordSettled();
+        /* Laying out the schedule is management. */
+        allow create, delete: if isSupervisor(orgId);
+
+        /* Staff change exactly two things, and only on a shift they hold:
+           whether it is posted to colleagues. Who holds a shift moves only
+           through an approved request, which management writes. */
+        allow update: if isSupervisor(orgId) || (
+                        isMember(orgId)
+                        && resource.data.personId == me(orgId)
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['posted'])
+                      );
       }
 
       match /requests/{requestId} {
-        allow read: if memberOf(orgId) && passwordSettled();
+        allow read: if isMember(orgId);
 
-        /* A request has to be raised in your own name. Without this, anyone
-           could post a colleague's shift out from under them. */
-        allow create: if memberOf(orgId) && passwordSettled()
-                      && request.resource.data.fromId == request.auth.uid
-                      && request.resource.data.status == 'submitted';
+        /* A request is raised in your own name. Without this anyone could
+           post a colleague's shift out from under them. Picking up a posted
+           shift is the one case where you write yourself in as the taker of a
+           request you did not open, and that is an update, below. */
+        allow create: if isSupervisor(orgId) || (
+                        isMember(orgId)
+                        && request.resource.data.fromId == me(orgId)
+                        && request.resource.data.status == 'submitted'
+                      );
 
-        /* The person who raised it may retract it; the named co-worker may
-           answer it; management decides. Anyone else, no. */
-        allow update: if passwordSettled() && (
-                        isSupervisor(orgId)
-                        || (memberOf(orgId) && resource.data.fromId == request.auth.uid)
-                        || (memberOf(orgId) && resource.data.toId == request.auth.uid)
+        /* The person who raised it, the co-worker named on it, anyone taking
+           an open post, and management. Staff can withdraw or decline; they
+           can never write "approved", which is what moves the shift. */
+        allow update: if isSupervisor(orgId) || (
+                        isMember(orgId)
+                        && request.resource.data.status in ['submitted', 'retracted', 'denied']
+                        && (
+                          resource.data.fromId == me(orgId)
+                          || resource.data.toId == me(orgId)
+                          || (resource.data.toId == null && request.resource.data.toId == me(orgId))
+                        )
                       );
 
         /* History is not the client's to erase — retracting sets a status. */
@@ -115,15 +187,14 @@ service cloud.firestore {
 
       match /timeOff/{entryId} {
         /* The scheduler needs everyone's days to generate around them. */
-        allow read: if memberOf(orgId) && passwordSettled();
+        allow read: if isMember(orgId);
 
         /* Your own availability only. No reason field exists and none should
            be added: the reason is usually medical. */
-        allow create: if memberOf(orgId) && passwordSettled()
-                      && request.resource.data.personId == request.auth.uid
+        allow create: if isMember(orgId)
+                      && request.resource.data.personId == me(orgId)
                       && request.resource.data.keys().hasOnly(['personId', 'date']);
-        allow delete: if memberOf(orgId) && passwordSettled()
-                      && resource.data.personId == request.auth.uid;
+        allow delete: if isMember(orgId) && resource.data.personId == me(orgId);
         allow update: if false;
       }
 
@@ -132,38 +203,29 @@ service cloud.firestore {
            was sent to. An Admin is not a third reader — they see a message
            only once somebody has reported it, which is what lets patient
            details be purged without making every conversation supervised. */
-        allow read: if passwordSettled() && memberOf(orgId) && (
-                      resource.data.fromId == request.auth.uid
-                      || resource.data.toId == request.auth.uid
-                      || (isManager(orgId) && resource.data.reported == true)
+        allow read: if isMember(orgId) && (
+                      resource.data.fromId == me(orgId)
+                      || resource.data.toId == me(orgId)
+                      || (kind(orgId) == 'manager' && resource.data.reported == true)
                     );
 
-        allow create: if memberOf(orgId) && passwordSettled()
-                      && request.resource.data.fromId == request.auth.uid
+        allow create: if isMember(orgId)
+                      && request.resource.data.fromId == me(orgId)
                       && request.resource.data.reported == false
                       && request.resource.data.body is string
                       && request.resource.data.body.size() <= 500;
 
         /* The recipient may mark it read or report it, and nothing else —
-           in particular nobody edits what was said after the fact. */
-        allow update: if memberOf(orgId) && passwordSettled()
-                      && resource.data.toId == request.auth.uid
+           nobody edits what was said after the fact. */
+        allow update: if isMember(orgId)
+                      && resource.data.toId == me(orgId)
                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'reported']);
 
-        allow delete: if memberOf(orgId) && passwordSettled() && (
-                        resource.data.fromId == request.auth.uid
-                        || (isManager(orgId) && resource.data.reported == true)
+        allow delete: if isMember(orgId) && (
+                        resource.data.fromId == me(orgId)
+                        || (kind(orgId) == 'manager' && resource.data.reported == true)
                       );
       }
-    }
-
-    /* Requests to join the platform. A company reaches the operator by email
-       today; if that ever becomes a form on the site, it writes here. Write-only
-       for the public, readable only by the operator — otherwise the list of who
-       is evaluating the product would be readable by anyone. */
-    match /joinRequests/{requestId} {
-      allow create: if true;
-      allow read, update, delete: if isOwner();
     }
 
     /* Anything not named above stays closed. */

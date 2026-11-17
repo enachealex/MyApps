@@ -118,3 +118,77 @@ export async function sendReset(email) {
     return { ok: false, error: readable(e) };
   }
 }
+
+/* ------------------------------------------------------------------------
+   Cloud-only entry points, used by the live build's own sign-in screens.
+   There is no tenant to resolve a username against before someone has signed
+   in, so these take an email and nothing else.
+   ------------------------------------------------------------------------ */
+
+/** Calls back with the Firebase user (or null) now and on every change. */
+export async function watchAuth(callback) {
+  const cloud = await ensureCloud();
+  if (!cloud) {
+    callback(null);
+    return () => {};
+  }
+  return cloud.sdk.onAuthStateChanged(cloud.auth, callback);
+}
+
+export async function cloudSignIn(email, password) {
+  const cloud = await ensureCloud();
+  const address = String(email || "").trim().toLowerCase();
+  if (!address) return { ok: false, error: "Enter your work email." };
+  if (!password) return { ok: false, error: "Enter your password." };
+  try {
+    await cloud.sdk.signInWithEmailAndPassword(cloud.auth, address, password);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: readable(e) };
+  }
+}
+
+/* First-time setup. The person picks their own password here and proves the
+   address is theirs by following a single-use link — so nothing we generate
+   ever travels by email, and nobody can claim a colleague's place on the
+   roster by registering that colleague's address first: the security rules
+   ignore an account until its email is verified. */
+export async function cloudSignUp(email, password) {
+  const cloud = await ensureCloud();
+  const address = String(email || "").trim().toLowerCase();
+  if (!address) return { ok: false, error: "Enter your work email." };
+  if (String(password || "").length < 8) return { ok: false, error: "Use at least 8 characters." };
+  try {
+    const cred = await cloud.sdk.createUserWithEmailAndPassword(cloud.auth, address, password);
+    await cloud.sdk.sendEmailVerification(cred.user);
+    return { ok: true };
+  } catch (e) {
+    if (e && e.code === "auth/email-already-in-use") {
+      return { ok: false, error: "That email already has an account. Sign in, or use Forgot password." };
+    }
+    return { ok: false, error: readable(e) };
+  }
+}
+
+export async function resendVerification() {
+  const cloud = await ensureCloud();
+  const u = cloud && cloud.auth.currentUser;
+  if (!u) return { ok: false, error: "Sign in again first." };
+  try {
+    await cloud.sdk.sendEmailVerification(u);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: readable(e) };
+  }
+}
+
+/* After following the link the browser still holds the old token, which says
+   unverified. Reload the account and mint a new token so the rules see it. */
+export async function refreshUser() {
+  const cloud = await ensureCloud();
+  const u = cloud && cloud.auth.currentUser;
+  if (!u) return null;
+  await u.reload();
+  await u.getIdToken(true);
+  return cloud.auth.currentUser;
+}
