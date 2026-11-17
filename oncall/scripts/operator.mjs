@@ -69,7 +69,7 @@ async function writePerson(batch, orgId, person) {
   const email = lower(person.email);
   batch.set(db.doc(`orgs/${orgId}/people/${person.id}`), { ...person, email });
   if (email) {
-    batch.set(db.doc(`orgs/${orgId}/members/${email}`), { personId: person.id, kind: person.kind || "staff", active: person.active !== false });
+    batch.set(db.doc(`orgs/${orgId}/members/${email}`), { personId: person.id, kind: person.kind || "staff", active: person.active !== false, depts: person.kind === "manager" && Array.isArray(person.depts) ? person.depts : [] });
     batch.set(db.doc(`userIndex/${email}`), { orgId, personId: person.id });
   }
 }

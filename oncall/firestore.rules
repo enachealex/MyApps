@@ -73,6 +73,42 @@ service cloud.firestore {
       return isMember(orgId) && kind(orgId) in ['manager', 'supervisor'];
     }
 
+    /* ---- departments ----
+       A manager whose membership lists departments runs those departments
+       only. No list, or an empty one, means the whole organization — that is
+       the Admin. Which department a role belongs to comes from the call
+       settings the Admin saved, or from the organization record if they have
+       never saved any. */
+    function scope(orgId) {
+      return get(memberPath(orgId)).data.get('depts', []);
+    }
+
+    function isAdmin(orgId) {
+      return isManager(orgId) && scope(orgId).size() == 0;
+    }
+
+    function settingsPath(orgId) {
+      return /databases/$(database)/documents/orgs/$(orgId)/settings/call;
+    }
+
+    function deptOf(orgId, role) {
+      return exists(settingsPath(orgId))
+        ? get(settingsPath(orgId)).data.get('depts', {}).get(role, 'Other')
+        : get(/databases/$(database)/documents/orgs/$(orgId)).data.get('depts', {}).get(role, 'Other');
+    }
+
+    function manages(orgId, role) {
+      return scope(orgId).size() == 0 || deptOf(orgId, role) in scope(orgId);
+    }
+
+    function shiftRole(orgId, shiftId) {
+      return get(/databases/$(database)/documents/orgs/$(orgId)/shifts/$(shiftId)).data.role;
+    }
+
+    function personPath(orgId, personId) {
+      return /databases/$(database)/documents/orgs/$(orgId)/people/$(personId);
+    }
+
     /* ---- platform level ---- */
 
     match /operators/{entry} {
@@ -124,11 +160,31 @@ service cloud.firestore {
            honest reason to change it yourself — and only to the three levels
            that exist. There is no value of `kind` that means operator. */
         allow create, update: if isOwner() || (
-                                isManager(orgId)
+                                isAdmin(orgId)
                                 && entry != email()
                                 && request.resource.data.kind in ['staff', 'supervisor', 'manager']
                               );
-        allow delete: if isOwner() || (isManager(orgId) && entry != email());
+
+        /* A department manager lets their own staff in and nothing more: the
+           entry must be plain staff, carry no departments, and belong to a
+           roster record in a department they run. They cannot raise anyone's
+           access, their own included, or touch an entry that is already more
+           than staff. getAfter, because the roster record is usually written
+           in the same batch. */
+        allow create: if isManager(orgId)
+                      && entry != email()
+                      && request.resource.data.kind == 'staff'
+                      && request.resource.data.get('depts', []).size() == 0
+                      && manages(orgId, getAfter(personPath(orgId, request.resource.data.personId)).data.role);
+        allow update: if isManager(orgId)
+                      && entry != email()
+                      && resource.data.kind == 'staff'
+                      && request.resource.data.kind == 'staff'
+                      && request.resource.data.get('depts', []).size() == 0
+                      && request.resource.data.personId == resource.data.personId
+                      && manages(orgId, getAfter(personPath(orgId, resource.data.personId)).data.role);
+
+        allow delete: if isOwner() || (isAdmin(orgId) && entry != email());
       }
 
       match /people/{personId} {
@@ -136,19 +192,39 @@ service cloud.firestore {
         allow read: if isMember(orgId);
 
         /* The roster is the Admin's. Nobody edits their own record. */
-        allow create, update, delete: if isManager(orgId) && personId != me(orgId);
+        allow create, update, delete: if isAdmin(orgId) && personId != me(orgId);
+
+        /* A department manager keeps the roster for their own departments:
+           staff only, and both the role someone has and the role they are
+           being given must be theirs — otherwise moving a person would be a
+           way to reach into another department. */
+        allow create: if isManager(orgId)
+                      && personId != me(orgId)
+                      && request.resource.data.kind == 'staff'
+                      && manages(orgId, request.resource.data.role);
+        allow update: if isManager(orgId)
+                      && personId != me(orgId)
+                      && resource.data.kind == 'staff'
+                      && request.resource.data.kind == 'staff'
+                      && manages(orgId, resource.data.role)
+                      && manages(orgId, request.resource.data.role);
       }
 
       match /shifts/{shiftId} {
         allow read: if isMember(orgId);
 
         /* Laying out the schedule is management. */
-        allow create, delete: if isSupervisor(orgId);
+        allow create: if isSupervisor(orgId) && manages(orgId, request.resource.data.role);
+        allow delete: if isSupervisor(orgId) && manages(orgId, resource.data.role);
 
         /* Staff change exactly two things, and only on a shift they hold:
            whether it is posted to colleagues. Who holds a shift moves only
            through an approved request, which management writes. */
-        allow update: if isSupervisor(orgId) || (
+        allow update: if (
+                        isSupervisor(orgId)
+                        && manages(orgId, resource.data.role)
+                        && manages(orgId, request.resource.data.role)
+                      ) || (
                         isMember(orgId)
                         && resource.data.personId == me(orgId)
                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['posted'])
@@ -162,7 +238,10 @@ service cloud.firestore {
            post a colleague's shift out from under them. Picking up a posted
            shift is the one case where you write yourself in as the taker of a
            request you did not open, and that is an update, below. */
-        allow create: if isSupervisor(orgId) || (
+        allow create: if (
+                        isSupervisor(orgId)
+                        && manages(orgId, shiftRole(orgId, request.resource.data.shiftId))
+                      ) || (
                         isMember(orgId)
                         && request.resource.data.fromId == me(orgId)
                         && request.resource.data.status == 'submitted'
@@ -171,7 +250,10 @@ service cloud.firestore {
         /* The person who raised it, the co-worker named on it, anyone taking
            an open post, and management. Staff can withdraw or decline; they
            can never write "approved", which is what moves the shift. */
-        allow update: if isSupervisor(orgId) || (
+        allow update: if (
+                        isSupervisor(orgId)
+                        && manages(orgId, shiftRole(orgId, resource.data.shiftId))
+                      ) || (
                         isMember(orgId)
                         && request.resource.data.status in ['submitted', 'retracted', 'denied']
                         && (
@@ -191,7 +273,7 @@ service cloud.firestore {
            record — name, billing identity — stays the operator's alone.
            Everyone reads it, because it decides what their screens show. */
         allow read: if isMember(orgId);
-        allow create, update: if isManager(orgId)
+        allow create, update: if isAdmin(orgId)
                               && settingId == 'call'
                               && request.resource.data.roles is list
                               && request.resource.data.slots is list;

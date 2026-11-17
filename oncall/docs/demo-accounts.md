@@ -18,6 +18,7 @@ Names and phone numbers are placeholder data.
 | Saint Aurelia Medical Center | `staurelia.org` | `AURELIA` | 29 |
 | Cascade Valley Regional | `cascadevalley.health` | `CASCADE` | 17 |
 | Northgate Surgery Center | `northgatesc.com` | `NORTHGATE` | 10 |
+| Valley Medical | `valleymedical.example` | `VALLEY` | 40 |
 
 ## Saint Aurelia Medical Center
 
@@ -96,10 +97,61 @@ Ambulatory Surgery · Seattle, WA · `@northgatesc.com`
 | Bridget Nolan | Scrub Tech | Staff | `bnolan` | `bridget.nolan@northgatesc.com` |
 | Ken Tallman | Scrub Tech | Staff | `ktallman` | `ken.tallman@northgatesc.com` |
 
+## Valley Medical
+
+Nursing and Specialty Call · Renton, WA · `@valleymedical.example`
+
+A sample of the first real target: a hospital-wide roster across seven
+departments, with two department managers. Every name is invented.
+
+| Name | Role | Access | Username | Email |
+| --- | --- | --- | --- | --- |
+| Marguerite Okafor | Chief Nursing Officer | Admin | `mokafor` | `marguerite.okafor@valleymedical.example` |
+| Desmond Achterberg | House Supervisor | Supervisor | `dachterberg` | `desmond.achterberg@valleymedical.example` |
+| Lucinda Varga | Perioperative Manager | Dept manager (Surgical Services, Anesthesia) | `lvarga` | `lucinda.varga@valleymedical.example` |
+| Tobias Engstrom | Emergency Department Manager | Dept manager (Emergency) | `tengstrom` | `tobias.engstrom@valleymedical.example` |
+| Imani Castellanos | ED RN | Staff | `icastellanos` | `imani.castellanos@valleymedical.example` |
+| Rohan Pellegrini | ED RN | Staff | `rpellegrini` | `rohan.pellegrini@valleymedical.example` |
+| Sunniva Dlamini | ED RN | Staff | `sdlamini` | `sunniva.dlamini@valleymedical.example` |
+| Callum Hashimoto | ED RN | Staff | `chashimoto` | `callum.hashimoto@valleymedical.example` |
+| Beatrix Nwosu | ED Tech | Staff | `bnwosu` | `beatrix.nwosu@valleymedical.example` |
+| Mateo Lindqvist | ED Tech | Staff | `mlindqvist` | `mateo.lindqvist@valleymedical.example` |
+| Farah Kowalczyk | ED Tech | Staff | `fkowalczyk` | `farah.kowalczyk@valleymedical.example` |
+| Anneliese Mbeki | OR RN | Staff | `ambeki` | `anneliese.mbeki@valleymedical.example` |
+| Gideon Takahashi | OR RN | Staff | `gtakahashi` | `gideon.takahashi@valleymedical.example` |
+| Priyanka Solberg | OR RN | Staff | `psolberg` | `priyanka.solberg@valleymedical.example` |
+| Emeka Fontaine | OR RN | Staff | `efontaine` | `emeka.fontaine@valleymedical.example` |
+| Rosalind Petrov | Scrub Tech | Staff | `rpetrov` | `rosalind.petrov@valleymedical.example` |
+| Jamal Oyelaran | Scrub Tech | Staff | `joyelaran` | `jamal.oyelaran@valleymedical.example` |
+| Thea Villanueva | Scrub Tech | Staff | `tvillanueva` | `thea.villanueva@valleymedical.example` |
+| Cormac Abernathy | Anesthesiologist | Staff | `cabernathy` | `cormac.abernathy@valleymedical.example` |
+| Zainab Haverford | Anesthesiologist | Staff | `zhaverford` | `zainab.haverford@valleymedical.example` |
+| Leopold Nakamura | Anesthesiologist | Staff | `lnakamura` | `leopold.nakamura@valleymedical.example` |
+| Odalys Brennan | CRNA | Staff | `obrennan` | `odalys.brennan@valleymedical.example` |
+| Viktor Adeyemi | CRNA | Staff | `vadeyemi` | `viktor.adeyemi@valleymedical.example` |
+| Seraphina Koh | CRNA | Staff | `skoh` | `seraphina.koh@valleymedical.example` |
+| Dashiell Moreno | Cath Lab RN | Staff | `dmoreno` | `dashiell.moreno@valleymedical.example` |
+| Ngozi Halvorsen | Cath Lab RN | Staff | `nhalvorsen` | `ngozi.halvorsen@valleymedical.example` |
+| Wendell Chaudhry | Cath Lab RN | Staff | `wchaudhry` | `wendell.chaudhry@valleymedical.example` |
+| Ingrid Salazar | CV Tech | Staff | `isalazar` | `ingrid.salazar@valleymedical.example` |
+| Tariq Blumenthal | CV Tech | Staff | `tblumenthal` | `tariq.blumenthal@valleymedical.example` |
+| Clementine Osei | L&D RN | Staff | `cosei` | `clementine.osei@valleymedical.example` |
+| Hyun-woo Marchetti | L&D RN | Staff | `hmarchetti` | `hyunwoo.marchetti@valleymedical.example` |
+| Paloma Eriksen | L&D RN | Staff | `periksen` | `paloma.eriksen@valleymedical.example` |
+| Babajide Thornton | L&D RN | Staff | `bthornton` | `babajide.thornton@valleymedical.example` |
+| Mirela Ashworth | ICU RN | Staff | `mashworth` | `mirela.ashworth@valleymedical.example` |
+| Kenji Okonkwo | ICU RN | Staff | `kokonkwo` | `kenji.okonkwo@valleymedical.example` |
+| Esperanza Lindholm | ICU RN | Staff | `elindholm` | `esperanza.lindholm@valleymedical.example` |
+| Alistair Benally | Rad Tech | Staff | `abenally` | `alistair.benally@valleymedical.example` |
+| Yasmin Vandermeer | Rad Tech | Staff | `yvandermeer` | `yasmin.vandermeer@valleymedical.example` |
+| Raphael Ochieng | Interventional Radiologist | Staff | `rochieng` | `raphael.ochieng@valleymedical.example` |
+| Henrietta Sato | Interventional Radiologist | Staff | `hsato` | `henrietta.sato@valleymedical.example` |
+
 ## What each access level sees
 
 | Access | Tabs |
 | --- | --- |
-| Admin | Today, Approve, Schedule, People, Phones |
-| Supervisor | Today, Requests, Phone List |
-| Staff | Today, My Shifts, Requests, Phone List |
+| Admin | Home, Calendar, Approve, Call Management, Shift Requests, People, Phone List |
+| Dept manager | The same as Admin, limited to their departments; no Call settings and no access levels |
+| Supervisor | Home, Calendar, Shift Requests, Phone List |
+| Staff | Home, Calendar, My Shifts, Shift Requests, Phone List |

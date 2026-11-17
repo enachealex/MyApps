@@ -135,6 +135,8 @@ before a real customer exists:
 node scripts/operator.mjs import-demo aurelia
 ```
 
+`import-demo valley` loads the 40-person Valley Medical sample instead.
+
 The tool refuses to overwrite an organization that already exists.
 `list-orgs` shows what is there.
 
@@ -148,7 +150,7 @@ and uses **Generate rotation** to fill the first block.
 | `operators/{email}` | who runs the platform | nobody from the app; the operator tool only |
 | `userIndex/{email}` | which organization an address belongs to | that organization's Admin, or the operator |
 | `orgs/{org}` | name, colours, roles, call template | the operator |
-| `orgs/{org}/members/{email}` | roster id, access level, active or not | that organization's Admin (never their own entry) |
+| `orgs/{org}/members/{email}` | roster id, access level, departments managed, active or not | that organization's Admin (never their own entry); a department manager, for their own staff only |
 | `orgs/{org}/settings/call` | the Admin's edits to the call template and phone buttons | that organization's Admin |
 | `orgs/{org}/people`, `shifts`, `requests`, `timeOff`, `messages` | the working data | see `firestore.rules` |
 
@@ -167,7 +169,7 @@ immediately.
 npm run test:rules
 ```
 
-Runs 93 cases against a local Firestore emulator — who may read and write what,
+Runs 124 cases against a local Firestore emulator — who may read and write what,
 weighted towards the refusals. Needs Java 11 or newer; the script pins an older
 Firebase CLI because the newest one requires Java 21.
 
@@ -184,6 +186,10 @@ npm run test:template
 Checks the call-template editing logic.
 
 ## Not done yet
+
+- **On Windows the emulator can outlive a test run.** `npm run test:rules`
+  sometimes leaves its Java process holding port 8787, and the next run then
+  fails with "port taken". End the `java.exe` listening on 8787 and run again.
 
 - **Never run against a real Firebase project.** The emulator is faithful for
   rules and data, but real email delivery, the authorized-domain setting and

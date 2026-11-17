@@ -146,7 +146,7 @@ export async function pushChanges(orgId, before, after) {
         ops.push((b) => b.delete(at("userIndex", oldEmail)));
       }
       if (email) {
-        ops.push((b) => b.set(at("orgs", orgId, "members", email), { personId: item.id, kind: item.kind || "staff", active: item.active !== false }));
+        ops.push((b) => b.set(at("orgs", orgId, "members", email), { personId: item.id, kind: item.kind || "staff", active: item.active !== false, depts: item.kind === "manager" && Array.isArray(item.depts) ? item.depts : [] }));
         ops.push((b) => b.set(at("userIndex", email), { orgId, personId: item.id }));
       }
     });

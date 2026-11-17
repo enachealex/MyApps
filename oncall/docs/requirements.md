@@ -291,7 +291,8 @@ one-template-per-organization model does not yet support.
 | Call template editable in the app (roles, department per role, call slots) | DONE |
 | Call-button settings (§1b) | DONE |
 | Department filter on Home, Calendar and Call Management; role order editable | DONE |
-| Departments with their own admins, so one department's manager cannot edit another's call | TODO — needs Valley Medical's real structure |
+| Department managers: an Admin limited to chosen departments | DONE |
+| Valley Medical sample organization (40 invented people, 7 departments) | DONE — placeholder until their real structure arrives |
 | Firestore data layer, live sign-in and operator tool | DONE — tested on emulators, not yet on a real project |
 
 **Rotation generator.** Not an optimiser. Fills from today to the end of the
@@ -319,6 +320,16 @@ is a view, not a permission: anyone can still look at any department, because
 staff need to reach whoever is on call elsewhere. The choice is remembered per
 device. Generate rotation starts on the department being viewed. Organizations
 with a single department never see the picker.
+
+**Department managers.** In People, an Admin can limit another Admin to chosen
+departments ("Manages"). That person gets the same screens narrowed to those
+departments: Call Management and Generate rotation for their roles, approvals
+for their shifts, and the staff list for their people. They cannot open Call
+settings, change anyone's access level, or edit supervisors, other managers or
+another department's staff. No departments listed means the whole
+organization. The Firestore rules enforce every one of these, not just the
+screens — see the department-manager cases in `scripts/rules.test.mjs`. A
+reported message is still visible to every manager, department or not.
 
 **Time off.** Staff tap days they cannot take call (My Shifts → Time off). It
 is availability, not approved leave, and it changes nothing already published.

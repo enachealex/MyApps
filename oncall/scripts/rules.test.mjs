@@ -180,6 +180,55 @@ await expect("a template with no slot list", false, () => setDoc(doc(admin, `org
 await expect("admin deletes the call template", false, () => deleteDoc(doc(admin, `orgs/${A}/settings/call`)));
 await expect("admin still cannot edit the organization record itself", false, () => updateDoc(doc(admin, `orgs/${A}`), { name: "Renamed" }));
 
+/* ---------------------------- department managers ---------------------------- */
+/* dm runs Endo only. ann is OR staff, eve is Endo staff. */
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore();
+  await setDoc(doc(db, `orgs/${A}/settings/call`), { ...tpl, roles: ["OR RN", "Endo RN"], depts: { "OR RN": "OR", "Endo RN": "Endo" } });
+  await setDoc(doc(db, `orgs/${A}/people/a-dm`), { id: "a-dm", name: "dm", email: "dm@a.test", role: "Endo Manager", kind: "manager", depts: ["Endo"], active: true });
+  await setDoc(doc(db, `orgs/${A}/members/dm@a.test`), { personId: "a-dm", kind: "manager", depts: ["Endo"], active: true });
+  await setDoc(doc(db, `orgs/${A}/people/a-eve`), { id: "a-eve", name: "eve", email: "eve@a.test", role: "Endo RN", kind: "staff", active: true });
+  await setDoc(doc(db, `orgs/${A}/members/eve@a.test`), { personId: "a-eve", kind: "staff", active: true });
+  await setDoc(doc(db, `orgs/${A}/people/a-ann`), { id: "a-ann", name: "ann", email: "ann@a.test", role: "OR RN", kind: "staff", active: true });
+  await setDoc(doc(db, `orgs/${A}/shifts/s-endo`), { id: "s-endo", date: "2026-12-04", role: "Endo RN", personId: "a-eve", posted: false, outSick: false });
+  await setDoc(doc(db, `orgs/${A}/shifts/s-or`), { id: "s-or", date: "2026-12-04", role: "OR RN", personId: "a-ann", posted: false, outSick: false });
+  await setDoc(doc(db, `orgs/${A}/requests/r-endo`), { id: "r-endo", type: "trade", shiftId: "s-endo", fromId: "a-eve", toId: "a-ann", coworker: "agreed", status: "submitted" });
+  await setDoc(doc(db, `orgs/${A}/requests/r-or`), { id: "r-or", type: "trade", shiftId: "s-or", fromId: "a-ann", toId: "a-bo", coworker: "agreed", status: "submitted" });
+});
+const dm = env.authenticatedContext("dm", { email: "dm@a.test", email_verified: true }).firestore();
+const endoShift = (id) => ({ id, date: "2026-12-06", role: "Endo RN", personId: "a-eve", posted: false, outSick: false });
+await expect("department manager reads the whole schedule", true, () => getDocs(collection(dm, `orgs/${A}/shifts`)));
+await expect("department manager reassigns a shift in their department", true, () => updateDoc(doc(dm, `orgs/${A}/shifts/s-endo`), { outSick: true }));
+await expect("department manager reassigns a shift in another department", false, () => updateDoc(doc(dm, `orgs/${A}/shifts/s-or`), { personId: "a-eve" }));
+await expect("department manager publishes a shift for their department", true, () => setDoc(doc(dm, `orgs/${A}/shifts/s-endo2`), endoShift("s-endo2")));
+await expect("department manager publishes a shift for another department", false, () => setDoc(doc(dm, `orgs/${A}/shifts/s-or2`), { ...endoShift("s-or2"), role: "OR RN" }));
+await expect("department manager relabels their shift into another department", false, () => updateDoc(doc(dm, `orgs/${A}/shifts/s-endo`), { role: "OR RN" }));
+await expect("department manager deletes another department's shift", false, () => deleteDoc(doc(dm, `orgs/${A}/shifts/s-or`)));
+await expect("department manager deletes their own department's shift", true, () => deleteDoc(doc(dm, `orgs/${A}/shifts/s-endo2`)));
+await expect("department manager approves a request in their department", true, () => updateDoc(doc(dm, `orgs/${A}/requests/r-endo`), { status: "approved" }));
+await expect("department manager approves a request in another department", false, () => updateDoc(doc(dm, `orgs/${A}/requests/r-or`), { status: "approved" }));
+await expect("department manager posts another department's shift to staff", false, () => setDoc(doc(dm, `orgs/${A}/requests/r-dm`), { id: "r-dm", type: "post", shiftId: "s-or", fromId: "a-ann", toId: null, coworker: "pending", status: "submitted" }));
+await expect("department manager edits the call template", false, () => setDoc(doc(dm, `orgs/${A}/settings/call`), tpl));
+await expect("department manager edits their own staff", true, () => updateDoc(doc(dm, `orgs/${A}/people/a-eve`), { phone: "555-0199" }));
+await expect("department manager edits another department's staff", false, () => updateDoc(doc(dm, `orgs/${A}/people/a-ann`), { phone: "555-0199" }));
+await expect("department manager moves another department's staff into theirs", false, () => updateDoc(doc(dm, `orgs/${A}/people/a-ann`), { role: "Endo RN" }));
+await expect("department manager moves their staff into another department", false, () => updateDoc(doc(dm, `orgs/${A}/people/a-eve`), { role: "OR RN" }));
+await expect("department manager edits a supervisor", false, () => updateDoc(doc(dm, `orgs/${A}/people/a-sup`), { phone: "x" }));
+await expect("department manager adds staff to their department", true, () => setDoc(doc(dm, `orgs/${A}/people/a-fay`), { id: "a-fay", name: "fay", email: "fay@a.test", role: "Endo RN", kind: "staff", active: true }));
+await expect("department manager lets that person in", true, () => setDoc(doc(dm, `orgs/${A}/members/fay@a.test`), { personId: "a-fay", kind: "staff", active: true }));
+await expect("department manager adds staff to another department", false, () => setDoc(doc(dm, `orgs/${A}/people/a-gus`), { id: "a-gus", name: "gus", email: "gus@a.test", role: "OR RN", kind: "staff", active: true }));
+await expect("department manager adds a roster record marked admin", false, () => setDoc(doc(dm, `orgs/${A}/people/a-hal`), { id: "a-hal", name: "hal", email: "hal@a.test", role: "Endo RN", kind: "manager", active: true }));
+await expect("department manager grants admin access", false, () => setDoc(doc(dm, `orgs/${A}/members/hal@a.test`), { personId: "a-fay", kind: "manager", active: true }));
+await expect("department manager promotes their own staff", false, () => updateDoc(doc(dm, `orgs/${A}/members/eve@a.test`), { kind: "supervisor" }));
+await expect("department manager gives their staff a department to run", false, () => updateDoc(doc(dm, `orgs/${A}/members/eve@a.test`), { depts: ["Endo"] }));
+await expect("department manager widens their own departments", false, () => updateDoc(doc(dm, `orgs/${A}/members/dm@a.test`), { depts: [] }));
+await expect("department manager deactivates their own staff", true, () => updateDoc(doc(dm, `orgs/${A}/members/eve@a.test`), { active: false }));
+await expect("department manager deactivates another department's staff", false, () => updateDoc(doc(dm, `orgs/${A}/members/ann@a.test`), { active: false }));
+await expect("department manager demotes the admin", false, () => updateDoc(doc(dm, `orgs/${A}/members/admin@a.test`), { kind: "staff" }));
+await expect("department manager removes a member", false, () => deleteDoc(doc(dm, `orgs/${A}/members/ann@a.test`)));
+await expect("admin makes someone a department manager", true, () => updateDoc(doc(admin, `orgs/${A}/members/bo@a.test`), { kind: "manager", depts: ["OR"] }));
+await expect("admin still edits any department's shift", true, () => updateDoc(doc(admin, `orgs/${A}/shifts/s-or`), { outSick: true }));
+
 /* --------------------------------- operator --------------------------------- */
 await expect("operator creates an organization", true, () => setDoc(doc(owner, "orgs/valley"), { name: "Valley Medical" }));
 await expect("operator seats its first admin", true, () => setDoc(doc(owner, "orgs/valley/members/first@valley.test"), { personId: "v-1", kind: "manager", active: true }));

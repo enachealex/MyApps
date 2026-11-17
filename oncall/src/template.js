@@ -194,3 +194,29 @@ export function moved(list, index, by) {
   [next[index], next[to]] = [next[to], next[index]];
   return next;
 }
+
+/* ---- who manages what ---- */
+
+/* An Admin with no departments listed runs the whole organization. One with
+   departments listed is a department manager: the same tools, for those
+   departments only. Nobody else manages anything. */
+export const scopeOf = (person) => (person && person.kind === "manager" && Array.isArray(person.depts) ? person.depts : []);
+export const isOrgAdmin = (person) => !!person && person.kind === "manager" && scopeOf(person).length === 0;
+
+export function canManageRole(org, person, role) {
+  if (!person || person.kind !== "manager") return false;
+  const scope = scopeOf(person);
+  return scope.length === 0 || scope.includes(deptOfRole(org, role));
+}
+
+/* The roles this person lays out call for, in template order. */
+export const managedRoles = (org, person) => (org.roles || []).filter((r) => canManageRole(org, person, r));
+
+/* Whose record this person may edit. A department manager edits the staff of
+   their own departments and nobody's access level; only an organization Admin
+   touches supervisors, managers, or people in other departments. */
+export function canManagePerson(org, viewer, target) {
+  if (!viewer || viewer.kind !== "manager" || !target) return false;
+  if (isOrgAdmin(viewer)) return true;
+  return target.kind === "staff" && canManageRole(org, viewer, target.role);
+}

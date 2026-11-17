@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useContext, createContext 
 import { signIn, signOutNow, changePassword, sendReset, isRealAuth, watchAuth, cloudSignIn, cloudSignUp, resendVerification, refreshUser } from "./auth";
 import { findMembership, loadOrg, loadMember, subscribeOrg, pushChanges } from "./cloudStore";
 import { generateRotation, spreadByRole } from "./rotation";
-import { SETTINGS_ID, KINDS, settingsOf, effectiveOrg, validateTemplate, reconcileShifts, unfilledSlots, callButtonAllowed, newSlotId, ALL_DEPTS, departmentsOf, rolesInDept, inDept, moved } from "./template";
+import { SETTINGS_ID, KINDS, settingsOf, effectiveOrg, validateTemplate, reconcileShifts, unfilledSlots, callButtonAllowed, newSlotId, ALL_DEPTS, departmentsOf, rolesInDept, inDept, moved, isOrgAdmin, canManageRole, managedRoles, canManagePerson } from "./template";
 import {
   Home,
   CalendarDays,
@@ -191,7 +191,7 @@ function suggestUsername(name, taken) {
 function buildOrg(cfg) {
   const taken = [];
   const people = cfg.roster.map((r, i) => {
-    const [name, role, phone, alt, kind] = r;
+    const [name, role, phone, alt, kind, depts] = r;
     const slug = name.toLowerCase().replace(/[^a-z ]/g, "").split(" ").filter(Boolean).join(".");
     const username = suggestUsername(name, taken);
     taken.push(username);
@@ -205,6 +205,8 @@ function buildOrg(cfg) {
       username,
       email: `${slug}@${cfg.domain}`,
       active: true,
+      /* Departments a manager is limited to; none means the whole organization. */
+      ...(depts && depts.length ? { depts } : {}),
     };
   });
   return { ...cfg, people };
@@ -376,6 +378,99 @@ const ORGS = [
       ["Bridget Nolan", "Scrub Tech", "(360) 555-4131"],
       ["Omar Haddadi", "PACU RN", "(206) 555-4140"],
       ["Tess Kilbride", "PACU RN", "(425) 555-4141"],
+    ],
+  }),
+  /* A sample of the first real target: a hospital-wide roster rather than one
+     surgical unit. Every name and number here is invented. Seven departments,
+     forty people, and two department managers so the narrowed view can be
+     tried alongside the organization Admin's. */
+  buildOrg({
+    id: "valley",
+    name: "Valley Medical",
+    unit: "Nursing and Specialty Call",
+    city: "Renton, WA",
+    code: "VALLEY",
+    domain: "valleymedical.example",
+    sso: null,
+    brand: "#1F6FB2",
+    deep: "#17548A",
+    link: "#1C64A1",
+    soft: "#E6F0F9",
+    chip: "#EAF2FA",
+    aliases: {},
+    roles: ["ED RN", "ED Tech", "OR RN", "Scrub Tech", "Anesthesiologist", "CRNA", "Cath Lab RN", "CV Tech", "L&D RN", "ICU RN", "Rad Tech", "Interventional Radiologist"],
+    depts: {
+      "ED RN": "Emergency",
+      "ED Tech": "Emergency",
+      "OR RN": "Surgical Services",
+      "Scrub Tech": "Surgical Services",
+      Anesthesiologist: "Anesthesia",
+      CRNA: "Anesthesia",
+      "Cath Lab RN": "Cath Lab",
+      "CV Tech": "Cath Lab",
+      "L&D RN": "Labor and Delivery",
+      "ICU RN": "Critical Care",
+      "Rad Tech": "Imaging",
+      "Interventional Radiologist": "Imaging",
+    },
+    slots: [
+      { role: "ED RN", kind: "first", time: "1900-0700" },
+      { role: "ED RN", kind: "second", time: "1900-0700" },
+      { role: "ED Tech", kind: "first", time: "1900-0700" },
+      { role: "OR RN", kind: "first", time: "1900-0700" },
+      { role: "OR RN", kind: "second", time: "2300-0700" },
+      { role: "Scrub Tech", kind: "first", time: "1900-0700" },
+      { role: "Anesthesiologist", kind: "first", time: "1700-0700" },
+      { role: "CRNA", kind: "first", time: "1900-0700" },
+      { role: "Cath Lab RN", kind: "first", time: "1700-0700" },
+      { role: "CV Tech", kind: "first", time: "1700-0700" },
+      { role: "L&D RN", kind: "first", time: "1900-0700" },
+      { role: "L&D RN", kind: "second", time: "1900-0700" },
+      { role: "ICU RN", kind: "first", time: "1900-0700" },
+      { role: "Rad Tech", kind: "first", time: "2000-0600" },
+      { role: "Interventional Radiologist", kind: "first", time: "1700-0700" },
+    ],
+    roster: [
+      ["Marguerite Okafor", "Chief Nursing Officer", "(425) 555-0100", "", "manager"],
+      ["Desmond Achterberg", "House Supervisor", "(425) 555-0101", "", "supervisor"],
+      ["Lucinda Varga", "Perioperative Manager", "(425) 555-0102", "", "manager", ["Surgical Services", "Anesthesia"]],
+      ["Tobias Engstrom", "Emergency Department Manager", "(425) 555-0103", "", "manager", ["Emergency"]],
+      ["Imani Castellanos", "ED RN", "(206) 555-0110"],
+      ["Rohan Pellegrini", "ED RN", "(425) 555-0111", "(425) 555-0191"],
+      ["Sunniva Dlamini", "ED RN", "(253) 555-0112"],
+      ["Callum Hashimoto", "ED RN", "(206) 555-0113"],
+      ["Beatrix Nwosu", "ED Tech", "(425) 555-0114"],
+      ["Mateo Lindqvist", "ED Tech", "(253) 555-0115"],
+      ["Farah Kowalczyk", "ED Tech", "(206) 555-0116"],
+      ["Anneliese Mbeki", "OR RN", "(425) 555-0120"],
+      ["Gideon Takahashi", "OR RN", "(206) 555-0121"],
+      ["Priyanka Solberg", "OR RN", "(253) 555-0122", "(253) 555-0192"],
+      ["Emeka Fontaine", "OR RN", "(425) 555-0123"],
+      ["Rosalind Petrov", "Scrub Tech", "(206) 555-0124"],
+      ["Jamal Oyelaran", "Scrub Tech", "(425) 555-0125"],
+      ["Thea Villanueva", "Scrub Tech", "(360) 555-0126"],
+      ["Cormac Abernathy", "Anesthesiologist", "(206) 555-0130"],
+      ["Zainab Haverford", "Anesthesiologist", "(425) 555-0131", "(425) 555-0193"],
+      ["Leopold Nakamura", "Anesthesiologist", "(253) 555-0132"],
+      ["Odalys Brennan", "CRNA", "(206) 555-0133"],
+      ["Viktor Adeyemi", "CRNA", "(425) 555-0134"],
+      ["Seraphina Koh", "CRNA", "(360) 555-0135"],
+      ["Dashiell Moreno", "Cath Lab RN", "(425) 555-0140"],
+      ["Ngozi Halvorsen", "Cath Lab RN", "(206) 555-0141"],
+      ["Wendell Chaudhry", "Cath Lab RN", "(253) 555-0142"],
+      ["Ingrid Salazar", "CV Tech", "(425) 555-0143"],
+      ["Tariq Blumenthal", "CV Tech", "(206) 555-0144"],
+      ["Clementine Osei", "L&D RN", "(425) 555-0150"],
+      ["Hyun-woo Marchetti", "L&D RN", "(206) 555-0151"],
+      ["Paloma Eriksen", "L&D RN", "(253) 555-0152"],
+      ["Babajide Thornton", "L&D RN", "(425) 555-0153", "(425) 555-0194"],
+      ["Mirela Ashworth", "ICU RN", "(206) 555-0160"],
+      ["Kenji Okonkwo", "ICU RN", "(425) 555-0161"],
+      ["Esperanza Lindholm", "ICU RN", "(360) 555-0162"],
+      ["Alistair Benally", "Rad Tech", "(425) 555-0170"],
+      ["Yasmin Vandermeer", "Rad Tech", "(206) 555-0171"],
+      ["Raphael Ochieng", "Interventional Radiologist", "(425) 555-0172"],
+      ["Henrietta Sato", "Interventional Radiologist", "(253) 555-0173"],
     ],
   }),
 ];
@@ -1863,6 +1958,10 @@ function Shell({ org: createdOrg, db, setDb, viewerId, onSignOut, themeMode, set
   const isStaff = viewer.kind === "staff";
   const isMgr = viewer.kind === "manager";
   const isSup = viewer.kind === "supervisor";
+  /* An Admin with departments listed is a department manager: the same
+     screens, narrowed to those departments. null means no narrowing. */
+  const orgAdmin = isOrgAdmin(viewer);
+  const scopeRoles = isMgr && !orgAdmin ? managedRoles(org, viewer) : null;
 
   const say = (msg) => {
     setToast(msg);
@@ -2057,8 +2156,14 @@ function Shell({ org: createdOrg, db, setDb, viewerId, onSignOut, themeMode, set
     [db.requests, viewerId]
   );
   const approvalQueue = useMemo(
-    () => db.requests.filter((r) => r.status === "submitted" && r.toId && r.coworker !== "pending"),
-    [db.requests]
+    () =>
+      db.requests.filter((r) => {
+        if (!(r.status === "submitted" && r.toId && r.coworker !== "pending")) return false;
+        if (!scopeRoles) return true;
+        const sh = db.shifts.find((x) => x.id === r.shiftId);
+        return !!sh && scopeRoles.includes(sh.role);
+      }),
+    [db.requests, db.shifts, scopeRoles && scopeRoles.join("|")]
   );
 
   const tabs = isStaff
@@ -2076,7 +2181,7 @@ function Shell({ org: createdOrg, db, setDb, viewerId, onSignOut, themeMode, set
         { id: "approvals", label: "Approve", icon: ShieldCheck, badge: approvalQueue.length },
         { id: "manage", label: "Call Management", short: "Calls", icon: ClipboardList },
         { id: "requests", label: "Shift Requests", short: "Requests", icon: History },
-        { id: "people", label: "People", icon: Users, badge: db.people.filter((p) => !p.email || !p.username).length },
+        { id: "people", label: "People", icon: Users, badge: db.people.filter((p) => (!p.email || !p.username) && canManagePerson(org, viewer, p)).length },
         { id: "phones", label: "Phone List", short: "Phones", icon: Phone },
       ]
     : [
@@ -2201,8 +2306,8 @@ function Shell({ org: createdOrg, db, setDb, viewerId, onSignOut, themeMode, set
           <RequestsView db={db} viewerId={viewerId} isSup={isSup} inbox={inbox} shiftById={shiftById} onRespond={respondToOffer} onRetract={retract} />
         )}
         {tab === "approvals" && <ApprovalsView db={db} queue={approvalQueue} shiftById={shiftById} onOpen={setApproveSheet} />}
-        {tab === "manage" && <ManageView db={{ ...db, timeOff }} onReassign={reassign} onToggleSick={toggleSick} onOfferUp={offerUp} openReqFor={openReqFor} onApplyRotation={applyRotation} onSaveSettings={saveCallSettings} />}
-        {tab === "people" && <PeopleAdminView db={db} viewerId={viewerId} onSave={savePerson} onSetActive={setPersonActive} say={say} />}
+        {tab === "manage" && <ManageView db={{ ...db, timeOff }} onReassign={reassign} onToggleSick={toggleSick} onOfferUp={offerUp} openReqFor={openReqFor} onApplyRotation={applyRotation} onSaveSettings={saveCallSettings} scopeRoles={scopeRoles} />}
+        {tab === "people" && <PeopleAdminView db={db} viewerId={viewerId} viewer={viewer} onSave={savePerson} onSetActive={setPersonActive} say={say} />}
         {tab === "phones" && <PhoneListView db={db} />}
             </div>
           </div>
@@ -3130,7 +3235,7 @@ function ScheduleView({ db, onOpenShift }) {
 /* Shift · Role · Name · Phone · Status */
 const CALL_GRID = "170px 130px minmax(0, 1fr) auto minmax(0, 260px)";
 
-function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApplyRotation, onSaveSettings }) {
+function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApplyRotation, onSaveSettings, scopeRoles }) {
   const org = useOrg();
   const [generating, setGenerating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -3144,11 +3249,14 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApp
 
   const sort = (a, b) => org.roles.indexOf(a.role) - org.roles.indexOf(b.role) || a.time.localeCompare(b.time);
   const { dept } = useDept();
-  const shifts = db.shifts.filter(inDept(org, dept));
+  /* A department manager lays out their own departments' call and does not
+     see the rest here; the whole schedule is still on Home and Calendar. */
+  const mine = (role) => !scopeRoles || scopeRoles.includes(role);
+  const shifts = db.shifts.filter(inDept(org, dept)).filter((s) => mine(s.role));
   const rows = shifts.filter((s) => s.date === dateKey).sort(sort);
   const days = blockOf(dateKey, shifts, sort);
   const genDays = days.filter((d) => d.key >= todayKey);
-  const empty = unfilledSlots(db.shifts, org.slots, todayKey);
+  const empty = unfilledSlots(db.shifts, org.slots, todayKey).filter((x) => mine(x.role));
 
   return (
     <div>
@@ -3165,7 +3273,7 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApp
             : `Fill this ${BLOCK_WEEKS}-week block from the call template, shared out evenly.`}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Btn size="sm" tone="ghost" icon={Settings} onClick={() => setSettingsOpen(true)}>Call settings</Btn>
+          {scopeRoles ? null : <Btn size="sm" tone="ghost" icon={Settings} onClick={() => setSettingsOpen(true)}>Call settings</Btn>}
           <Btn size="sm" icon={CalendarDays} disabled={genDays.length === 0} onClick={() => setGenerating(true)}>Generate rotation</Btn>
         </div>
       </div>
@@ -3188,7 +3296,8 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApp
           db={db}
           startKey={genDays.length ? genDays[0].key : days[0].key}
           dayCount={genDays.length}
-          initialRoles={rolesInDept(org, dept)}
+          initialRoles={rolesInDept(org, dept).filter(mine)}
+          allowedRoles={scopeRoles}
           onPublish={(generated) => {
             onApplyRotation(generated);
             setGenerating(false);
@@ -3324,9 +3433,9 @@ function ManageView({ db, onReassign, onToggleSick, onOfferUp, openReqFor, onApp
    should be able to see that the spread is even, and who is carrying what,
    before publishing — and to argue with it, by leaving people out or asking
    for a different arrangement. */
-function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish, initialRoles }) {
+function RotationSheet({ open, onClose, db, startKey, dayCount, onPublish, initialRoles, allowedRoles }) {
   const org = useOrg();
-  const allRoles = [...new Set(org.slots.map((x) => x.role))];
+  const allRoles = [...new Set(org.slots.map((x) => x.role))].filter((r) => !allowedRoles || allowedRoles.includes(r));
   /* Starts on the department being looked at; the rest are a tap away. */
   const [roles, setRoles] = useState(() => new Set(initialRoles ? allRoles.filter((r) => initialRoles.includes(r)) : allRoles));
   const [excluded, setExcluded] = useState(() => new Set());
@@ -4086,14 +4195,18 @@ function TapToCallHint() {
 }
 
 /* ========================== PEOPLE (ADMIN) ======================== */
-function PeopleAdminView({ db, viewerId, onSave, onSetActive, say }) {
+function PeopleAdminView({ db, viewerId, viewer, onSave, onSetActive, say }) {
   const org = useOrg();
   const stickyTop = useStickyTop();
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState(null); // person object or "new"
 
-  const needsSetup = db.people.filter((p) => !p.username || !p.email);
-  const list = db.people.filter(
+  const orgAdmin = isOrgAdmin(viewer);
+  const roleChoices = orgAdmin ? org.roles : managedRoles(org, viewer);
+  /* A department manager sees the people they can actually change. */
+  const editable = db.people.filter((p) => canManagePerson(org, viewer, p));
+  const needsSetup = editable.filter((p) => !p.username || !p.email);
+  const list = editable.filter(
     (p) =>
       q.trim() === "" ||
       p.name.toLowerCase().includes(q.toLowerCase()) ||
@@ -4104,7 +4217,7 @@ function PeopleAdminView({ db, viewerId, onSave, onSetActive, say }) {
   const blank = () => ({
     id: `${org.id}-u${Math.random().toString(36).slice(2, 7)}`,
     name: "",
-    role: org.roles[0],
+    role: roleChoices[0] || "",
     kind: "staff",
     username: "",
     email: "",
@@ -4152,7 +4265,7 @@ function PeopleAdminView({ db, viewerId, onSave, onSetActive, say }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate text-sm font-semibold">{p.name}</span>
-                      {p.kind !== "staff" ? <Pill text={p.kind === "manager" ? "Admin" : "Supervisor"} color={org.deep} bg={org.soft} /> : null}
+                      {p.kind !== "staff" ? <Pill text={p.kind === "manager" ? (isOrgAdmin(p) ? "Admin" : "Dept manager") : "Supervisor"} color={org.deep} bg={org.soft} /> : null}
                       {p.active === false ? <Pill text="Inactive" color={C.sub} bg={C.neutralBg} /> : null}
                     </div>
                     <div className="truncate text-xs" style={{ color: C.sub }}>{p.role}</div>
@@ -4178,6 +4291,8 @@ function PeopleAdminView({ db, viewerId, onSave, onSetActive, say }) {
         person={editing}
         people={db.people}
         viewerId={viewerId}
+        orgAdmin={orgAdmin}
+        roleChoices={roleChoices}
         onClose={() => setEditing(null)}
         onSave={(p) => {
           onSave(p);
@@ -4193,7 +4308,7 @@ function PeopleAdminView({ db, viewerId, onSave, onSetActive, say }) {
   );
 }
 
-function PersonSheet({ person, people, viewerId, onClose, onSave, onSetActive, say }) {
+function PersonSheet({ person, people, viewerId, orgAdmin = true, roleChoices, onClose, onSave, onSetActive, say }) {
   const org = useOrg();
   const [form, setForm] = useState(person);
   const [touchedUser, setTouchedUser] = useState(false);
@@ -4250,6 +4365,9 @@ function PersonSheet({ person, people, viewerId, onClose, onSave, onSetActive, s
       email: form.email.trim().toLowerCase(),
       phone: form.phone.trim(),
       alt: (form.alt || "").trim(),
+      /* Departments mean something only on a manager, and only ones that
+         still exist. An empty list is the whole organization. */
+      depts: form.kind === "manager" ? (form.depts || []).filter((d) => departmentsOf(org).includes(d)) : [],
     });
   };
 
@@ -4307,21 +4425,60 @@ function PersonSheet({ person, people, viewerId, onClose, onSave, onSetActive, s
           <div className="flex-1">
             {label("Role")}
             <select value={form.role} onChange={(e) => set({ role: e.target.value })} className="w-full rounded-md border px-2 py-2.5 text-sm" style={field}>
-              {org.roles.map((r) => (
+              {(roleChoices || org.roles).map((r) => (
                 <option key={r} value={r}>{r}</option>
               ))}
-              {org.roles.includes(form.role) ? null : <option value={form.role}>{form.role}</option>}
+              {(roleChoices || org.roles).includes(form.role) ? null : <option value={form.role}>{form.role}</option>}
             </select>
           </div>
-          <div className="flex-1">
-            {label("Access")}
-            <select value={form.kind} onChange={(e) => set({ kind: e.target.value })} className="w-full rounded-md border px-2 py-2.5 text-sm" style={field}>
-              <option value="staff">Staff</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="manager">Admin</option>
-            </select>
-          </div>
+          {/* Only an organization Admin sets access. A department manager
+              adds staff, and that is all the rules would let them save. */}
+          {orgAdmin ? (
+            <div className="flex-1">
+              {label("Access")}
+              <select value={form.kind} onChange={(e) => set({ kind: e.target.value })} className="w-full rounded-md border px-2 py-2.5 text-sm" style={field}>
+                <option value="staff">Staff</option>
+                <option value="supervisor">Supervisor</option>
+                <option value="manager">Admin</option>
+              </select>
+            </div>
+          ) : null}
         </div>
+
+        {orgAdmin && form.kind === "manager" && departmentsOf(org).length > 1 ? (
+          <div>
+            {label("Manages")}
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => set({ depts: [] })}
+                aria-pressed={!(form.depts || []).length}
+                className="rounded-full px-3 py-1 text-xs font-medium"
+                style={!(form.depts || []).length ? { backgroundColor: org.brand, color: "#fff" } : { backgroundColor: org.chip, color: org.deep }}
+              >
+                Whole organization
+              </button>
+              {departmentsOf(org).map((d) => {
+                const on = (form.depts || []).includes(d);
+                return (
+                  <button
+                    key={d}
+                    onClick={() => set({ depts: on ? form.depts.filter((x) => x !== d) : [...(form.depts || []), d] })}
+                    aria-pressed={on}
+                    className="rounded-full px-3 py-1 text-xs font-medium"
+                    style={on ? { backgroundColor: org.brand, color: "#fff" } : { backgroundColor: org.chip, color: org.deep }}
+                  >
+                    {d}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-1 text-xs" style={{ color: C.faint }}>
+              {(form.depts || []).length
+                ? "A department manager lays out call, approves requests and keeps the staff list for these departments only."
+                : "Runs every department, sets access levels and edits Call settings."}
+            </div>
+          </div>
+        ) : null}
 
         <div className="flex gap-2">
           <div className="flex-1">

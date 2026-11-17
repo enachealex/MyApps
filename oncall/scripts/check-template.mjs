@@ -4,7 +4,7 @@
  *
  *   node scripts/check-template.mjs      (npm run test:template)
  */
-import { departmentsOf, rolesInDept, inDept, moved, withSlotIds, effectiveOrg, validateTemplate, reconcileShifts, unfilledSlots, callButtonAllowed, slotIdOf } from "../src/template.js";
+import { scopeOf, isOrgAdmin, canManageRole, managedRoles, canManagePerson, departmentsOf, rolesInDept, inDept, moved, withSlotIds, effectiveOrg, validateTemplate, reconcileShifts, unfilledSlots, callButtonAllowed, slotIdOf } from "../src/template.js";
 import { generateRotation } from "../src/rotation.js";
 
 let failed = 0;
@@ -117,6 +117,20 @@ check("a department narrows the roles", rolesInDept(base, "OR").join() === "OR R
 check("a department narrows the shifts", shifts.filter(inDept(base, "OR")).length === 5 && shifts.filter(inDept(base, "PACU")).length === 0 && shifts.filter(inDept(base, "All")).length === 5);
 check("moving a role up swaps it with its neighbour", moved(["a", "b", "c"], 2, -1).join() === "a,c,b");
 check("moving past either end changes nothing", moved(["a", "b"], 0, -1).join() === "a,b" && moved(["a", "b"], 1, 1).join() === "a,b");
+
+/* ---- who manages what ---- */
+const adminP = { id: "m", kind: "manager" };
+const orMgr = { id: "dm", kind: "manager", depts: ["OR"] };
+const supP = { id: "s", kind: "supervisor", depts: ["OR"] };
+check("an Admin with no departments runs everything", isOrgAdmin(adminP) && managedRoles(base, adminP).length === 3);
+check("a department manager is not an organization Admin", !isOrgAdmin(orMgr));
+check("a department manager manages only their roles", managedRoles(base, orMgr).join() === "OR RN,Scrub Tech" && !canManageRole(base, orMgr, "PACU RN"));
+check("departments listed on a supervisor grant nothing", scopeOf(supP).length === 0 && !canManageRole(base, supP, "OR RN"));
+check("staff manage nothing", !canManageRole(base, people[0], "OR RN"));
+check("a department manager edits their own staff", canManagePerson(base, orMgr, people[0]));
+check("a department manager cannot edit another department's staff", !canManagePerson(base, orMgr, { kind: "staff", role: "PACU RN" }));
+check("a department manager cannot edit a manager or supervisor", !canManagePerson(base, orMgr, adminP) && !canManagePerson(base, orMgr, { kind: "supervisor", role: "OR RN" }));
+check("an Admin edits anyone", canManagePerson(base, adminP, orMgr) && canManagePerson(base, adminP, people[0]));
 
 console.log(`\n${count - failed} of ${count} checks passed`);
 process.exit(failed ? 1 : 0);
